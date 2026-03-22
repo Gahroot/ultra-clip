@@ -1,0 +1,5 @@
+nemo_toolkit[asr]
+mediapipe
+opencv-python-headless
+numpy
+yt-dlp
