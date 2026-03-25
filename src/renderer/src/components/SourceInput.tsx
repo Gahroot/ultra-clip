@@ -437,13 +437,24 @@ export function SourceInput() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -20 }}
                       transition={{ duration: 0.15 }}
+                      whileTap={{ scale: 0.97 }}
                     >
                       <TooltipProvider>
+                        {/* Relative wrapper so the layoutId indicator can be absolutely positioned */}
+                        <div className="relative">
+                          {/* Sliding active indicator — animates between sources via layoutId */}
+                          {activeSourceId === source.id && (
+                            <motion.div
+                              layoutId="active-source-highlight"
+                              className="absolute inset-0 rounded-md border border-primary bg-primary/5 ring-1 ring-primary/30 pointer-events-none"
+                              transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                            />
+                          )}
                         <div
                           className={cn(
-                            'group flex items-center gap-2.5 rounded-md border p-2 cursor-pointer transition-all',
+                            'group flex items-center gap-2.5 rounded-md border p-2 cursor-pointer transition-colors',
                             activeSourceId === source.id
-                              ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                              ? 'border-transparent bg-transparent'
                               : 'border-border bg-card hover:border-primary/40 hover:bg-accent/30'
                           )}
                           onClick={() => setActiveSource(source.id)}
@@ -532,6 +543,7 @@ export function SourceInput() {
                             <TooltipContent side="left">Remove source</TooltipContent>
                           </Tooltip>
                         </div>
+                        </div>{/* closes relative wrapper */}
                       </TooltipProvider>
                     </motion.div>
                   )

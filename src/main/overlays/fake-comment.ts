@@ -341,14 +341,19 @@ export function buildFakeCommentFilter(
   const fadeOutStart = endTime - fadeOut
 
   // ── Timing expressions ────────────────────────────────────────────────────
-  const enableExpr = `between(t,${appearTime.toFixed(3)},${endTime.toFixed(3)})`
-  const tRel = `(t-${appearTime.toFixed(3)})`
+  // Uses infix comparison operators to avoid commas — escaped commas (\,)
+  // break some Windows FFmpeg builds.
+  const fcAT = appearTime.toFixed(3)
+  const fcET = endTime.toFixed(3)
+  const fcFI = fadeIn.toFixed(3)
+  const fcFOS = fadeOutStart.toFixed(3)
+  const fcFO = fadeOut.toFixed(3)
+  const enableExpr = `(t>=${fcAT})*(t<=${fcET})`
+  const tRel = `(t-${fcAT})`
   const alphaExpr =
-    `if(lt(${tRel},${fadeIn.toFixed(3)}),` +
-      `${tRel}/${fadeIn.toFixed(3)},` +
-      `if(gt(t,${fadeOutStart.toFixed(3)}),` +
-        `(${endTime.toFixed(3)}-t)/${fadeOut.toFixed(3)},` +
-        `1))`
+    `(${tRel}<${fcFI})*${tRel}/${fcFI}` +
+    `+(${tRel}>=${fcFI})*(t<=${fcFOS})*1` +
+    `+(t>${fcFOS})*(${fcET}-t)/${fcFO}`
 
   // ── Card geometry ─────────────────────────────────────────────────────────
   const cardY = position === 'lower-third' ? LOWER_THIRD_Y : MIDDLE_Y

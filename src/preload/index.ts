@@ -553,6 +553,9 @@ const api = {
     ipcRenderer.invoke('system:exportLogs', rendererErrors),
   openLogFolder: () => ipcRenderer.invoke('system:openLogFolder'),
 
+  // System — resource usage (CPU/RAM/GPU)
+  getResourceUsage: () => ipcRenderer.invoke('system:getResourceUsage'),
+
   // AI Token Usage — emitted after every successful Gemini API call
   onAiTokenUsage: (callback: (data: {
     source: string

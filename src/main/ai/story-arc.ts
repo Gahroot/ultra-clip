@@ -475,11 +475,14 @@ export function buildEndCardFilter(
   const enableExpr = `gte(t,${startT.toFixed(3)})`
 
   // Text alpha: fade in from 0 → 1 over fadeDuration starting at startT
+  // Uses infix operators to avoid commas in filter expressions (Windows compat).
+  const fadeEndT = (startT + fadeDuration).toFixed(3)
+  const stStr = startT.toFixed(3)
+  const fdStr = fadeDuration.toFixed(3)
   const alphaExpr =
-    `if(lt(t,${startT.toFixed(3)}),0,` +
-    `if(lt(t,${(startT + fadeDuration).toFixed(3)}),` +
-    `(t-${startT.toFixed(3)})/${fadeDuration.toFixed(3)},` +
-    `1))`
+    `(t<${stStr})*0` +
+    `+(t>=${stStr})*(t<${fadeEndT})*(t-${stStr})/${fdStr}` +
+    `+(t>=${fadeEndT})*1`
 
   const bgFFmpegColor = hexToFFmpegColor(bgColor, bgOpacity)
   const fgFFmpegColor = hexToFFmpegColor(textColor, 1.0)

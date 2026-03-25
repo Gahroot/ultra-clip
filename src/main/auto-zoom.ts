@@ -130,7 +130,23 @@ export function generateZoomFilter(
   // ── Y (vertical) expression ────────────────────────────────────────────────
   // We want to keep the face (at normalised position FY) in view.
   // Clamp to [0, ih − ih/z] to stay within frame bounds.
-  const yExpr = `max(0,min(ih-ih/(${zExpr}),ih*${FY}-ih/(${zExpr})/2))`
+  //
+  // We implement clamp(ideal, 0, hi) using only abs() — a single-argument
+  // function that requires no commas.  This avoids the '\,' escape that FFmpeg
+  // needs inside filter option values; that escape is handled inconsistently
+  // by different Windows FFmpeg builds and causes "Error opening output file:
+  // Invalid argument" on the Windows packaged binary.
+  //
+  //   min(a, b) = (a + b - abs(a - b)) / 2   — no commas needed
+  //   max(0, v) = (v + abs(v)) / 2            — no commas needed
+  //
+  // ideal_y = ih * FY − ih / z / 2
+  // hi      = ih − ih / z          (maximum valid y so crop stays in frame)
+  // y       = max(0, min(ideal_y, hi))
+  const ideal = `ih*${FY}-ih/(${zExpr})/2`
+  const hi    = `ih-ih/(${zExpr})`
+  const minVal = `((${ideal})+(${hi})-abs((${ideal})-(${hi})))/2`
+  const yExpr  = `((${minVal})+abs(${minVal}))/2`
 
   // ── Assemble as crop+scale instead of zoompan for much better performance ──
   // zoompan with d=1 evaluates per-frame expressions through a slow expression

@@ -114,6 +114,9 @@ describe('ErrorLog', () => {
       // The clear button has title "Clear errors"
       const clearBtn = screen.getByTitle('Clear errors')
       fireEvent.click(clearBtn)
+      // Confirmation dialog appears — click "Clear All" to confirm
+      const confirmBtn = screen.getByText('Clear All')
+      fireEvent.click(confirmBtn)
       expect(mockClearErrors).toHaveBeenCalledTimes(1)
     })
   })

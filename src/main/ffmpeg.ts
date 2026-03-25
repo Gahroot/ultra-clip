@@ -20,11 +20,16 @@ function findOnSystemPath(name: string): string | null {
 function resolveBinaryPath(name: string): string | null {
   const ext = process.platform === 'win32' ? '.exe' : ''
   const binary = `${name}${ext}`
+  const searchedPaths: string[] = []
 
   // Production: check extraResources/bin
   if (app.isPackaged) {
     const resourceBin = join(process.resourcesPath, 'bin', binary)
-    if (existsSync(resourceBin)) return resourceBin
+    searchedPaths.push(`resources/bin: ${resourceBin} (exists: ${existsSync(resourceBin)})`)
+    if (existsSync(resourceBin)) {
+      console.log(`[FFmpeg] Found ${name} at: ${resourceBin}`)
+      return resourceBin
+    }
 
     // Also check asar-unpacked node_modules (legacy)
     const unpackedPath = join(
@@ -34,7 +39,11 @@ function resolveBinaryPath(name: string): string | null {
       name === 'ffmpeg' ? 'ffmpeg-static' : '@ffprobe-installer',
       binary
     )
-    if (existsSync(unpackedPath)) return unpackedPath
+    searchedPaths.push(`unpacked: ${unpackedPath} (exists: ${existsSync(unpackedPath)})`)
+    if (existsSync(unpackedPath)) {
+      console.log(`[FFmpeg] Found ${name} at: ${unpackedPath}`)
+      return unpackedPath
+    }
   }
 
   // Dev: use npm packages
@@ -42,18 +51,37 @@ function resolveBinaryPath(name: string): string | null {
     if (name === 'ffmpeg') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const p = require('ffmpeg-static') as string | null
-      if (p && existsSync(p)) return p
+      searchedPaths.push(`npm ffmpeg-static: ${p} (exists: ${p ? existsSync(p) : false})`)
+      if (p && existsSync(p)) {
+        console.log(`[FFmpeg] Found ${name} via npm at: ${p}`)
+        return p
+      }
     } else {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { path: p } = require('@ffprobe-installer/ffprobe') as { path: string }
-      if (p && existsSync(p)) return p
+      searchedPaths.push(`npm @ffprobe-installer: ${p} (exists: ${existsSync(p)})`)
+      if (p && existsSync(p)) {
+        console.log(`[FFmpeg] Found ${name} via npm at: ${p}`)
+        return p
+      }
     }
-  } catch {
-    // Package not available for this platform — fall through
+  } catch (err) {
+    console.log(`[FFmpeg] npm require failed for ${name}:`, err instanceof Error ? err.message : String(err))
   }
 
   // Last resort: system PATH (e.g. /usr/bin/ffmpeg, /usr/bin/ffprobe)
-  return findOnSystemPath(name)
+  const systemPath = findOnSystemPath(name)
+  searchedPaths.push(`system PATH: ${systemPath ?? 'not found'}`)
+  if (systemPath) {
+    console.log(`[FFmpeg] Found ${name} on system PATH: ${systemPath}`)
+    return systemPath
+  }
+
+  console.warn(`[FFmpeg] Could not find ${name}. Searched paths:`)
+  for (const p of searchedPaths) {
+    console.warn(`  - ${p}`)
+  }
+  return null
 }
 
 let ffmpegReady = false

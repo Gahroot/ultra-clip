@@ -185,8 +185,10 @@ export function buildProgressBarFilter(
   const dur = Math.max(clipDuration, 0.001).toFixed(3)
 
   // Width expression: grows from 0 → iw over the clip, capped at iw.
-  // The comma inside min() is safe inside single quotes in FFmpeg's filter syntax.
-  const widthExpr = `iw*min(t/${dur},1)`
+  // Rewritten to avoid commas — escaped commas (\,) break some Windows FFmpeg builds.
+  // min(a,b) = (a+b-abs(a-b))/2
+  const tFrac = `t/${dur}`
+  const widthExpr = `iw*(${tFrac}+1-abs(${tFrac}-1))/2`
 
   const mainColor = hexToFFmpegColor(color, Math.max(0, Math.min(1, opacity)))
   const filters: string[] = []

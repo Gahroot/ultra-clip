@@ -107,7 +107,7 @@ function mergeCloseSegments(segments: KeepSegment[], threshold: number): KeepSeg
 
 /**
  * Build FFmpeg select/aselect filter expressions that keep only the desired segments.
- * Uses `between(t,S,E)` expressions joined with `+`.
+ * Uses `(t>=S)*(t<=E)` expressions joined with `+` (comma-free for Windows FFmpeg compat).
  *
  * @param keepSegments - Segments to keep (0-based, relative to clip start)
  * @returns Object with `videoSelect` and `audioSelect` filter strings,
@@ -128,8 +128,9 @@ export function buildSelectFilter(
     return null
   }
 
+  // Uses infix operators to avoid commas — escaped commas break some Windows FFmpeg builds.
   const betweenExprs = keepSegments
-    .map((seg) => `between(t,${seg.start.toFixed(4)},${seg.end.toFixed(4)})`)
+    .map((seg) => `(t>=${seg.start.toFixed(4)})*(t<=${seg.end.toFixed(4)})`)
     .join('+')
 
   return {

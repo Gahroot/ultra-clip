@@ -129,6 +129,24 @@ export function escapeDrawtext(text: string): string {
     .replace(/%/g, '%%')             // escape percent signs
 }
 
+/**
+ * Escape commas in an FFmpeg filter expression value.
+ *
+ * **WARNING — DEPRECATED**: Some Windows FFmpeg builds misparse even escaped
+ * commas (`\,`), causing "Error opening output file: Invalid argument".
+ * Prefer rewriting expressions to avoid commas entirely:
+ *   - `between(t,a,b)` → `gte(t,a)*lte(t,b)`
+ *   - `if(cond,a,b)` → `cond*a+(1-cond)*b` (when cond returns 0/1)
+ *   - `min(a,b)` → `(a+b-abs(a-b))/2`
+ *   - `max(a,b)` → `(a+b+abs(a-b))/2`
+ *
+ * This function is kept for callers that cannot avoid commas (e.g.
+ * split-screen geq expressions), but new code should avoid it.
+ */
+export function escapeFilterExpr(expr: string): string {
+  return expr.replace(/,/g, '\\,')
+}
+
 // ---------------------------------------------------------------------------
 // Hex → FFmpeg rgba() color helper
 // ---------------------------------------------------------------------------
@@ -192,21 +210,29 @@ export function buildHookTitleFilter(
   const fadeOutStart = displayDuration - fadeOut
 
   // Alpha expression: fade in → hold → fade out
+  // Rewritten to avoid commas entirely — some Windows FFmpeg builds misparse
+  // escaped commas (\,) inside filter option values, causing
+  // "Error opening output file: Invalid argument".
+  // Uses infix comparison operators (< > <= >=) which return 0 or 1 and
+  // need no commas, unlike the function forms lt() gt() gte() lte().
+  const FI  = fadeIn.toFixed(3)
+  const FOS = fadeOutStart.toFixed(3)
+  const DUR = displayDuration.toFixed(3)
+  const FO  = fadeOut.toFixed(3)
   const alphaExpr =
-    `if(lt(t,${fadeIn.toFixed(3)}),` +
-      `t/${fadeIn.toFixed(3)},` +
-      `if(gt(t,${fadeOutStart.toFixed(3)}),` +
-        `(${displayDuration.toFixed(3)}-t)/${fadeOut.toFixed(3)},` +
-        `1))`
+    `(t<${FI})*t/${FI}` +
+    `+(t>=${FI})*(t<=${FOS})*1` +
+    `+(t>${FOS})*(${DUR}-t)/${FO}`
 
   // Enable expression: only show during [0, displayDuration]
-  const enableExpr = `between(t,0,${displayDuration.toFixed(3)})`
+  // Uses infix operators instead of between(t,a,b) to avoid commas
+  const enableExpr = `(t>=0)*(t<=${DUR})`
 
   // Font spec
-  // On Windows, FFmpeg requires colons in paths to be escaped as \\:
-  // (double backslash + colon). Single backslash is insufficient.
+  // On Windows, FFmpeg requires colons in paths to be escaped as \:
+  // (single backslash + colon). This escapes the colon for FFmpeg's filter parser.
   const fontSpec = fontFilePath
-    ? `fontfile='${fontFilePath.replace(/\\/g, '/').replace(/:/g, '\\\\:').replace(/'/g, "\\'")}':fontsize=${fontSize}`
+    ? `fontfile='${fontFilePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")}':fontsize=${fontSize}`
     : `font='Sans Bold':fontsize=${fontSize}`
 
   // Y position: in the top safe zone (~220px from top, well clear of TikTok/Reels UI)
@@ -228,8 +254,8 @@ export function buildHookTitleFilter(
       `:borderw=${outlineWidth}` +
       `:bordercolor=${bgColor}` +
       `:shadowx=3:shadowy=3:shadowcolor=${shadowColor}` +
-      `:alpha='${alphaExpr}'` +
-      `:enable='${enableExpr}'`
+      `:alpha=${alphaExpr}` +
+      `:enable=${enableExpr}`
 
     return drawtext
 
@@ -238,13 +264,10 @@ export function buildHookTitleFilter(
     const barHeight = fontSize + 40
     const barY = yPos - 20
 
-    // drawbox for the background bar (full width, semi-transparent black)
-    // alpha expression mirrors text visibility
-    const barAlpha = `if(lt(t,${fadeIn.toFixed(3)}),0.7*t/${fadeIn.toFixed(3)},if(gt(t,${fadeOutStart.toFixed(3)}),0.7*(${displayDuration.toFixed(3)}-t)/${fadeOut.toFixed(3)},0.7))`
     const drawbox =
       `drawbox=x=0:y=${barY}:w=iw:h=${barHeight}` +
       `:color=black@0.65:t=fill` +
-      `:enable='${enableExpr}'`
+      `:enable=${enableExpr}`
 
     const drawtext =
       `drawtext=${fontSpec}` +
@@ -254,11 +277,8 @@ export function buildHookTitleFilter(
       `:y=${yPos}` +
       `:borderw=2` +
       `:bordercolor=${bgColor}` +
-      `:alpha='${alphaExpr}'` +
-      `:enable='${enableExpr}'`
-
-    // We suppress the unused barAlpha var warning below
-    void barAlpha
+      `:alpha=${alphaExpr}` +
+      `:enable=${enableExpr}`
 
     return `${drawbox},${drawtext}`
 
@@ -267,22 +287,24 @@ export function buildHookTitleFilter(
     // x expression: during fade-in animate from 50px → centred position
     const centerX = `(w-text_w)/2`
     const slideStartX = `50`
+    // Rewritten without commas for Windows FFmpeg compatibility.
+    // if(t < FI, startX + (centerX-startX)*t/FI, centerX)
+    // → (t<FI) * (startX + (centerX-startX)*t/FI) + (t>=FI) * centerX
     const xExpr =
-      `if(lt(t,${fadeIn.toFixed(3)}),` +
-        `${slideStartX}+(${centerX}-${slideStartX})*t/${fadeIn.toFixed(3)},` +
-        `${centerX})`
+      `(t<${FI})*(${slideStartX}+(${centerX}-${slideStartX})*t/${FI})` +
+      `+(t>=${FI})*${centerX}`
 
     const drawtext =
       `drawtext=${fontSpec}` +
       `:text='${safeText}'` +
       `:fontcolor=${fgColor}` +
-      `:x='${xExpr}'` +
+      `:x=${xExpr}` +
       `:y=${yPos}` +
       `:borderw=${outlineWidth}` +
       `:bordercolor=${bgColor}` +
       `:shadowx=3:shadowy=3:shadowcolor=${shadowColor}` +
-      `:alpha='${alphaExpr}'` +
-      `:enable='${enableExpr}'`
+      `:alpha=${alphaExpr}` +
+      `:enable=${enableExpr}`
 
     return drawtext
   }

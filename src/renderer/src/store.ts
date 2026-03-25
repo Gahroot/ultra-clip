@@ -674,6 +674,13 @@ interface AppState {
   /** Per-clip render error messages, keyed by clipId. Persists after batch completes for retry. */
   renderErrors: Record<string, string>
 
+  // Single-clip render (separate tracking from batch render)
+  singleRenderClipId: string | null
+  singleRenderProgress: number
+  singleRenderStatus: 'idle' | 'rendering' | 'done' | 'error'
+  singleRenderOutputPath: string | null
+  singleRenderError: string | null
+
   // Settings
   settings: AppSettings
 
@@ -758,6 +765,13 @@ interface AppState {
   reorderClips: (sourceId: string, activeId: string, overId: string) => void
   setCustomOrder: (custom: boolean) => void
 
+  // Actions — Batch multi-select
+  selectedClipIds: Set<string>
+  toggleClipSelection: (clipId: string) => void
+  selectAllVisible: (clipIds: string[]) => void
+  clearSelection: () => void
+  batchUpdateClips: (sourceId: string, clipIds: string[], updates: Partial<Pick<ClipCandidate, 'status'> & { trimOffsetSeconds: number; overrides: Partial<ClipRenderSettings> }>) => void
+
   // Actions — Stitched Clips
   setStitchedClips: (sourceId: string, clips: StitchedClipCandidate[]) => void
   updateStitchedClipStatus: (sourceId: string, clipId: string, status: 'pending' | 'approved' | 'rejected') => void
@@ -773,6 +787,14 @@ interface AppState {
   setIsRendering: (rendering: boolean) => void
   setRenderError: (clipId: string, error: string) => void
   clearRenderErrors: () => void
+  /** Update single-clip render state (only the provided keys are changed). */
+  setSingleRenderState: (patch: {
+    clipId?: string | null
+    progress?: number
+    status?: 'idle' | 'rendering' | 'done' | 'error'
+    outputPath?: string | null
+    error?: string | null
+  }) => void
 
   // Actions — Settings
   setGeminiApiKey: (key: string) => void
@@ -940,6 +962,10 @@ interface AppState {
   hasCompletedOnboarding: boolean
   setOnboardingComplete: () => void
 
+  // What's New / Changelog
+  lastSeenVersion: string | null
+  setLastSeenVersion: (version: string) => void
+
   // AI Token Usage
   aiUsage: {
     totalPromptTokens: number
@@ -964,7 +990,7 @@ const DEFAULT_SOUND_DESIGN: SoundDesignSettings = {
 }
 
 const DEFAULT_AUTO_ZOOM: ZoomSettings = {
-  enabled: true,
+  enabled: false,
   intensity: 'subtle',
   intervalSeconds: 4
 }
@@ -1095,6 +1121,11 @@ export const useStore = create<AppState>((set, get) => ({
   renderCompletedAt: null,
   clipRenderTimes: {},
   renderErrors: {},
+  singleRenderClipId: null,
+  singleRenderProgress: 0,
+  singleRenderStatus: 'idle' as const,
+  singleRenderOutputPath: null,
+  singleRenderError: null,
   settings: DEFAULT_SETTINGS,
   pythonStatus: 'checking',
   pythonSetupError: null,
@@ -1104,6 +1135,7 @@ export const useStore = create<AppState>((set, get) => ({
   storyArcs: {},
   errorLog: [],
   selectedClipIndex: 0,
+  selectedClipIds: new Set<string>(),
   clipOrder: {},
   customOrder: false,
   clipViewMode: 'grid',
@@ -1122,6 +1154,7 @@ export const useStore = create<AppState>((set, get) => ({
   hookTemplates: loadHookTemplatesFromStorage(),
   activeHookTemplateId: localStorage.getItem(ACTIVE_HOOK_TEMPLATE_KEY) ?? null,
   hasCompletedOnboarding: localStorage.getItem('batchcontent-onboarding-done') === 'true',
+  lastSeenVersion: localStorage.getItem('batchcontent-last-seen-version') ?? null,
   isOnline: navigator.onLine,
   comparisonClipIds: null,
 
@@ -1400,6 +1433,58 @@ export const useStore = create<AppState>((set, get) => ({
 
   setCustomOrder: (custom) => set({ customOrder: custom }),
 
+  // --- Batch multi-select ---
+
+  toggleClipSelection: (clipId) =>
+    set((state) => {
+      const next = new Set(state.selectedClipIds)
+      if (next.has(clipId)) {
+        next.delete(clipId)
+      } else {
+        next.add(clipId)
+      }
+      return { selectedClipIds: next }
+    }),
+
+  selectAllVisible: (clipIds) =>
+    set({ selectedClipIds: new Set(clipIds) }),
+
+  clearSelection: () =>
+    set({ selectedClipIds: new Set<string>() }),
+
+  batchUpdateClips: (sourceId, clipIds, updates) => {
+    _pushUndo(get())
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return { canUndo: true, canRedo: false }
+      const idSet = new Set(clipIds)
+      const updated = sourceClips.map((c) => {
+        if (!idSet.has(c.id)) return c
+        let next = { ...c }
+        if (updates.status !== undefined) {
+          next = { ...next, status: updates.status }
+        }
+        if (updates.trimOffsetSeconds !== undefined && updates.trimOffsetSeconds !== 0) {
+          const offset = updates.trimOffsetSeconds
+          const newStart = Math.max(0, c.startTime + offset)
+          const newEnd = c.endTime + offset
+          if (newEnd > newStart + 0.5) {
+            next = { ...next, startTime: newStart, endTime: newEnd, duration: newEnd - newStart }
+          }
+        }
+        if (updates.overrides !== undefined) {
+          next = { ...next, overrides: { ...c.overrides, ...updates.overrides } }
+        }
+        return next
+      })
+      return {
+        clips: { ...state.clips, [sourceId]: updated },
+        canUndo: true,
+        canRedo: false
+      }
+    })
+  },
+
   setClipPartInfo: (sourceId, clipId, partInfo) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
@@ -1527,6 +1612,15 @@ export const useStore = create<AppState>((set, get) => ({
   setRenderError: (clipId, error) =>
     set((state) => ({ renderErrors: { ...state.renderErrors, [clipId]: error } })),
   clearRenderErrors: () => set({ renderErrors: {} }),
+
+  setSingleRenderState: (patch) =>
+    set((state) => ({
+      singleRenderClipId: 'clipId' in patch ? (patch.clipId ?? null) : state.singleRenderClipId,
+      singleRenderProgress: patch.progress !== undefined ? patch.progress : state.singleRenderProgress,
+      singleRenderStatus: patch.status !== undefined ? patch.status : state.singleRenderStatus,
+      singleRenderOutputPath: 'outputPath' in patch ? (patch.outputPath ?? null) : state.singleRenderOutputPath,
+      singleRenderError: 'error' in patch ? (patch.error ?? null) : state.singleRenderError,
+    })),
 
   // --- Settings ---
 
@@ -2307,6 +2401,13 @@ export const useStore = create<AppState>((set, get) => ({
   setOnboardingComplete: () => {
     localStorage.setItem('batchcontent-onboarding-done', 'true')
     set({ hasCompletedOnboarding: true })
+  },
+
+  // --- What's New / Changelog ---
+
+  setLastSeenVersion: (version) => {
+    localStorage.setItem('batchcontent-last-seen-version', version)
+    set({ lastSeenVersion: version })
   },
 
   // --- AI Token Usage ---

@@ -1,8 +1,9 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Play, ChevronDown, ChevronUp, Clock, Check, X, Pencil, RefreshCw, BookOpen, Layers, SlidersHorizontal, Copy, Eye, FileText, RotateCcw, GitCompare } from 'lucide-react'
+import { Play, ChevronDown, ChevronUp, Clock, Check, X, Pencil, RefreshCw, BookOpen, Layers, SlidersHorizontal, Copy, Eye, FileText, RotateCcw, GitCompare, Loader2, FolderOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   ContextMenu,
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui/context-menu'
 import { cn, estimateClipSize, formatFileSize, getScoreDescription } from '@/lib/utils'
 import { useStore } from '../store'
-import type { ClipCandidate, ClipRenderSettings, RenderProgress } from '../store'
+import type { ClipCandidate, ClipRenderSettings } from '../store'
 import { EditableTime, formatTime } from './EditableTime'
 import { ClipPreview } from './ClipPreview'
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard'
@@ -93,12 +94,20 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
   const updateVariantStatus = useStore((s) => s.updateVariantStatus)
   const resetClipBoundaries = useStore((s) => s.resetClipBoundaries)
   const rescoreClip = useStore((s) => s.rescoreClip)
-  const setRenderProgress = useStore((s) => s.setRenderProgress)
-  const setIsRendering = useStore((s) => s.setIsRendering)
+  const setSingleRenderState = useStore((s) => s.setSingleRenderState)
   const addError = useStore((s) => s.addError)
   const isRendering = useStore((s) => s.isRendering)
+  const singleRenderClipId = useStore((s) => s.singleRenderClipId)
+  const singleRenderProgress = useStore((s) => s.singleRenderProgress)
+  const singleRenderStatus = useStore((s) => s.singleRenderStatus)
+  const singleRenderOutputPath = useStore((s) => s.singleRenderOutputPath)
+  const singleRenderError = useStore((s) => s.singleRenderError)
   const settings = useStore((s) => s.settings)
   const searchQuery = useStore((s) => s.searchQuery)
+  const selectedClipIds = useStore((s) => s.selectedClipIds)
+  const toggleClipSelection = useStore((s) => s.toggleClipSelection)
+  const isMultiSelectActive = selectedClipIds.size > 0
+  const isChecked = selectedClipIds.has(clip.id)
 
   const { copy: copyHook, copied: hookCopied } = useCopyToClipboard()
   const { copy: copyTranscript, copied: transcriptCopied } = useCopyToClipboard()
@@ -118,9 +127,23 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
     return Math.abs(clip.startTime - aiStart) > 0.1 || Math.abs(clip.endTime - aiEnd) > 0.1
   }, [clip.startTime, clip.endTime, clip.aiStartTime, clip.aiEndTime])
 
-  // Render this clip only
+  // Whether a single-clip render is active on this clip
+  const isThisClipRendering = singleRenderClipId === clip.id && singleRenderStatus === 'rendering'
+  // Whether any single-clip render is running (blocks new renders on other clips)
+  const isSingleRenderActive = singleRenderClipId !== null && singleRenderStatus === 'rendering'
+
+  // Auto-reset "done" overlay after 3s
+  useEffect(() => {
+    if (singleRenderClipId !== clip.id || singleRenderStatus !== 'done') return
+    const timer = setTimeout(() => {
+      setSingleRenderState({ clipId: null, status: 'idle', progress: 0, outputPath: null, error: null })
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [singleRenderClipId, singleRenderStatus, clip.id, setSingleRenderState])
+
+  // Render this clip only (separate from batch render)
   const handleRenderSingleClip = useCallback(async () => {
-    if (isRendering) return
+    if (isRendering || isSingleRenderActive) return
     let outputDir = settings.outputDirectory
     if (!outputDir) {
       outputDir = await window.api.openDirectory()
@@ -136,33 +159,28 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
         : undefined,
       wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
       hookTitleText: clip.hookText || undefined,
-      clipOverrides: clip.overrides && Object.keys(clip.overrides).length > 0 ? clip.overrides : undefined,
     }
-    const initial: RenderProgress[] = [{ clipId: clip.id, percent: 0, status: 'queued' }]
-    setRenderProgress(initial)
-    setIsRendering(true)
-    useStore.setState({ renderStartedAt: Date.now(), renderCompletedAt: null, clipRenderTimes: {} })
+
+    setSingleRenderState({ clipId: clip.id, progress: 0, status: 'rendering', outputPath: null, error: null })
 
     const cleanups: Array<() => void> = []
     cleanups.push(window.api.onRenderClipProgress((data) => {
       if (data.clipId !== clip.id) return
-      setRenderProgress(useStore.getState().renderProgress.map((rp) =>
-        rp.clipId === data.clipId ? { ...rp, percent: data.percent } : rp
-      ))
+      setSingleRenderState({ progress: data.percent })
     }))
     cleanups.push(window.api.onRenderClipDone((data) => {
       if (data.clipId !== clip.id) return
-      setRenderProgress(useStore.getState().renderProgress.map((rp) =>
-        rp.clipId === data.clipId ? { ...rp, status: 'done' as const, percent: 100 } : rp
-      ))
+      setSingleRenderState({ status: 'done', progress: 100, outputPath: data.outputPath })
+    }))
+    cleanups.push(window.api.onRenderClipError((data) => {
+      if (data.clipId !== clip.id) return
+      setSingleRenderState({ status: 'error', error: data.error })
     }))
     cleanups.push(window.api.onRenderBatchDone(() => {
-      useStore.setState({ renderCompletedAt: Date.now() })
-      setIsRendering(false)
       for (const cleanup of cleanups) cleanup()
     }))
     cleanups.push(window.api.onRenderCancelled(() => {
-      setIsRendering(false)
+      setSingleRenderState({ clipId: null, status: 'idle', progress: 0, outputPath: null, error: null })
       for (const cleanup of cleanups) cleanup()
     }))
 
@@ -180,11 +198,11 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
       } as Parameters<typeof window.api.startBatchRender>[0])
     } catch (err) {
-      setIsRendering(false)
+      setSingleRenderState({ status: 'error', error: err instanceof Error ? err.message : String(err) })
       for (const cleanup of cleanups) cleanup()
       addError({ source: 'render', message: `Failed to render clip: ${err instanceof Error ? err.message : String(err)}` })
     }
-  }, [isRendering, settings, clip, sourcePath, setRenderProgress, setIsRendering, addError])
+  }, [isRendering, isSingleRenderActive, settings, clip, sourcePath, setSingleRenderState, addError])
 
   // Re-score this clip
   const handleRescore = useCallback(async () => {
@@ -260,13 +278,30 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
         className={cn(
-          'relative flex flex-col rounded-lg border bg-card overflow-hidden',
+          'relative flex flex-col rounded-lg border bg-card overflow-hidden group/card',
           'transition-colors duration-200',
           isApproved && 'border-l-4 border-l-green-500 border-t-green-500/30 border-r-green-500/30 border-b-green-500/30',
           isRejected && 'border border-red-500/40',
-          !isApproved && !isRejected && 'border-border'
+          isChecked && 'ring-2 ring-primary ring-offset-1 ring-offset-background',
+          !isApproved && !isRejected && !isChecked && 'border-border'
         )}
       >
+        {/* Multi-select checkbox — top-right corner, visible on hover or when any clip is selected */}
+        <div
+          className={cn(
+            'absolute top-2 right-2 z-20 transition-opacity duration-150',
+            isMultiSelectActive || isChecked ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100'
+          )}
+          onClick={(e) => { e.stopPropagation(); toggleClipSelection(clip.id) }}
+        >
+          <Checkbox
+            checked={isChecked}
+            onCheckedChange={() => toggleClipSelection(clip.id)}
+            className="h-4 w-4 border-2 bg-background/80 shadow"
+            aria-label="Select clip"
+          />
+        </div>
+
         {/* Score Badge */}
         <div className="absolute top-2 left-2 z-10 flex flex-col items-center gap-0.5">
           <TooltipProvider>
@@ -318,9 +353,9 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
           )}
         </div>
 
-        {/* Override indicator badge */}
+        {/* Override indicator badge — shifted down when checkbox is visible */}
         {clip.overrides && Object.keys(clip.overrides).length > 0 && (
-          <div className="absolute top-2 right-2 z-10">
+          <div className={cn('absolute right-2 z-10', isMultiSelectActive || isChecked ? 'top-8' : 'top-2')}>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -402,6 +437,60 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
                 <Play className="w-5 h-5 text-white fill-white ml-0.5" />
               </div>
             </button>
+          )}
+
+          {/* Single-clip render progress overlay */}
+          {singleRenderClipId === clip.id && singleRenderStatus !== 'idle' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 z-10 gap-2">
+              {singleRenderStatus === 'rendering' && (
+                <>
+                  <Loader2 className="w-6 h-6 text-white animate-spin" />
+                  <div className="w-28 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-white rounded-full transition-all duration-300"
+                      style={{ width: `${singleRenderProgress}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-white/80 tabular-nums font-mono">
+                    {Math.round(singleRenderProgress)}%
+                  </span>
+                </>
+              )}
+              {singleRenderStatus === 'done' && (
+                <>
+                  <div className="w-10 h-10 rounded-full bg-green-500/20 border-2 border-green-400 flex items-center justify-center">
+                    <Check className="w-5 h-5 text-green-400" />
+                  </div>
+                  <span className="text-xs text-green-400 font-semibold">Done!</span>
+                  {singleRenderOutputPath && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); window.api.showItemInFolder(singleRenderOutputPath) }}
+                      className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors"
+                    >
+                      <FolderOpen className="w-3 h-3" />
+                      Open folder
+                    </button>
+                  )}
+                </>
+              )}
+              {singleRenderStatus === 'error' && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex flex-col items-center gap-1 cursor-default">
+                        <div className="w-10 h-10 rounded-full bg-red-500/20 border-2 border-red-400 flex items-center justify-center">
+                          <X className="w-5 h-5 text-red-400" />
+                        </div>
+                        <span className="text-xs text-red-400 font-semibold">Error</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs max-w-52 text-destructive">
+                      {singleRenderError || 'Render failed — check error log'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
           )}
         </div>
 
@@ -647,6 +736,41 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
             <Pencil className="w-3.5 h-3.5" />
             Edit
           </Button>
+          {/* Single-clip render button — visible for approved clips when no batch render is running */}
+          {isApproved && !isRendering && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleRenderSingleClip}
+                    disabled={isSingleRenderActive && !isThisClipRendering}
+                    className={cn(
+                      'gap-1.5 text-xs',
+                      isThisClipRendering
+                        ? 'text-primary'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {isThisClipRendering ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5" />
+                    )}
+                    Render
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {isThisClipRendering
+                    ? 'Rendering…'
+                    : isSingleRenderActive
+                      ? 'Another clip is rendering'
+                      : 'Render this clip immediately'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           {compareMode && (
             <Button
               size="sm"
@@ -783,10 +907,14 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
           <ContextMenuItem
             onSelect={handleRenderSingleClip}
             className="gap-2"
-            disabled={isRendering}
+            disabled={isRendering || (isSingleRenderActive && !isThisClipRendering)}
           >
-            <Play className="w-4 h-4" />
-            Render This Clip Only
+            {isThisClipRendering ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            {isThisClipRendering ? 'Rendering…' : 'Render This Clip Only'}
           </ContextMenuItem>
 
           {onCompare && (

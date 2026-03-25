@@ -230,16 +230,22 @@ function buildEmojiDrawtext(
   const disappear = (appearTime + duration).toFixed(3)
 
   // tRel: seconds elapsed since this emoji appeared (clamped ≥ 0)
-  const tRel = `max(0,t-${appear})`
+  // Rewritten to avoid commas — escaped commas (\,) break some Windows FFmpeg builds.
+  // max(0, x) = (x + abs(x)) / 2
+  const tDiff = `(t-${appear})`
+  const tRel = `(${tDiff}+abs(${tDiff}))/2`
 
   // y floats upward: startY decreasing by (tRel/dur)*floatPx
   const yExpr = `${startY}-${tRel}/${dur}*${Math.round(floatPx)}`
 
   // alpha: linear fade from 1 → 0 over the duration
-  const alphaExpr = `max(0,1-${tRel}/${dur})`
+  // max(0, 1-tRel/dur) = ((1-tRel/dur) + abs(1-tRel/dur)) / 2
+  const fadeVal = `(1-${tRel}/${dur})`
+  const alphaExpr = `(${fadeVal}+abs(${fadeVal}))/2`
 
   // enable: restrict filter to the animation window
-  const enableExpr = `between(t,${appear},${disappear})`
+  // between(t,a,b) → (t>=a)*(t<=b) — infix operators avoid commas
+  const enableExpr = `(t>=${appear})*(t<=${disappear})`
 
   // Font spec
   const fontSpec = fontFilePath

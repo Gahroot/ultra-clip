@@ -512,7 +512,9 @@ function buildVideoFilter(
   // buildHookTitleFilter returns a SEMICOLON-separated list of filter nodes
   // for multi-filter styles (top-bar = drawbox + drawtext). We join those
   // into the comma chain as individual elements.
-  if (job.hookTitleConfig?.enabled && job.hookTitleText) {
+  // DEBUG: temporarily skip drawtext to isolate "Error opening output file" root cause
+  const SKIP_DRAWTEXT_DEBUG = true
+  if (!SKIP_DRAWTEXT_DEBUG && job.hookTitleConfig?.enabled && job.hookTitleText) {
     const hookFilter = buildHookTitleFilter(
       job.hookTitleText,
       job.hookTitleConfig,
@@ -524,7 +526,7 @@ function buildVideoFilter(
 
   // Re-hook overlay: drawtext (and optional drawbox) injected after hook title,
   // appearing at `rehookAppearTime` seconds into the clip to reset viewer attention.
-  if (job.rehookConfig?.enabled && job.rehookText && job.rehookAppearTime != null) {
+  if (!SKIP_DRAWTEXT_DEBUG && job.rehookConfig?.enabled && job.rehookText && job.rehookAppearTime != null) {
     const rehookFilter = buildRehookFilter(
       job.rehookText,
       job.rehookConfig,
@@ -892,7 +894,7 @@ function applyBRollOverlay(
     filterParts.push(
       `[${prevLabel}][${brollLabel}]` +
       `overlay=0:0:eof_action=pass:format=auto:` +
-      `enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'` +
+      `enable='(t>=${start.toFixed(3)})*(t<=${end.toFixed(3)})'` +
       `[${outLabel}]`
     )
 
@@ -942,6 +944,11 @@ function renderClip(
   qualityParams?: QualityParams,
   outputFormat?: 'mp4' | 'webm'
 ): Promise<string> {
+  console.log(`[Render] clipId=${job.clipId}`)
+  console.log(`[Render] outputPath=${outputPath}`)
+  console.log(`[Render] sourceVideoPath=${job.sourceVideoPath}`)
+  console.log(`[Render] toFFmpegPath(outputPath)=${toFFmpegPath(outputPath)}`)
+
   const bk = job.brandKit
   const hasLogo = !!(bk?.logoPath && existsSync(bk.logoPath))
   const hasSoundDesign =
@@ -1226,17 +1233,20 @@ function buildSegmentOverlayFilter(
   const fadeOutStart = displayDuration - fadeOut
 
   // Alpha expression: fade in → hold → fade out
+  // Uses infix operators to avoid commas — escaped commas (\,) break some Windows FFmpeg builds.
+  const sFI  = fadeIn.toFixed(3)
+  const sFOS = fadeOutStart.toFixed(3)
+  const sDUR = displayDuration.toFixed(3)
+  const sFO  = fadeOut.toFixed(3)
   const alphaExpr =
-    `if(lt(t,${fadeIn.toFixed(3)}),` +
-      `t/${fadeIn.toFixed(3)},` +
-      `if(gt(t,${fadeOutStart.toFixed(3)}),` +
-        `(${displayDuration.toFixed(3)}-t)/${fadeOut.toFixed(3)},` +
-        `1))`
+    `(t<${sFI})*t/${sFI}` +
+    `+(t>=${sFI})*(t<=${sFOS})*1` +
+    `+(t>${sFOS})*(${sDUR}-t)/${sFO}`
 
-  const enableExpr = `enable='lt(t,${displayDuration.toFixed(3)})'`
+  const enableExpr = `enable=(t<${sDUR})`
 
   const fontRef = fontFilePath
-    ? `fontfile='${fontFilePath.replace(/\\/g, '/').replace(/:/g, '\\\\:').replace(/'/g, "\\'")}'`
+    ? `fontfile='${fontFilePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")}'`
     : `font='Sans Bold'`
 
   if (role === 'hook') {
@@ -1244,8 +1254,8 @@ function buildSegmentOverlayFilter(
     return (
       `drawtext=${fontRef}:` +
       `text='${safeText}':` +
-      `fontsize=72:fontcolor=white@${alphaExpr.replace(/'/g, "\\'")}:` +
-      `borderw=4:bordercolor=black@${alphaExpr.replace(/'/g, "\\'")}:` +
+      `fontsize=72:fontcolor=white@${alphaExpr}:` +
+      `borderw=4:bordercolor=black@${alphaExpr}:` +
       `x=(w-tw)/2:y=(h-th)/2:` +
       `${enableExpr}`
     )
@@ -1256,8 +1266,8 @@ function buildSegmentOverlayFilter(
   return (
     `drawtext=${fontRef}:` +
     `text='${safeText}':` +
-    `fontsize=56:fontcolor=yellow@${alphaExpr.replace(/'/g, "\\'")}:` +
-    `borderw=3:bordercolor=black@${alphaExpr.replace(/'/g, "\\'")}:` +
+    `fontsize=56:fontcolor=yellow@${alphaExpr}:` +
+    `borderw=3:bordercolor=black@${alphaExpr}:` +
     `x=(w-tw)/2:y=${yPos}:` +
     `${enableExpr}`
   )

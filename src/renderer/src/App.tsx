@@ -1,5 +1,6 @@
-import { Settings, AlertTriangle, Save, FolderOpen, Keyboard, Sun, Moon, Monitor, GraduationCap } from 'lucide-react'
+import { Settings, AlertTriangle, Save, FolderOpen, Keyboard, Sun, Moon, Monitor, GraduationCap, Megaphone } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -27,13 +28,16 @@ import { OnboardingWizard } from './components/OnboardingWizard'
 import { KeyboardShortcutsDialog } from './components/KeyboardShortcutsDialog'
 import { RecentProjectsList, RecentProjectsDropdown, type RecentProjectEntry } from './components/RecentProjects'
 import { AiUsageIndicator } from './components/AiUsageIndicator'
+import { ResourceMonitor } from './components/ResourceMonitor'
 import { OfflineBanner } from './components/OfflineBanner'
+import { WhatsNew, APP_VERSION } from './components/WhatsNew'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useTheme } from './hooks/useTheme'
 import { useStore } from './store'
 
 function App() {
   const activeSource = useStore((s) => s.getActiveSource())
+  const activeSourceId = useStore((s) => s.activeSourceId)
   const pipeline = useStore((s) => s.pipeline)
   const errorCount = useStore((s) => s.errorLog.length)
   const saveProject = useStore((s) => s.saveProject)
@@ -48,11 +52,14 @@ function App() {
   const hasCompletedOnboarding = useStore((s) => s.hasCompletedOnboarding)
   const setOnboardingComplete = useStore((s) => s.setOnboardingComplete)
   const trackTokenUsage = useStore((s) => s.trackTokenUsage)
+  const lastSeenVersion = useStore((s) => s.lastSeenVersion)
+  const setLastSeenVersion = useStore((s) => s.setLastSeenVersion)
   const [onboardingOpen, setOnboardingOpen] = useState(!hasCompletedOnboarding)
   const [isSaving, setIsSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [previewClipIndex, setPreviewClipIndex] = useState<number | null>(null)
 
   useTheme()
@@ -93,6 +100,21 @@ function App() {
   }), [])
 
   useKeyboardShortcuts(shortcutCallbacks)
+
+  // Show What's New dialog when the app version changes
+  useEffect(() => {
+    if (lastSeenVersion !== APP_VERSION) {
+      // Small delay so the app renders first before showing the dialog
+      const timer = setTimeout(() => setWhatsNewOpen(true), 600)
+      return () => clearTimeout(timer)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function handleWhatsNewClose() {
+    setLastSeenVersion(APP_VERSION)
+    setWhatsNewOpen(false)
+  }
 
   // Check Python setup status on mount
   useEffect(() => {
@@ -144,6 +166,27 @@ function App() {
     activeSource !== null &&
     (pipeline.stage === 'ready' || pipeline.stage === 'rendering' || pipeline.stage === 'done')
 
+  // Disable transition animations while the pipeline is actively running to avoid
+  // visual glitches on top of live progress updates.
+  const isProcessingActive =
+    pipeline.stage !== 'idle' &&
+    pipeline.stage !== 'ready' &&
+    pipeline.stage !== 'rendering' &&
+    pipeline.stage !== 'done' &&
+    pipeline.stage !== 'error'
+
+  // Resource monitor is active whenever the pipeline is running or rendering
+  const isResourceMonitorActive =
+    pipeline.stage !== 'idle' &&
+    pipeline.stage !== 'ready' &&
+    pipeline.stage !== 'done' &&
+    pipeline.stage !== 'error'
+
+  // Key the animated region by source + panel type so switching either triggers a transition
+  const contentAnimKey = activeSourceId
+    ? `${activeSourceId}-${showProcessingPanel ? 'proc' : showGrid ? 'grid' : 'empty'}`
+    : 'no-source'
+
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
       {/* Offline banner */}
@@ -185,6 +228,15 @@ function App() {
           </Button>
           <RecentProjectsDropdown onLoad={handleLoadFromRecent} />
           <AiUsageIndicator />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title="What's New"
+            onClick={() => setWhatsNewOpen(true)}
+          >
+            <Megaphone className="w-4 h-4" />
+          </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -269,30 +321,47 @@ function App() {
 
         {/* Main content area */}
         <main className="flex-1 overflow-hidden flex flex-col">
-          {showProcessingPanel ? (
-            <div className="flex-1 overflow-y-auto">
-              <div className="flex min-h-full items-center justify-center">
-                <ProcessingPanel />
-              </div>
-            </div>
-          ) : showGrid ? (
-            <ClipGrid />
-          ) : !activeSource ? (
-            <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 gap-6">
-              <div className="text-center">
-                <p className="text-muted-foreground text-sm">Select a source video to begin</p>
-                <p className="text-muted-foreground/50 text-xs mt-1">
-                  Add a local file or YouTube URL in the sidebar
-                </p>
-              </div>
-              <RecentProjectsList onLoad={handleLoadFromRecent} />
-            </div>
-          ) : null}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={contentAnimKey}
+              className="flex-1 overflow-hidden flex flex-col"
+              initial={isProcessingActive ? false : { opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={isProcessingActive ? { opacity: 1, x: 0 } : { opacity: 0, x: -20 }}
+              transition={{
+                enter: { duration: 0.2, ease: 'easeOut' },
+                exit: { duration: 0.15, ease: 'easeIn' }
+              }}
+            >
+              {showProcessingPanel ? (
+                <div className="flex-1 overflow-y-auto">
+                  <div className="flex min-h-full items-center justify-center">
+                    <ProcessingPanel />
+                  </div>
+                </div>
+              ) : showGrid ? (
+                <ClipGrid />
+              ) : !activeSource ? (
+                <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 gap-6">
+                  <div className="text-center">
+                    <p className="text-muted-foreground text-sm">Select a source video to begin</p>
+                    <p className="text-muted-foreground/50 text-xs mt-1">
+                      Add a local file or YouTube URL in the sidebar
+                    </p>
+                  </div>
+                  <RecentProjectsList onLoad={handleLoadFromRecent} />
+                </div>
+              ) : null}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 
       {/* Error log panel */}
       <ErrorLog />
+
+      {/* System resource monitor — visible during processing and rendering */}
+      <ResourceMonitor active={isResourceMonitorActive} />
 
       {/* Python setup wizard overlay */}
       {pythonStatus !== 'ready' && pythonStatus !== 'skipped' && <SetupWizard />}
@@ -308,6 +377,11 @@ function App() {
 
       {/* Keyboard shortcuts help dialog */}
       <KeyboardShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
+
+      {/* What's New changelog dialog */}
+      <WhatsNew open={whatsNewOpen} onOpenChange={(open) => {
+        if (!open) handleWhatsNewClose()
+      }} />
     </div>
   )
 }

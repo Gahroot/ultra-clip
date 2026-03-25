@@ -873,6 +873,12 @@ interface Api {
   startPythonSetup: () => Promise<{ started: boolean }>
   onPythonSetupProgress: (callback: (data: PythonSetupProgress) => void) => () => void
   onPythonSetupDone: (callback: (data: { success: boolean; error?: string }) => void) => () => void
+  // System — resource usage (CPU/RAM/GPU)
+  getResourceUsage: () => Promise<{
+    cpu: { percent: number }
+    ram: { usedBytes: number; totalBytes: number; appBytes: number }
+    gpu: { percent: number; usedMB: number; totalMB: number; name: string } | null
+  }>
   // AI Token Usage
   onAiTokenUsage: (callback: (data: {
     source: string

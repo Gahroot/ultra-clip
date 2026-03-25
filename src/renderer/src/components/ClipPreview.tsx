@@ -14,7 +14,9 @@ import {
   Copy,
   RefreshCw,
   Sparkles,
-  Info
+  Info,
+  Loader2,
+  FolderOpen
 } from 'lucide-react'
 import {
   Dialog,
@@ -236,9 +238,21 @@ export function ClipPreview({
   const setClipOverride = useStore((s) => s.setClipOverride)
   const clearClipOverrides = useStore((s) => s.clearClipOverrides)
   const rescoreClip = useStore((s) => s.rescoreClip)
+  const setSingleRenderState = useStore((s) => s.setSingleRenderState)
+  const addError = useStore((s) => s.addError)
+  const isRendering = useStore((s) => s.isRendering)
+  const singleRenderClipId = useStore((s) => s.singleRenderClipId)
+  const singleRenderProgress = useStore((s) => s.singleRenderProgress)
+  const singleRenderStatus = useStore((s) => s.singleRenderStatus)
+  const singleRenderOutputPath = useStore((s) => s.singleRenderOutputPath)
   const settings = useStore((s) => s.settings)
   const hookTemplates = useStore((s) => s.hookTemplates)
   const activeHookTemplateId = useStore((s) => s.activeHookTemplateId)
+
+  // Single-clip render derived state
+  const isThisClipRendering = singleRenderClipId === clip.id && singleRenderStatus === 'rendering'
+  const isThisClipDone = singleRenderClipId === clip.id && singleRenderStatus === 'done'
+  const isSingleRenderActive = singleRenderClipId !== null && singleRenderStatus === 'rendering'
 
   // All templates combined (built-in + user)
   const allTemplates = [...DEFAULT_HOOK_TEMPLATES, ...hookTemplates]
@@ -451,6 +465,71 @@ export function ClipPreview({
       setIsRescoring(false)
     }
   }, [settings.geminiApiKey, clip, localStart, localEnd, sourceId, rescoreClip])
+
+  // Render this clip (applies pending edits first, then starts render)
+  const handleRenderThisClip = useCallback(async () => {
+    if (isRendering || isSingleRenderActive) return
+    // Apply pending edits to store first
+    updateClipTrim(sourceId, clip.id, localStart, localEnd)
+    if (localHook !== clip.hookText) {
+      updateClipHookText(sourceId, clip.id, localHook)
+    }
+    let outputDir = settings.outputDirectory
+    if (!outputDir) {
+      outputDir = await window.api.openDirectory()
+      if (!outputDir) return
+    }
+    const job = {
+      clipId: clip.id,
+      sourceVideoPath: sourcePath,
+      startTime: localStart,
+      endTime: localEnd,
+      cropRegion: clip.cropRegion
+        ? { x: clip.cropRegion.x, y: clip.cropRegion.y, width: clip.cropRegion.width, height: clip.cropRegion.height }
+        : undefined,
+      wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
+      hookTitleText: localHook || undefined,
+    }
+    setSingleRenderState({ clipId: clip.id, progress: 0, status: 'rendering', outputPath: null, error: null })
+    const cleanups: Array<() => void> = []
+    cleanups.push(window.api.onRenderClipProgress((data) => {
+      if (data.clipId !== clip.id) return
+      setSingleRenderState({ progress: data.percent })
+    }))
+    cleanups.push(window.api.onRenderClipDone((data) => {
+      if (data.clipId !== clip.id) return
+      setSingleRenderState({ status: 'done', progress: 100, outputPath: data.outputPath })
+    }))
+    cleanups.push(window.api.onRenderClipError((data) => {
+      if (data.clipId !== clip.id) return
+      setSingleRenderState({ status: 'error', error: data.error })
+    }))
+    cleanups.push(window.api.onRenderBatchDone(() => {
+      for (const cleanup of cleanups) cleanup()
+    }))
+    cleanups.push(window.api.onRenderCancelled(() => {
+      setSingleRenderState({ clipId: null, status: 'idle', progress: 0, outputPath: null, error: null })
+      for (const cleanup of cleanups) cleanup()
+    }))
+    try {
+      await window.api.startBatchRender({
+        jobs: [job],
+        outputDirectory: outputDir,
+        soundDesign: settings.soundDesign.enabled ? settings.soundDesign : undefined,
+        autoZoom: settings.autoZoom.enabled
+          ? { enabled: true, intensity: settings.autoZoom.intensity, intervalSeconds: settings.autoZoom.intervalSeconds }
+          : undefined,
+        brandKit: settings.brandKit.enabled ? settings.brandKit : undefined,
+        hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
+        rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
+        progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
+      } as Parameters<typeof window.api.startBatchRender>[0])
+    } catch (err) {
+      setSingleRenderState({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      for (const cleanup of cleanups) cleanup()
+      addError({ source: 'render', message: `Failed to render clip: ${err instanceof Error ? err.message : String(err)}` })
+    }
+  }, [isRendering, isSingleRenderActive, settings, clip, sourceId, sourcePath, localStart, localEnd, localHook, updateClipTrim, updateClipHookText, setSingleRenderState, addError])
 
   // Boundary change magnitude (vs original AI boundaries)
   const boundaryChangedSignificantly =
@@ -1097,35 +1176,100 @@ export function ClipPreview({
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2 px-5 py-4 border-t border-border bg-card/50">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleReset}
-            className="gap-1.5 text-xs"
-            disabled={localStart === origStart && localEnd === origEnd}
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Reset to Original
-          </Button>
-          <div className="flex-1" />
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onClose}
-            className="gap-1.5 text-xs"
-          >
-            <X className="w-3.5 h-3.5" />
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleApply}
-            className="gap-1.5 text-xs bg-primary hover:bg-primary/90"
-          >
-            <Check className="w-3.5 h-3.5" />
-            Apply Changes
-          </Button>
+        <div className="flex flex-col gap-0 border-t border-border bg-card/50">
+          {/* Render progress bar — shown when this clip is rendering */}
+          {isThisClipRendering && (
+            <div className="px-5 pt-3 pb-0 flex items-center gap-3">
+              <Loader2 className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />
+              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-300"
+                  style={{ width: `${singleRenderProgress}%` }}
+                />
+              </div>
+              <span className="text-xs text-muted-foreground tabular-nums font-mono shrink-0">
+                {Math.round(singleRenderProgress)}%
+              </span>
+            </div>
+          )}
+          {/* Render done — show open folder link */}
+          {isThisClipDone && singleRenderOutputPath && (
+            <div className="px-5 pt-3 pb-0 flex items-center gap-2">
+              <Check className="w-3.5 h-3.5 text-green-500 shrink-0" />
+              <span className="text-xs text-green-500 font-medium">Rendered!</span>
+              <button
+                onClick={() => window.api.showItemInFolder(singleRenderOutputPath)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-1"
+              >
+                <FolderOpen className="w-3 h-3" />
+                Open folder
+              </button>
+            </div>
+          )}
+          <div className="flex gap-2 px-5 py-4">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleReset}
+              className="gap-1.5 text-xs"
+              disabled={localStart === origStart && localEnd === origEnd}
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset to Original
+            </Button>
+            <div className="flex-1" />
+            {/* Render This Clip button */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={handleRenderThisClip}
+                    disabled={isRendering || (isSingleRenderActive && !isThisClipRendering)}
+                    className={cn(
+                      'gap-1.5 text-xs',
+                      isThisClipRendering
+                        ? 'bg-primary/80'
+                        : 'bg-primary hover:bg-primary/90'
+                    )}
+                  >
+                    {isThisClipRendering ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                    )}
+                    {isThisClipRendering ? 'Rendering…' : 'Render This Clip'}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs max-w-48">
+                  {isRendering
+                    ? 'A batch render is already running'
+                    : isSingleRenderActive && !isThisClipRendering
+                      ? 'Another clip is rendering'
+                      : 'Apply changes and render this clip immediately'}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onClose}
+              className="gap-1.5 text-xs"
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleApply}
+              className="gap-1.5 text-xs"
+            >
+              <Check className="w-3.5 h-3.5" />
+              Apply Changes
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

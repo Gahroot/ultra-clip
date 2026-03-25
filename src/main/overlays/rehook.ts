@@ -329,22 +329,28 @@ export function buildRehookFilter(
   const fadeOutStart = appearEnd - fadeOut
 
   // Enable expression: only show during [appearTime, appearEnd]
-  const enableExpr = `between(t,${appearTime.toFixed(3)},${appearEnd.toFixed(3)})`
+  // Uses infix comparison operators to avoid commas — escaped commas (\,)
+  // break some Windows FFmpeg builds, causing "Error opening output file".
+  const AT  = appearTime.toFixed(3)
+  const AE  = appearEnd.toFixed(3)
+  const enableExpr = `(t>=${AT})*(t<=${AE})`
 
   // Alpha: fade in → hold → fade out, all relative to appearTime
-  const tRel = `(t-${appearTime.toFixed(3)})`
+  // Piecewise multiplication with infix operators avoids commas.
+  const tRel = `(t-${AT})`
+  const rFI  = fadeIn.toFixed(3)
+  const rFOS = fadeOutStart.toFixed(3)
+  const rFO  = fadeOut.toFixed(3)
   const alphaExpr =
-    `if(lt(${tRel},${fadeIn.toFixed(3)}),` +
-      `${tRel}/${fadeIn.toFixed(3)},` +
-      `if(gt(t,${fadeOutStart.toFixed(3)}),` +
-        `(${appearEnd.toFixed(3)}-t)/${fadeOut.toFixed(3)},` +
-        `1))`
+    `(${tRel}<${rFI})*${tRel}/${rFI}` +
+    `+(${tRel}>=${rFI})*(t<=${rFOS})*1` +
+    `+(t>${rFOS})*(${AE}-t)/${rFO}`
 
   // Font spec — same font file as hook title, different size
-  // On Windows, FFmpeg requires colons in paths to be escaped as \\:
-  // (double backslash + colon). Single backslash is insufficient.
+  // On Windows, FFmpeg requires colons in paths to be escaped as \:
+  // (single backslash + colon). This escapes the colon for FFmpeg's filter parser.
   const fontSpec = fontFilePath
-    ? `fontfile='${fontFilePath.replace(/\\/g, '/').replace(/:/g, '\\\\:').replace(/'/g, "\\'")}':fontsize=${fontSize}`
+    ? `fontfile='${fontFilePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")}':fontsize=${fontSize}`
     : `font='Sans Bold':fontsize=${fontSize}`
 
   // Vertical position: middle of the frame, distinct from:
@@ -369,7 +375,7 @@ export function buildRehookFilter(
     const drawbox =
       `drawbox=x=0:y=${barY}:w=iw:h=${barHeight}` +
       `:color=black@0.70:t=fill` +
-      `:enable='${enableExpr}'`
+      `:enable=${enableExpr}`
 
     const drawtext =
       `drawtext=${fontSpec}` +
@@ -379,30 +385,32 @@ export function buildRehookFilter(
       `:y=${yPos}` +
       `:borderw=2` +
       `:bordercolor=${bgColor}` +
-      `:alpha='${alphaExpr}'` +
-      `:enable='${enableExpr}'`
+      `:alpha=${alphaExpr}` +
+      `:enable=${enableExpr}`
 
     return `${drawbox},${drawtext}`
 
   } else if (style === 'slide-up') {
     // Text slides up 30px while fading in, then holds position
     const yStart = yPos + 30
+    // Rewritten without commas for Windows FFmpeg compatibility.
+    // if(tRel < FI, yStart+(yPos-yStart)*tRel/FI, yPos)
+    // → (tRel<FI) * (yStart+delta*tRel/FI) + (tRel>=FI) * yPos
     const yExpr =
-      `if(lt(${tRel},${fadeIn.toFixed(3)}),` +
-        `${yStart}+(${yPos}-${yStart})*${tRel}/${fadeIn.toFixed(3)},` +
-        `${yPos})`
+      `(${tRel}<${rFI})*(${yStart}+(${yPos}-${yStart})*${tRel}/${rFI})` +
+      `+(${tRel}>=${rFI})*${yPos}`
 
     const drawtext =
       `drawtext=${fontSpec}` +
       `:text='${safeText}'` +
       `:fontcolor=${fgColor}` +
       `:x=(w-text_w)/2` +
-      `:y='${yExpr}'` +
+      `:y=${yExpr}` +
       `:borderw=${outlineWidth}` +
       `:bordercolor=${bgColor}` +
       `:shadowx=3:shadowy=3:shadowcolor=${shadowColor}` +
-      `:alpha='${alphaExpr}'` +
-      `:enable='${enableExpr}'`
+      `:alpha=${alphaExpr}` +
+      `:enable=${enableExpr}`
 
     return drawtext
 
@@ -417,8 +425,8 @@ export function buildRehookFilter(
       `:borderw=${outlineWidth}` +
       `:bordercolor=${bgColor}` +
       `:shadowx=3:shadowy=3:shadowcolor=${shadowColor}` +
-      `:alpha='${alphaExpr}'` +
-      `:enable='${enableExpr}'`
+      `:alpha=${alphaExpr}` +
+      `:enable=${enableExpr}`
 
     return drawtext
   }

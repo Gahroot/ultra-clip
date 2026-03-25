@@ -291,6 +291,24 @@ YOUR TASK:
 Read the full transcript below and identify 3-8 composite clips that can be assembled from NON-CONTIGUOUS segments scattered across the video. Each composite tells a story that is MORE compelling than any single continuous segment could be.
 
 ═══════════════════════════════════════════════════════
+STITCHING ADVANTAGE TEST
+═══════════════════════════════════════════════════════
+
+For EVERY candidate composite, ask: "What does stitching buy here that a single continuous segment couldn't?"
+
+The answer must be exactly one of these four:
+
+  COMPRESSION — The composite cuts filler, tangents, or dead air between the best moments, creating a denser, more valuable clip than any contiguous section. The viewer gets more signal per second than any unedited run of the video can deliver.
+
+  ESCALATION — Segments from different parts of the video build on each other in a way that no single section achieves. The second payoff lands harder BECAUSE of what came before it; the full arc only exists in the composite.
+
+  CONTRAST — Combining segments creates a comparison, a before/after, or an irony that doesn't exist in any individual section. The meaning emerges from the juxtaposition, not from either segment alone.
+
+  REFRAMING — An earlier moment takes on new meaning in light of a later one. The composite creates a narrative arc — a punchline, a reversal, a revelation — that the raw chronological video never produces.
+
+If the stitching advantage isn't clearly one of these four, the composite does NOT justify being a stitched clip. Use a regular single-segment clip instead, and invest that slot in a composite that genuinely earns its complexity.
+
+═══════════════════════════════════════════════════════
 FRAMEWORKS — Pick the best one for each clip
 ═══════════════════════════════════════════════════════
 
@@ -363,7 +381,19 @@ Deliver the second-best concrete payoff FIRST (mini-payoff), then the best (main
 COHESION CHECK
 ═══════════════════════════════════════════════════════
 
-Read the full concatenated text aloud in your mind. If it doesn't flow as a natural script, adjust segment boundaries until it does. The stitched segments must read as a coherent narrative — not a jarring montage.
+Run each of these five checks before finalizing a clip. If ANY check fails, adjust segment selection or boundaries — do not assign a score until all five pass.
+
+1. ENTRY CHECK — Does each segment (except the first) open in a way that connects to what just happened? If a segment starts mid-thought with no apparent link to the previous segment's close, either trim the boundary or insert a bridge.
+
+2. EXIT CHECK — Does the clip end on resolution, not mid-thought? The final segment should land cleanly — a conclusion, a revelation, a memorable line. Not a sentence that trails off, not a setup without a payoff.
+
+3. TOPIC CONSISTENCY — Do all segments serve the same central point? If you have to stretch to explain how a segment connects to the clip's narrative, it doesn't belong.
+
+4. REPETITION CHECK — Does any segment say something the viewer already heard in an earlier segment? Repetition kills pace. Each segment must add new information, new stakes, or new perspective — never re-state.
+
+5. ARC CHECK — Reading all segments in order: is there a clear direction of travel? The clip should move somewhere — from problem to solution, from question to answer, from setup to payoff. If the segments could be reordered without losing anything, the arc is broken.
+
+If ANY of these checks fail, adjust the segment selection or boundaries before assigning a score.
 
 ═══════════════════════════════════════════════════════
 VALUE TEST
@@ -379,6 +409,24 @@ A payoff fails the value test if it:
 - Is a setup or teaser for content NOT in this clip
 
 If a clip can only produce vague payoffs, it's not ready to be a stitched clip — skip it.
+
+═══════════════════════════════════════════════════════
+CLIP ANTI-PATTERNS
+═══════════════════════════════════════════════════════
+
+Before assigning any score, check the full clip against each failure mode below. If ANY anti-pattern applies, REJECT the clip entirely — do not include it in the output regardless of how strong individual segments appear.
+
+- PSEUDO-NON-CONTIGUOUS: All segments come from the same narrow window of the video (e.g., within a 2-minute span). This isn't stitching — it's just trimming. Genuine composites pull from meaningfully different parts of the video (at least 5 minutes apart where possible). If every segment could have been captured in one contiguous cut, the composition fails.
+
+- SAME POINT, DIFFERENT WORDS: The segments all make the same point or cover the same idea from slightly different angles. A composite must present DISTINCT ideas, steps, or revelations — not variations on one theme. Ask: "Does each segment add something the previous one didn't?" If the answer is no for more than one segment, reject the clip.
+
+- UNRESOLVED SETUP: The clip creates a specific expectation (a question, a tension, a promised reveal) that is never resolved within the clip itself. If the payoff to a setup exists somewhere in the video, include it — otherwise don't set it up. A clip that ends with an open loop it created is broken, not mysterious.
+
+- ORPHANED OPENING: The first segment starts mid-thought, references something not established in this clip, or requires prior knowledge the viewer doesn't have. The hook must be self-contained enough to make sense to a cold viewer — someone who has never seen this video and knows nothing about the speaker. If the hook only works because of context the viewer doesn't have, it isn't a hook.
+
+- PACE COLLAPSE: More than half the segments are context, bridge, or why/what — with only one short payoff at the end. Good composites deliver value early and often, not just at the finish line. If the ratio of setup to payoff is greater than 2:1 by segment count, the clip is front-loaded with debt it can't repay.
+
+- TOPIC DRIFT: The clip starts about one topic and ends about a different one, with no through-line connecting them. Every segment must serve the same central premise stated or implied in the hook. If the clip's opening question and closing answer are about different things, the composition is incoherent regardless of how good each individual segment is.
 
 ═══════════════════════════════════════════════════════
 SCORING RUBRIC
@@ -538,6 +586,7 @@ RULES
 - Score each composite using the SCORING RUBRIC above (four dimensions × 25 pts = 100 total); discard any clip scoring below 70
 - First segment MUST have role "hook"
 - At least one segment MUST have a payoff role (mini-payoff, main-payoff, or bonus-payoff)
+- Before finalizing a composite, identify its stitching advantage (compression, escalation, contrast, or reframing). If you cannot name one, discard the composite.
 
 HOOK TEXT:
 For each composite, write 1-6 words of on-screen hook text for the first 2 seconds. Stop the scroll — create curiosity, shock, or intrigue. NOT a summary.

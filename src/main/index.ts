@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, clipboard, Notification } from 'electron'
 import { join } from 'path'
-import { tmpdir, homedir } from 'os'
+import { tmpdir, homedir, cpus, totalmem, freemem } from 'os'
+import { execFile } from 'child_process'
 import { readFileSync, writeFileSync, statfs, existsSync, mkdirSync, copyFileSync } from 'fs'
 import { readdir, stat, unlink } from 'fs/promises'
 import { initLogger, getLogPath, getLogSize, getLogDir, closeLogger, log } from './logger'
@@ -1442,6 +1443,70 @@ app.whenReady().then(() => {
 
     await walkDir(cacheDir)
     return { bytes }
+  })
+
+  // IPC: System — get current CPU/RAM/GPU resource usage (lightweight poll)
+  ipcMain.handle('system:getResourceUsage', async (): Promise<{
+    cpu: { percent: number }
+    ram: { usedBytes: number; totalBytes: number; appBytes: number }
+    gpu: { percent: number; usedMB: number; totalMB: number; name: string } | null
+  }> => {
+    // --- CPU: compare two snapshots 100ms apart ---
+    function getCpuSnapshot(): { idle: number; total: number }[] {
+      return cpus().map((c) => {
+        const times = c.times
+        const total = times.user + times.nice + times.sys + times.irq + times.idle
+        return { idle: times.idle, total }
+      })
+    }
+    const snap1 = getCpuSnapshot()
+    await new Promise<void>((r) => setTimeout(r, 100))
+    const snap2 = getCpuSnapshot()
+
+    let idleDelta = 0
+    let totalDelta = 0
+    for (let i = 0; i < snap1.length; i++) {
+      idleDelta += snap2[i].idle - snap1[i].idle
+      totalDelta += snap2[i].total - snap1[i].total
+    }
+    const cpuPercent = totalDelta > 0 ? Math.round((1 - idleDelta / totalDelta) * 100) : 0
+
+    // --- RAM ---
+    const totalBytes = totalmem()
+    const freeBytes = freemem()
+    const usedBytes = totalBytes - freeBytes
+    const appBytes = process.memoryUsage().rss
+
+    // --- GPU: try nvidia-smi (NVIDIA only, optional) ---
+    let gpu: { percent: number; usedMB: number; totalMB: number; name: string } | null = null
+    try {
+      gpu = await new Promise((resolve) => {
+        execFile(
+          'nvidia-smi',
+          ['--query-gpu=utilization.gpu,memory.used,memory.total,name', '--format=csv,noheader,nounits'],
+          { timeout: 2000 },
+          (err, stdout) => {
+            if (err || !stdout.trim()) { resolve(null); return }
+            const parts = stdout.trim().split(',').map((s) => s.trim())
+            if (parts.length < 4) { resolve(null); return }
+            const percent = parseInt(parts[0], 10)
+            const usedMB = parseInt(parts[1], 10)
+            const totalMB = parseInt(parts[2], 10)
+            const name = parts.slice(3).join(',').trim()
+            if (isNaN(percent) || isNaN(usedMB) || isNaN(totalMB)) { resolve(null); return }
+            resolve({ percent, usedMB, totalMB, name })
+          }
+        )
+      })
+    } catch {
+      gpu = null
+    }
+
+    return {
+      cpu: { percent: cpuPercent },
+      ram: { usedBytes, totalBytes, appBytes },
+      gpu
+    }
   })
 
   createWindow()

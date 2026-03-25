@@ -274,20 +274,46 @@ All Python scripts communicate over stdout with newline-delimited JSON:
 
 ## Deploy to Windows Desktop (WSL2)
 
-From WSL2, build and deploy to the Windows desktop:
+When the user says **"send it to my Windows machine"** (or similar), run this
+full deploy sequence. Do NOT skip steps or try to patch individual files —
+always replace the entire folder.
 
 ```bash
-# 1. Build the app
+# 1. Build the app code
 npx electron-vite build
 
-# 2. Package for Windows (without installer)
-npm run build:win -- --dir
+# 2. Pack a fresh app.asar from the build output
+ASAR_STAGE=$(mktemp -d)
+mkdir -p "$ASAR_STAGE/out/main" "$ASAR_STAGE/out/preload" "$ASAR_STAGE/out/renderer/assets"
+cp out/main/index.js "$ASAR_STAGE/out/main/"
+cp out/preload/index.js "$ASAR_STAGE/out/preload/"
+cp out/renderer/index.html "$ASAR_STAGE/out/renderer/"
+cp out/renderer/assets/* "$ASAR_STAGE/out/renderer/assets/"
+cp package.json "$ASAR_STAGE/"
+npx asar pack "$ASAR_STAGE" dist/win-unpacked/resources/app.asar
+rm -rf "$ASAR_STAGE"
 
-# 3. Copy to Windows desktop
-rsync -av --delete --copy-links /home/groot/batchcontent/dist/win-unpacked/ "/mnt/c/Users/Groot/Desktop/BatchContent/"
+# 3. Update Python scripts in dist (NOT the venv — it's Windows-specific)
+cp python/download.py python/face_detect.py python/transcribe.py python/requirements.txt \
+   dist/win-unpacked/resources/python/
+
+# 4. Nuke and replace the entire BatchContent folder on the Windows desktop
+rm -rf "/mnt/c/Users/Groot/Desktop/BatchContent"
+cp -r dist/win-unpacked "/mnt/c/Users/Groot/Desktop/BatchContent"
+sync
 ```
 
-The Windows Python environment (embedded Python + packages) is stored in `%APPDATA%/BatchContent/python-env/` and is auto-installed on first run. No manual setup needed on Windows.
+**Important notes:**
+- `dist/win-unpacked/` contains the Electron shell (exe, DLLs, ffmpeg binaries).
+  It's created by `npm run build:win` or `npm run build:unpack`. If it doesn't
+  exist yet, run `npm run build:win` first (one-time, takes a while).
+- Never copy the Linux `python/venv/` to Windows — the Windows app has its own
+  Python environment at `%APPDATA%/batchcontent/python-env/` which is
+  auto-installed on first launch.
+- The `cp -r` across WSL2 → `/mnt/c/` can take 30–60 seconds for ~240 MB.
+  Use a 180s timeout or `run_in_background` if needed.
+- Session logs on Windows: `C:\Users\Groot\AppData\Roaming\batchcontent\logs\`
+- Debug exports on Windows: `C:\Users\Groot\Downloads\batchcontent-debug-*.log`
 
 ## Environment
 

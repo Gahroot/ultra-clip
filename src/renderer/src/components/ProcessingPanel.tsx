@@ -702,14 +702,23 @@ export function ProcessingPanel() {
 
   return (
     <div className="flex flex-col gap-5 p-6 max-w-lg mx-auto w-full max-h-full overflow-y-auto">
-      {/* Source header */}
-      <div className="text-center space-y-1">
-        <h2 className="text-sm font-semibold truncate px-8">{activeSource.name}</h2>
-        <p className="text-xs text-muted-foreground">
-          {isYouTube ? 'YouTube' : 'Local file'} ·{' '}
-          {Math.floor(activeSource.duration / 60)}m {Math.round(activeSource.duration % 60)}s
-        </p>
-      </div>
+      {/* Source header — crossfades when the active source changes */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={activeSource.id}
+          className="text-center space-y-1"
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 6 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+        >
+          <h2 className="text-sm font-semibold truncate px-8">{activeSource.name}</h2>
+          <p className="text-xs text-muted-foreground">
+            {isYouTube ? 'YouTube' : 'Local file'} ·{' '}
+            {Math.floor(activeSource.duration / 60)}m {Math.round(activeSource.duration % 60)}s
+          </p>
+        </motion.div>
+      </AnimatePresence>
 
       {/* Queue progress panel */}
       <AnimatePresence>

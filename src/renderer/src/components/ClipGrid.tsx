@@ -32,7 +32,8 @@ import {
   Bug,
   Download,
   RefreshCw,
-  GitCompare
+  GitCompare,
+  CheckSquare
 } from 'lucide-react'
 import {
   DndContext,
@@ -131,7 +132,7 @@ function SortableClipCard({
   sourceDuration: number
   index: number
   isSelected: boolean
-  onClick: () => void
+  onClick: (e?: React.MouseEvent) => void
   isDragActive: boolean
   compareMode?: boolean
   onCompare?: (clipId: string) => void
@@ -163,7 +164,7 @@ function SortableClipCard({
         isSelected && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
         compareMode && isCompareSelected && 'ring-2 ring-violet-500 ring-offset-2 ring-offset-background'
       )}
-      onClick={onClick}
+      onClick={(e) => onClick(e)}
     >
       {/* Drag handle */}
       <div
@@ -244,6 +245,13 @@ export function ClipGrid() {
   const pipeline = useStore((s) => s.pipeline)
   const setRenderError = useStore((s) => s.setRenderError)
 
+  // Batch multi-select
+  const selectedClipIds = useStore((s) => s.selectedClipIds)
+  const selectAllVisible = useStore((s) => s.selectAllVisible)
+  const clearSelection = useStore((s) => s.clearSelection)
+  const toggleClipSelection = useStore((s) => s.toggleClipSelection)
+  const batchUpdateClips = useStore((s) => s.batchUpdateClips)
+
   const [filter, setFilter] = useState<FilterTab>('all')
   const [sortMode, setSortMode] = useState<SortMode>('score')
   const [localMinScore, setLocalMinScore] = useState(minScore)
@@ -272,6 +280,10 @@ export function ClipGrid() {
   // Confirmation dialog state
   const [showRejectAllConfirm, setShowRejectAllConfirm] = useState(false)
   const [showCancelRenderConfirm, setShowCancelRenderConfirm] = useState(false)
+
+  // Batch toolbar state
+  const [batchTrimOffset, setBatchTrimOffset] = useState<string>('0')
+  const lastSelectedIndexRef = useRef<number | null>(null)
 
   // Compare mode state
   const [compareModeActive, setCompareModeActive] = useState(false)
@@ -457,6 +469,24 @@ export function ClipGrid() {
 
     return filtered
   }, [allClips, filter, sortMode, localMinScore, clipOrder, searchQuery])
+
+  // Ctrl+A to select all visible clips
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a' && !e.shiftKey) {
+        // Only if focus is not in an input/textarea
+        const tag = (document.activeElement as HTMLElement)?.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return
+        e.preventDefault()
+        selectAllVisible(displayedClips.map((c) => c.id))
+      }
+      if (e.key === 'Escape' && selectedClipIds.size > 0) {
+        clearSelection()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [displayedClips, selectAllVisible, clearSelection, selectedClipIds])
 
   const handleApproveAll = () => {
     if (activeSourceId) approveAll(activeSourceId)
@@ -1804,6 +1834,192 @@ export function ClipGrid() {
         )}
       </AnimatePresence>
 
+      {/* Batch action toolbar — slides up when clips are selected */}
+      <AnimatePresence>
+        {selectedClipIds.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="shrink-0 px-4 py-2.5 border-b border-primary/30 bg-primary/5 backdrop-blur-sm flex items-center gap-2 flex-wrap"
+          >
+            <CheckSquare className="w-4 h-4 text-primary shrink-0" />
+            <span className="text-xs font-semibold text-primary whitespace-nowrap">
+              {selectedClipIds.size} clip{selectedClipIds.size !== 1 ? 's' : ''} selected
+            </span>
+            <button
+              onClick={() => selectAllVisible(displayedClips.map((c) => c.id))}
+              className="text-xs text-primary/70 hover:text-primary underline-offset-2 hover:underline transition-colors"
+            >
+              Select All ({displayedClips.length})
+            </button>
+            <span className="text-muted-foreground/30">·</span>
+            <button
+              onClick={clearSelection}
+              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors"
+            >
+              Clear
+            </button>
+
+            <div className="h-4 w-px bg-border/60 mx-1 shrink-0" />
+
+            {/* Approve Selected */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs h-7 border-green-600/40 text-green-500 hover:bg-green-600/10"
+              onClick={() => {
+                if (!activeSourceId) return
+                batchUpdateClips(activeSourceId, Array.from(selectedClipIds), { status: 'approved' })
+                clearSelection()
+              }}
+            >
+              <Check className="w-3.5 h-3.5" />
+              Approve
+            </Button>
+
+            {/* Reject Selected */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs h-7 border-red-600/40 text-red-500 hover:bg-red-600/10"
+              onClick={() => {
+                if (!activeSourceId) return
+                batchUpdateClips(activeSourceId, Array.from(selectedClipIds), { status: 'rejected' })
+                clearSelection()
+              }}
+            >
+              <X className="w-3.5 h-3.5" />
+              Reject
+            </Button>
+
+            <div className="h-4 w-px bg-border/60 mx-1 shrink-0" />
+
+            {/* Extend All by N seconds */}
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Extend by</span>
+              <Input
+                value={batchTrimOffset}
+                onChange={(e) => setBatchTrimOffset(e.target.value)}
+                className="h-7 w-14 text-xs text-center px-1"
+                placeholder="±s"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && activeSourceId) {
+                    const offset = parseFloat(batchTrimOffset)
+                    if (!isNaN(offset) && offset !== 0) {
+                      batchUpdateClips(activeSourceId, Array.from(selectedClipIds), { trimOffsetSeconds: offset })
+                    }
+                  }
+                }}
+              />
+              <span className="text-xs text-muted-foreground">s</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2"
+                onClick={() => {
+                  if (!activeSourceId) return
+                  const offset = parseFloat(batchTrimOffset)
+                  if (!isNaN(offset) && offset !== 0) {
+                    batchUpdateClips(activeSourceId, Array.from(selectedClipIds), { trimOffsetSeconds: offset })
+                  }
+                }}
+                title="Apply trim offset to selected clips (positive = extend, negative = trim)"
+              >
+                Apply
+              </Button>
+            </div>
+
+            <div className="h-4 w-px bg-border/60 mx-1 shrink-0" />
+
+            {/* Apply to Selected dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs h-7"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  Apply…
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Overrides for Selected
+                </div>
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!activeSourceId) return
+                    batchUpdateClips(activeSourceId, Array.from(selectedClipIds), { overrides: { enableCaptions: true } })
+                  }}
+                  className="text-xs gap-2"
+                >
+                  <Check className="w-3.5 h-3.5 text-green-500" />
+                  Enable Captions
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!activeSourceId) return
+                    batchUpdateClips(activeSourceId, Array.from(selectedClipIds), { overrides: { enableCaptions: false } })
+                  }}
+                  className="text-xs gap-2"
+                >
+                  <X className="w-3.5 h-3.5 text-red-500" />
+                  Disable Captions
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!activeSourceId) return
+                    batchUpdateClips(activeSourceId, Array.from(selectedClipIds), { overrides: { enableHookTitle: true } })
+                  }}
+                  className="text-xs gap-2"
+                >
+                  <Check className="w-3.5 h-3.5 text-green-500" />
+                  Enable Hook Title
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!activeSourceId) return
+                    batchUpdateClips(activeSourceId, Array.from(selectedClipIds), { overrides: { enableHookTitle: false } })
+                  }}
+                  className="text-xs gap-2"
+                >
+                  <X className="w-3.5 h-3.5 text-red-500" />
+                  Disable Hook Title
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!activeSourceId) return
+                    batchUpdateClips(activeSourceId, Array.from(selectedClipIds), { status: 'pending' })
+                    clearSelection()
+                  }}
+                  className="text-xs gap-2"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Set as Pending
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Deselect All */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5 text-xs h-7 ml-auto text-muted-foreground hover:text-foreground"
+              onClick={clearSelection}
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              Deselect All
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Render progress banner */}
       {isRendering && (
         <div className="shrink-0 px-4 py-3 border-b border-violet-500/30 bg-violet-950/30 space-y-2">
@@ -2163,7 +2379,23 @@ export function ClipGrid() {
                     sourceDuration={sourceDuration}
                     index={i}
                     isSelected={selectedClipIndex === i}
-                    onClick={() => setSelectedClipIndex(i)}
+                    onClick={(e?: React.MouseEvent) => {
+                      setSelectedClipIndex(i)
+                      if (!e) return
+                      if (e.shiftKey && lastSelectedIndexRef.current !== null) {
+                        // Range select
+                        const start = Math.min(lastSelectedIndexRef.current, i)
+                        const end = Math.max(lastSelectedIndexRef.current, i)
+                        const rangeIds = displayedClips.slice(start, end + 1).map((c) => c.id)
+                        const next = new Set(selectedClipIds)
+                        for (const id of rangeIds) next.add(id)
+                        selectAllVisible(Array.from(next))
+                      } else if (e.ctrlKey || e.metaKey) {
+                        // Toggle individual
+                        toggleClipSelection(clip.id)
+                        lastSelectedIndexRef.current = i
+                      }
+                    }}
                     isDragActive={activeDragId !== null}
                     compareMode={compareModeActive}
                     onCompare={compareModeActive ? handleCompareClick : undefined}
