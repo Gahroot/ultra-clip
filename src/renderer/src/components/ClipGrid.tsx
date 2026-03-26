@@ -740,6 +740,10 @@ export function ClipGrid() {
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
+        captionsEnabled: settings.captionsEnabled,
+        captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
+        fillerRemoval: settings.fillerRemoval.enabled ? settings.fillerRemoval : undefined,
+        renderConcurrency: settings.renderConcurrency,
         // Source metadata enables auto-manifest generation at batch end
         sourceMeta: activeSource
           ? { name: activeSource.name, path: activeSource.path, duration: activeSource.duration }
@@ -959,6 +963,10 @@ export function ClipGrid() {
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
+        captionsEnabled: settings.captionsEnabled,
+        captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
+        fillerRemoval: settings.fillerRemoval.enabled ? settings.fillerRemoval : undefined,
+        renderConcurrency: settings.renderConcurrency,
         sourceMeta: activeSource
           ? { name: activeSource.name, path: activeSource.path, duration: activeSource.duration }
           : undefined,

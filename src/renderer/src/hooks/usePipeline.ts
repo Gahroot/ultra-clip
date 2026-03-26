@@ -159,7 +159,10 @@ export function usePipeline() {
           score: seg.score,
           hookText: seg.hookText,
           reasoning: seg.reasoning,
-          status: 'pending' as const
+          status: 'pending' as const,
+          wordTimestamps: transcriptionResult.words.filter(
+            (w: { start: number; end: number }) => w.start >= seg.startTime && w.end <= seg.endTime
+          )
         }))
 
         setClips(source.id, clips)

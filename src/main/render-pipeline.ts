@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { join, basename, dirname, extname } from 'path'
-import { existsSync, mkdirSync, unlinkSync, copyFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, unlinkSync, copyFileSync, writeFileSync, renameSync } from 'fs'
 import { tmpdir } from 'os'
 import type { FfmpegCommand } from 'fluent-ffmpeg'
 import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, getVideoMetadata, type QualityParams } from './ffmpeg'
@@ -9,10 +9,8 @@ import { generateZoomFilter } from './auto-zoom'
 import type { ZoomSettings } from './auto-zoom'
 import type { OutputAspectRatio } from './aspect-ratios'
 import { ASPECT_RATIO_CONFIGS, computeCenterCropForRatio } from './aspect-ratios'
-import { buildHookTitleFilter, resolveHookFont, escapeDrawtext, type HookTitleConfig } from './hook-title'
+import { resolveHookFont, type HookTitleConfig } from './hook-title'
 import {
-  buildRehookFilter,
-  identifyRehookPoint,
   getDefaultRehookPhrase,
   type RehookConfig
 } from './overlays/rehook'
@@ -498,52 +496,6 @@ function buildVideoFilter(
   const chain: string[] = [cropFilter, scaleFilter]
   if (zoomFilter) chain.push(zoomFilter)
 
-  if (job.assFilePath) {
-    // Escape backslashes and colons for FFmpeg's filter option parser
-    const escaped = job.assFilePath
-      .replace(/\\/g, '\\\\')
-      .replace(/:/g, '\\:')
-      .replace(/'/g, "\\'")
-    chain.push(`ass='${escaped}'`)
-  }
-
-  // Hook title overlay: drawtext filter(s) appended after captions so the
-  // hook text appears on top of everything else in the filter chain.
-  // buildHookTitleFilter returns a SEMICOLON-separated list of filter nodes
-  // for multi-filter styles (top-bar = drawbox + drawtext). We join those
-  // into the comma chain as individual elements.
-  // DEBUG: temporarily skip drawtext to isolate "Error opening output file" root cause
-  const SKIP_DRAWTEXT_DEBUG = true
-  if (!SKIP_DRAWTEXT_DEBUG && job.hookTitleConfig?.enabled && job.hookTitleText) {
-    const hookFilter = buildHookTitleFilter(
-      job.hookTitleText,
-      job.hookTitleConfig,
-      hookFontPath ?? null
-    )
-    // Each element of hookFilter is a complete filter node (no splitting needed)
-    chain.push(hookFilter)
-  }
-
-  // Re-hook overlay: drawtext (and optional drawbox) injected after hook title,
-  // appearing at `rehookAppearTime` seconds into the clip to reset viewer attention.
-  if (!SKIP_DRAWTEXT_DEBUG && job.rehookConfig?.enabled && job.rehookText && job.rehookAppearTime != null) {
-    const rehookFilter = buildRehookFilter(
-      job.rehookText,
-      job.rehookConfig,
-      job.rehookAppearTime,
-      hookFontPath ?? null
-    )
-    chain.push(rehookFilter)
-  }
-
-  // Progress bar overlay: animated bar that fills left→right over the clip duration,
-  // anchored to the top or bottom of the frame. Appended last so it renders on top of
-  // all other overlays (captions, hook title, re-hook).
-  if (job.progressBarConfig?.enabled) {
-    const barFilter = buildProgressBarFilter(clipDuration, job.progressBarConfig)
-    if (barFilter) chain.push(barFilter)
-  }
-
   return chain.join(',')
 }
 
@@ -932,6 +884,317 @@ function applyBRollOverlay(
 }
 
 // ---------------------------------------------------------------------------
+// ASS overlay generators — Windows-safe alternative to drawtext
+// ---------------------------------------------------------------------------
+// FFmpeg's drawtext filter on Windows is fundamentally broken: complex filter
+// expressions with colons, single quotes, backslashes, and parentheses get
+// mangled by Windows' CreateProcess argument quoting, producing the infamous
+// "Error opening output file: Invalid argument". No amount of escaping,
+// multi-pass, or filter_script fixes it reliably.
+//
+// The solution: generate ASS subtitle files for text overlays (hook title,
+// re-hook) and burn them with FFmpeg's `ass` filter, which just takes a file
+// path — no complex expressions on the command line at all. ASS natively
+// supports everything we need: positioning, fade in/out (\fad), fonts by
+// name (no file paths!), colors, outlines, shadows, timed transforms.
+// ---------------------------------------------------------------------------
+
+/** Format seconds to ASS timestamp: H:MM:SS.CC (centiseconds) */
+function formatASSTimestamp(seconds: number): string {
+  const s = Math.max(0, seconds)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = Math.floor(s % 60)
+  const cs = Math.round((s % 1) * 100)
+  return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
+}
+
+/**
+ * Convert a CSS hex color (#RRGGBB or #AARRGGBB) to ASS &HAABBGGRR format.
+ */
+function cssHexToASS(hex: string): string {
+  const h = hex.replace('#', '')
+  let r: number, g: number, b: number, a: number
+
+  if (h.length === 8) {
+    a = parseInt(h.slice(0, 2), 16)
+    r = parseInt(h.slice(2, 4), 16)
+    g = parseInt(h.slice(4, 6), 16)
+    b = parseInt(h.slice(6, 8), 16)
+  } else if (h.length === 6) {
+    a = 0
+    r = parseInt(h.slice(0, 2), 16)
+    g = parseInt(h.slice(2, 4), 16)
+    b = parseInt(h.slice(4, 6), 16)
+  } else {
+    return '&H00FFFFFF'
+  }
+
+  const pad = (n: number) => n.toString(16).toUpperCase().padStart(2, '0')
+  return `&H${pad(a)}${pad(b)}${pad(g)}${pad(r)}`
+}
+
+/**
+ * Generate an ASS subtitle file for the hook title overlay.
+ *
+ * Uses ASS native features (fonts by name, \fad, alignment, margins) instead
+ * of FFmpeg drawtext — completely avoids Windows command-line escaping issues.
+ *
+ * @returns Path to the generated .ass file in the temp directory.
+ */
+function generateHookTitleASSFile(
+  text: string,
+  config: HookTitleConfig,
+  frameWidth = 1080,
+  frameHeight = 1920
+): string {
+  const {
+    displayDuration,
+    fadeIn,
+    fadeOut,
+    fontSize,
+    textColor,
+    outlineColor
+  } = config
+
+  const fadeInMs = Math.round(fadeIn * 1000)
+  const fadeOutMs = Math.round(fadeOut * 1000)
+  const primaryASS = cssHexToASS(textColor)
+  const outlineASS = cssHexToASS(outlineColor)
+
+  // Y position from top: ~220px
+  const marginV = 220
+
+  // Filled rounded-rect look: BorderStyle 3 = opaque box behind text.
+  // White box background, black text, with generous outline (padding).
+  // BackColour = white (fully opaque)
+  const boxBackColor = cssHexToASS(outlineColor === '#000000' ? '#FFFFFF' : outlineColor)
+  // Alignment 8 = top-center in ASS (numpad layout: 7=TL 8=TC 9=TR)
+  // Outline=16 gives padding around the text inside the box; Shadow=6 gives rounded-corner illusion
+  const boxPadding = Math.round(fontSize * 0.22)
+  const boxShadow = Math.round(fontSize * 0.08)
+  const styleLine = `Style: HookTitle,Arial,${fontSize},${primaryASS},${primaryASS},${outlineASS},${boxBackColor},-1,0,0,0,100,100,0,0,3,${boxPadding},${boxShadow},8,40,40,${marginV},1`
+  const dialogueText = `{\\fad(${fadeInMs},${fadeOutMs})}${text}`
+
+  const startTime = formatASSTimestamp(0)
+  const endTime = formatASSTimestamp(displayDuration)
+
+  const ass = [
+    '[Script Info]',
+    'ScriptType: v4.00+',
+    `PlayResX: ${frameWidth}`,
+    `PlayResY: ${frameHeight}`,
+    'WrapStyle: 0',
+    'ScaledBorderAndShadow: yes',
+    '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    styleLine,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    `Dialogue: 0,${startTime},${endTime},HookTitle,,0,0,0,,${dialogueText}`,
+    ''
+  ].join('\n')
+
+  const assPath = join(tmpdir(), `batchcontent-hooktitle-${Date.now()}.ass`)
+  writeFileSync(assPath, ass, 'utf-8')
+  console.log(`[HookTitle] Generated ASS overlay: ${assPath}`)
+  return assPath
+}
+
+/**
+ * Generate an ASS subtitle file for the re-hook / pattern interrupt overlay.
+ *
+ * @returns Path to the generated .ass file in the temp directory.
+ */
+function generateRehookASSFile(
+  text: string,
+  config: RehookConfig,
+  appearTime: number,
+  frameWidth = 1080,
+  frameHeight = 1920
+): string {
+  const {
+    displayDuration,
+    fadeIn,
+    fadeOut,
+    fontSize,
+    textColor,
+    outlineColor
+  } = config
+
+  const fadeInMs = Math.round(fadeIn * 1000)
+  const fadeOutMs = Math.round(fadeOut * 1000)
+  const primaryASS = cssHexToASS(textColor)
+  const outlineASS = cssHexToASS(outlineColor)
+
+  // Position rehook just below the hook title area (~340px from top)
+  // Hook title sits at marginV=220, so rehook goes a bit lower
+  const marginV = 340
+
+  // Filled rounded-rect look: same as hook title — BorderStyle 3 = opaque box.
+  // White box background, black text, with generous outline (padding).
+  const boxBackColor = cssHexToASS(outlineColor === '#000000' ? '#FFFFFF' : outlineColor)
+  // Alignment 8 = top-center in ASS (numpad layout)
+  const boxPadding = Math.round(fontSize * 0.22)
+  const boxShadow = Math.round(fontSize * 0.08)
+  const styleLine = `Style: Rehook,Arial,${fontSize},${primaryASS},${primaryASS},${outlineASS},${boxBackColor},-1,0,0,0,100,100,0,0,3,${boxPadding},${boxShadow},8,40,40,${marginV},1`
+  const dialogueText = `{\\fad(${fadeInMs},${fadeOutMs})}${text}`
+
+  const startTime = formatASSTimestamp(appearTime)
+  const endTime = formatASSTimestamp(appearTime + displayDuration)
+
+  const ass = [
+    '[Script Info]',
+    'ScriptType: v4.00+',
+    `PlayResX: ${frameWidth}`,
+    `PlayResY: ${frameHeight}`,
+    'WrapStyle: 0',
+    'ScaledBorderAndShadow: yes',
+    '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    styleLine,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    `Dialogue: 0,${startTime},${endTime},Rehook,,0,0,0,,${dialogueText}`,
+    ''
+  ].join('\n')
+
+  const assPath = join(tmpdir(), `batchcontent-rehook-${Date.now()}.ass`)
+  writeFileSync(assPath, ass, 'utf-8')
+  console.log(`[Rehook] Generated ASS overlay: ${assPath}`)
+  return assPath
+}
+
+/**
+ * Build an escaped `ass='...'` filter string from an ASS file path.
+ * Handles Windows backslashes and colons in the path.
+ */
+function buildASSFilter(assFilePath: string, fontsDir?: string): string {
+  const escaped = assFilePath
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, "\\'")
+  if (fontsDir) {
+    const escapedDir = fontsDir
+      .replace(/\\/g, '\\\\')
+      .replace(/:/g, '\\:')
+      .replace(/'/g, "\\'")
+    return `ass='${escaped}':fontsdir='${escapedDir}'`
+  }
+  return `ass='${escaped}'`
+}
+
+/**
+ * Generate an ASS subtitle file for stitched segment overlay text.
+ * Displays the text for the first 2 seconds of the segment with fade in/out.
+ *
+ * @returns Path to the generated .ass file in the temp directory.
+ */
+function generateSegmentOverlayASSFile(
+  text: string,
+  role: string | undefined,
+  frameWidth = 1080,
+  frameHeight = 1920
+): string {
+  const displayDuration = 2.0
+  const fadeInMs = 300
+  const fadeOutMs = 400
+
+  let styleLine: string
+  let dialogueText: string
+
+  if (role === 'hook') {
+    // Centered-bold style at mid-frame
+    styleLine = `Style: SegOverlay,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H4D000000,-1,0,0,0,100,100,0,0,1,4,3,5,40,40,0,1`
+    dialogueText = `{\\fad(${fadeInMs},${fadeOutMs})}${text}`
+  } else {
+    // Rehook / default style: yellow, slightly smaller, at lower-third
+    const yPos = Math.round(frameHeight * 0.45)
+    styleLine = `Style: SegOverlay,Arial,56,&H0000FFFF,&H0000FFFF,&H00000000,&H4D000000,-1,0,0,0,100,100,0,0,1,3,3,5,40,40,${yPos},1`
+    dialogueText = `{\\fad(${fadeInMs},${fadeOutMs})}${text}`
+  }
+
+  const startTime = formatASSTimestamp(0)
+  const endTime = formatASSTimestamp(displayDuration)
+
+  const ass = [
+    '[Script Info]',
+    'ScriptType: v4.00+',
+    `PlayResX: ${frameWidth}`,
+    `PlayResY: ${frameHeight}`,
+    'WrapStyle: 0',
+    'ScaledBorderAndShadow: yes',
+    '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    styleLine,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    `Dialogue: 0,${startTime},${endTime},SegOverlay,,0,0,0,,${dialogueText}`,
+    ''
+  ].join('\n')
+
+  const assPath = join(tmpdir(), `batchcontent-segovl-${Date.now()}.ass`)
+  writeFileSync(assPath, ass, 'utf-8')
+  return assPath
+}
+
+// ---------------------------------------------------------------------------
+// Multi-pass overlay helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a single FFmpeg filter pass: read inputPath, apply videoFilter, write to outputPath.
+ * Uses software encoding with high-quality settings (CRF 15, ultrafast preset) to minimise
+ * generation loss across multiple re-encode passes. Audio is stream-copied (no re-encode).
+ */
+function applyFilterPass(
+  inputPath: string,
+  outputPath: string,
+  videoFilter: string
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const { encoder, presetFlag } = getSoftwareEncoder({ crf: 15, preset: 'ultrafast' })
+
+    function runPass(enc: string, flags: string[]): void {
+      const cmd = ffmpeg(toFFmpegPath(inputPath))
+        .videoFilters(videoFilter)
+        .outputOptions([
+          '-c:v', enc,
+          ...flags,
+          '-c:a', 'copy',
+          '-movflags', '+faststart',
+          '-y'
+        ])
+        .on('start', (cmdLine: string) => {
+          console.log(`[Overlay] FFmpeg command: ${cmdLine}`)
+        })
+        .on('end', () => resolve())
+        .on('error', (err: Error) => {
+          if (isGpuSessionError(err.message)) {
+            const sw = getSoftwareEncoder({ crf: 15, preset: 'ultrafast' })
+            runPass(sw.encoder, sw.presetFlag)
+          } else {
+            reject(err)
+          }
+        })
+        .save(toFFmpegPath(outputPath))
+
+      activeCommands.add(cmd)
+      cmd.on('end', () => activeCommands.delete(cmd))
+      cmd.on('error', () => activeCommands.delete(cmd))
+    }
+
+    runPass(encoder, presetFlag)
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Single-clip render
 // ---------------------------------------------------------------------------
 
@@ -942,7 +1205,9 @@ function renderClip(
   onProgress: (percent: number) => void,
   onCommand?: (command: string) => void,
   qualityParams?: QualityParams,
-  outputFormat?: 'mp4' | 'webm'
+  outputFormat?: 'mp4' | 'webm',
+  hookFontPath?: string | null,
+  captionFontsDir?: string | null
 ): Promise<string> {
   console.log(`[Render] clipId=${job.clipId}`)
   console.log(`[Render] outputPath=${outputPath}`)
@@ -1186,92 +1451,120 @@ function renderClip(
     })
   }
 
-  if (hasBumpers) {
-    return renderMain().then(async (mainPath) => {
-      try {
-        onProgress(88)
-        await concatWithBumpers(
-          mainPath,
-          outputPath,
-          bk?.introBumperPath ?? null,
-          bk?.outroBumperPath ?? null
-        )
-        onProgress(100)
-        return outputPath
-      } finally {
-        try { unlinkSync(mainPath) } catch { /* ignore cleanup errors */ }
-      }
-    })
-  }
+  // ── Phase 1: Base render (crop + scale + zoom + logo + sound design) ──────
+  const baseResult = hasBumpers
+    ? renderMain().then(async (mainPath) => {
+        try {
+          onProgress(68)
+          await concatWithBumpers(
+            mainPath,
+            outputPath,
+            bk?.introBumperPath ?? null,
+            bk?.outroBumperPath ?? null
+          )
+          onProgress(70)
+          return outputPath
+        } finally {
+          try { unlinkSync(mainPath) } catch { /* ignore cleanup errors */ }
+        }
+      })
+    : renderMain()
 
-  return renderMain()
+  return baseResult.then(async (resultPath) => {
+    // ── Phase 2: Multi-pass overlay post-processing ─────────────────────────
+    // Each overlay is applied as a separate FFmpeg invocation to avoid
+    // Windows failures with massive combined filter strings.
+    const clipDuration = job.endTime - job.startTime
+    const overlaySteps: { name: string; filter: string }[] = []
+
+    // Track temp ASS files to clean up after all passes
+    const tempAssFiles: string[] = []
+
+    // Captions (ASS subtitle burn-in) — pass fontsdir so bundled fonts are found by libass
+    if (job.assFilePath) {
+      overlaySteps.push({ name: 'captions', filter: buildASSFilter(job.assFilePath, captionFontsDir ?? undefined) })
+    }
+
+    // Hook title overlay — generated as ASS to avoid drawtext on Windows
+    if (job.hookTitleConfig?.enabled && job.hookTitleText) {
+      const hookAssPath = generateHookTitleASSFile(job.hookTitleText, job.hookTitleConfig)
+      tempAssFiles.push(hookAssPath)
+      overlaySteps.push({ name: 'hook-title', filter: buildASSFilter(hookAssPath) })
+    }
+
+    // Re-hook overlay — generated as ASS to avoid drawtext on Windows
+    if (job.rehookConfig?.enabled && job.rehookText && job.rehookAppearTime != null) {
+      const rehookAssPath = generateRehookASSFile(
+        job.rehookText,
+        job.rehookConfig,
+        job.rehookAppearTime
+      )
+      tempAssFiles.push(rehookAssPath)
+      overlaySteps.push({ name: 'rehook', filter: buildASSFilter(rehookAssPath) })
+    }
+
+    // Progress bar overlay (drawbox — simple enough to work on Windows)
+    if (job.progressBarConfig?.enabled) {
+      const barFilter = buildProgressBarFilter(clipDuration, job.progressBarConfig)
+      if (barFilter) overlaySteps.push({ name: 'progress-bar', filter: barFilter })
+    }
+
+    if (overlaySteps.length === 0) {
+      onProgress(100)
+      return resultPath
+    }
+
+    // Apply each overlay as a separate FFmpeg pass
+    const overlayProgressBase = 70
+    const overlayProgressRange = 30
+    const perStepRange = overlayProgressRange / overlaySteps.length
+    let currentPath = resultPath
+    const tempsToClean: string[] = []
+
+    try {
+      for (let s = 0; s < overlaySteps.length; s++) {
+        if (cancelRequested) return currentPath
+
+        const step = overlaySteps[s]
+        const tempOut = join(tmpdir(), `batchcontent-${step.name}-${Date.now()}.mp4`)
+        console.log(`[Overlay] Clip ${job.clipId}: applying ${step.name} pass`)
+
+        await applyFilterPass(currentPath, tempOut, step.filter)
+
+        // Clean up previous intermediate (but not the original outputPath on the first pass)
+        if (currentPath !== resultPath) {
+          tempsToClean.push(currentPath)
+        }
+        currentPath = tempOut
+
+        onProgress(Math.round(overlayProgressBase + perStepRange * (s + 1)))
+      }
+
+      // Move final result to the output path
+      if (currentPath !== resultPath) {
+        // Remove the original base render output, replace with final overlay result
+        try { unlinkSync(resultPath) } catch { /* ignore */ }
+        renameSync(currentPath, resultPath)
+      }
+
+      onProgress(100)
+      return resultPath
+    } finally {
+      // Clean up any intermediate temp files
+      for (const tmp of tempsToClean) {
+        try { unlinkSync(tmp) } catch { /* ignore */ }
+      }
+      // Clean up temp ASS overlay files
+      for (const assFile of tempAssFiles) {
+        try { unlinkSync(assFile) } catch { /* ignore */ }
+      }
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------
 // Stitched (multi-segment) clip render
 // ---------------------------------------------------------------------------
-
-/**
- * Build a drawtext filter for per-segment overlay text (hook or rehook text).
- * Displays the text for the first 2 seconds of the segment with fade in/out.
- * Uses centered-bold style for 'hook' segments and slide-up style for 'rehook' segments.
- *
- * @param text         Overlay text to display
- * @param role         Segment role ('hook', 'rehook', or other)
- * @param fontFilePath Absolute path to a TTF/OTF font file, or null for fontconfig
- * @returns FFmpeg drawtext filter string
- */
-function buildSegmentOverlayFilter(
-  text: string,
-  role: string | undefined,
-  fontFilePath: string | null
-): string {
-  const safeText = escapeDrawtext(text)
-  const displayDuration = 2.0
-  const fadeIn = 0.3
-  const fadeOut = 0.4
-  const fadeOutStart = displayDuration - fadeOut
-
-  // Alpha expression: fade in → hold → fade out
-  // Uses infix operators to avoid commas — escaped commas (\,) break some Windows FFmpeg builds.
-  const sFI  = fadeIn.toFixed(3)
-  const sFOS = fadeOutStart.toFixed(3)
-  const sDUR = displayDuration.toFixed(3)
-  const sFO  = fadeOut.toFixed(3)
-  const alphaExpr =
-    `(t<${sFI})*t/${sFI}` +
-    `+(t>=${sFI})*(t<=${sFOS})*1` +
-    `+(t>${sFOS})*(${sDUR}-t)/${sFO}`
-
-  const enableExpr = `enable=(t<${sDUR})`
-
-  const fontRef = fontFilePath
-    ? `fontfile='${fontFilePath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'")}'`
-    : `font='Sans Bold'`
-
-  if (role === 'hook') {
-    // Centered-bold style (large, centered, white with black outline)
-    return (
-      `drawtext=${fontRef}:` +
-      `text='${safeText}':` +
-      `fontsize=72:fontcolor=white@${alphaExpr}:` +
-      `borderw=4:bordercolor=black@${alphaExpr}:` +
-      `x=(w-tw)/2:y=(h-th)/2:` +
-      `${enableExpr}`
-    )
-  }
-
-  // Rehook / default style: smaller, positioned at lower-third
-  const yPos = Math.round(1920 * 0.45)
-  return (
-    `drawtext=${fontRef}:` +
-    `text='${safeText}':` +
-    `fontsize=56:fontcolor=yellow@${alphaExpr}:` +
-    `borderw=3:bordercolor=black@${alphaExpr}:` +
-    `x=(w-tw)/2:y=${yPos}:` +
-    `${enableExpr}`
-  )
-}
 
 /**
  * Render a stitched (multi-segment) clip by:
@@ -1292,12 +1585,7 @@ export async function renderStitchedClip(
   // Get source video metadata for crop/scale
   const meta = await getVideoMetadata(job.sourceVideoPath)
 
-  // Resolve font once for overlay text (if any segment has overlayText)
-  const hasOverlays = job.segments.some((s) => s.overlayText)
-  let overlayFontPath: string | null = null
-  if (hasOverlays) {
-    overlayFontPath = await resolveHookFont()
-  }
+  // ASS overlays use font names (not file paths), so no font resolution needed
 
   try {
     // ── Step 1: Extract each segment as a temp file ───────────────────────
@@ -1338,14 +1626,12 @@ export async function renderStitchedClip(
       // Build video filter chain: crop → scale [→ overlay text]
       const filterChain: string[] = [cropFilter, 'scale=1080:1920']
 
-      // Add per-segment overlay text if present
+      // Add per-segment overlay text as ASS subtitle (avoids drawtext on Windows)
+      let segAssPath: string | null = null
       if (seg.overlayText) {
-        const overlayFilter = buildSegmentOverlayFilter(
-          seg.overlayText,
-          seg.role,
-          overlayFontPath
-        )
-        filterChain.push(overlayFilter)
+        segAssPath = generateSegmentOverlayASSFile(seg.overlayText, seg.role)
+        tempFiles.push(segAssPath) // will be cleaned up in finally block
+        filterChain.push(buildASSFilter(segAssPath))
       }
 
       const videoFilter = filterChain.join(',')
@@ -1497,6 +1783,25 @@ export async function startBatchRender(
     console.log(`[Overlays] Font resolved: ${hookFontPath ?? 'system default (fontconfig)'}`)
   }
 
+  // Resolve bundled caption fonts directory for the ASS filter's fontsdir option.
+  // This ensures libass finds Montserrat, Poppins, Inter, etc. without system install.
+  let captionFontsDir: string | null = null
+  try {
+    const { app } = await import('electron')
+    const fontsPath = app.isPackaged
+      ? join(process.resourcesPath, 'fonts')
+      : join(__dirname, '../../resources/fonts')
+    if (existsSync(fontsPath)) {
+      captionFontsDir = fontsPath
+      console.log(`[Captions] Fonts directory: ${captionFontsDir}`)
+    }
+  } catch {
+    const fontsPath = join(__dirname, '../../resources/fonts')
+    if (existsSync(fontsPath)) {
+      captionFontsDir = fontsPath
+    }
+  }
+
   // Inject hook title config into each job when hook title overlay is enabled globally.
   // Per-clip override `enableHookTitle` controls whether the overlay appears on that clip.
   for (const job of jobs) {
@@ -1511,6 +1816,7 @@ export async function startBatchRender(
   }
 
   // Inject re-hook config and compute appear times when re-hook overlay is enabled globally.
+  // The rehook appears immediately after the hook title ends (hook displayDuration).
   // Per-clip override `enableHookTitle` (reused for rehook feature toggle) also controls this.
   if (options.rehookOverlay?.enabled) {
     for (const job of jobs) {
@@ -1520,18 +1826,9 @@ export async function startBatchRender(
 
       job.rehookConfig = options.rehookOverlay
 
-      // Identify optimal appear time using word timestamps if available
-      const clipWords = (job.wordTimestamps ?? []).filter(
-        (w) => w.start >= job.startTime && w.end <= job.endTime
-      )
-      const absoluteRehookPoint = identifyRehookPoint(
-        clipWords,
-        job.startTime,
-        job.endTime,
-        options.rehookOverlay.positionFraction
-      )
-      // Convert absolute source timestamp → clip-relative (0-based) time
-      job.rehookAppearTime = absoluteRehookPoint - job.startTime
+      // Appear immediately after the hook title disappears
+      const hookDuration = options.hookTitleOverlay?.displayDuration ?? 2.5
+      job.rehookAppearTime = hookDuration
 
       // Use pre-set text if provided (e.g. AI-generated ahead of render);
       // otherwise pick a deterministic default phrase from the curated list.
@@ -1540,7 +1837,7 @@ export async function startBatchRender(
       }
 
       console.log(
-        `[Rehook] Clip ${job.clipId}: appear at ${job.rehookAppearTime.toFixed(2)}s — "${job.rehookText}"`
+        `[Rehook] Clip ${job.clipId}: appear at ${job.rehookAppearTime.toFixed(2)}s (after hook) — "${job.rehookText}"`
       )
     }
   }
@@ -1559,6 +1856,43 @@ export async function startBatchRender(
       `[ProgressBar] Overlay enabled — position: ${options.progressBarOverlay.position}, ` +
       `height: ${options.progressBarOverlay.height}px, style: ${options.progressBarOverlay.style}`
     )
+  }
+
+  // ── Caption generation ─────────────────────────────────────────────────────
+  // Generate ASS subtitle files for each job when captions are enabled globally.
+  // Per-clip override `enableCaptions: false` suppresses captions for that clip.
+  if (options.captionsEnabled && options.captionStyle) {
+    for (const job of jobs) {
+      const captionOv = job.clipOverrides?.enableCaptions
+      const captionsEnabled = captionOv === undefined ? true : captionOv
+      if (!captionsEnabled) continue
+
+      const words = (job.wordTimestamps ?? []).filter(
+        (w) => w.start >= job.startTime && w.end <= job.endTime
+      )
+      if (words.length === 0) continue
+
+      // Shift to 0-based clip-relative timestamps
+      const localWords = words.map((w) => ({
+        text: w.text,
+        start: w.start - job.startTime,
+        end: w.end - job.startTime
+      }))
+
+      try {
+        const arCfg = ASPECT_RATIO_CONFIGS[options.outputAspectRatio ?? '9:16']
+        job.assFilePath = await generateCaptions(
+          localWords,
+          options.captionStyle,
+          undefined,
+          arCfg.width,
+          arCfg.height
+        )
+        console.log(`[Captions] Clip ${job.clipId}: generated ${job.assFilePath}`)
+      } catch (captionErr) {
+        console.warn(`[Captions] Clip ${job.clipId}: generation failed:`, captionErr)
+      }
+    }
   }
 
   // ── Filler removal pre-processing ──────────────────────────────────────────
@@ -1781,7 +2115,7 @@ export async function startBatchRender(
             ffmpegCommand: cmd
           })
         }
-      }, qualityParams, outputFormat)
+      }, qualityParams, outputFormat, hookFontPath, captionFontsDir)
 
       if (cancelRequested) return
 

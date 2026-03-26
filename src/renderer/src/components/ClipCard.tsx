@@ -196,6 +196,8 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
+        captionsEnabled: settings.captionsEnabled,
+        captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
       } as Parameters<typeof window.api.startBatchRender>[0])
     } catch (err) {
       setSingleRenderState({ status: 'error', error: err instanceof Error ? err.message : String(err) })

@@ -1721,25 +1721,9 @@ export function SettingsPanel() {
               )}
             >
               <p className="text-xs text-muted-foreground">
-                Renders a mid-clip text overlay at ~{Math.round(settings.rehookOverlay.positionFraction * 100)}%
-                through each clip to reset viewer attention and combat the mid-clip retention dip.
+                Renders a follow-up text overlay immediately after the hook title disappears,
+                adding extra context. White rounded box with dark text, same style as the hook.
               </p>
-
-              <FieldRow label="Overlay Style">
-                <Select
-                  value={settings.rehookOverlay.style}
-                  onValueChange={(v) => setRehookStyle(v as typeof settings.rehookOverlay.style)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bar">Bar</SelectItem>
-                    <SelectItem value="text-only">Text Only</SelectItem>
-                    <SelectItem value="slide-up">Slide Up</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FieldRow>
 
               <FieldRow
                 label={`Display Duration — ${settings.rehookOverlay.displayDuration.toFixed(1)}s`}
@@ -1798,18 +1782,7 @@ export function SettingsPanel() {
                 </FieldRow>
               </div>
 
-              <FieldRow
-                label={`Position — ${Math.round(settings.rehookOverlay.positionFraction * 100)}% through clip`}
-                hint="Where in the clip the re-hook appears (40–60% recommended)"
-              >
-                <Slider
-                  min={30}
-                  max={70}
-                  step={5}
-                  value={[Math.round(settings.rehookOverlay.positionFraction * 100)]}
-                  onValueChange={([v]) => setRehookPositionFraction(v / 100)}
-                />
-              </FieldRow>
+
             </div>
           </div>
         </div>

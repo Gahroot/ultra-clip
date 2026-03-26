@@ -1024,7 +1024,7 @@ const DEFAULT_REHOOK_OVERLAY: RehookOverlaySettings = {
   fadeIn: 0.2,
   fadeOut: 0.3,
   fontSize: 56,
-  textColor: '#FFFF00',
+  textColor: '#000000',
   outlineColor: '#000000',
   outlineWidth: 3,
   positionFraction: 0.45
