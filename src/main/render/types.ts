@@ -6,7 +6,7 @@ import type { SoundPlacementData, SoundDesignOptions } from '../sound-design'
 import type { ZoomSettings } from '../auto-zoom'
 import type { OutputAspectRatio } from '../aspect-ratios'
 import type { HookTitleConfig } from '../hook-title'
-import type { RehookConfig } from '../overlays/rehook'
+import type { RehookConfig, OverlayVisualSettings } from '../overlays/rehook'
 import type { ProgressBarConfig } from '../overlays/progress-bar'
 import type { ClipDescription } from '../ai/description-generator'
 import type { BRollPlacement } from '../broll-placement'
@@ -21,6 +21,7 @@ export type {
   ZoomSettings,
   HookTitleConfig,
   RehookConfig,
+  OverlayVisualSettings,
   ProgressBarConfig,
   ClipDescription,
   BRollPlacement,
@@ -152,6 +153,13 @@ export interface RenderClipJob {
     transcriptText: string
     loopScore?: number
   }
+  /**
+   * When present, this job represents a stitched (multi-segment) clip.
+   * The render pipeline routes these to renderStitchedClip() instead of
+   * the normal single-segment render path. startTime/endTime are still
+   * set (to the first segment) for compatibility but are ignored.
+   */
+  stitchedSegments?: RenderStitchedClipSegment[]
 }
 
 export interface RenderStitchedClipSegment {
@@ -168,6 +176,26 @@ export interface RenderStitchedClipJob {
   cropRegion?: { x: number; y: number; width: number; height: number }
   outputFileName?: string
   hookTitleText?: string
+  /** Hook title overlay config from batch options. */
+  hookTitleConfig?: HookTitleConfig
+  /** Re-hook overlay config from batch options. */
+  rehookConfig?: RehookConfig
+  /** Re-hook text content (AI-generated or default phrase). */
+  rehookText?: string
+  /** Appear time for the re-hook overlay in seconds (absolute, relative to stitched clip start). */
+  rehookAppearTime?: number
+  /** Progress bar overlay config from batch options. */
+  progressBarConfig?: ProgressBarConfig
+  /** Brand kit settings. */
+  brandKit?: BrandKitRenderOptions
+  /** Caption style for generating per-segment captions. */
+  captionStyle?: CaptionStyleInput
+  /** Whether captions are enabled. */
+  captionsEnabled?: boolean
+  /** Word timestamps from the source video transcription (absolute times). */
+  wordTimestamps?: { text: string; start: number; end: number }[]
+  /** Template layout positions for on-screen text elements (percentage-based). */
+  templateLayout?: { titleText: { x: number; y: number }; subtitles: { x: number; y: number }; rehookText: { x: number; y: number } }
 }
 
 export interface RenderBatchOptions {

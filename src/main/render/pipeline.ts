@@ -21,9 +21,10 @@ import {
   type ManifestJobMeta
 } from '../export-manifest'
 
-import type { RenderClipJob, RenderBatchOptions } from './types'
+import type { RenderClipJob, RenderBatchOptions, RenderStitchedClipJob } from './types'
 import type { RenderFeature, FilterContext, OverlayContext, PostProcessContext, OverlayPassResult } from './features/feature'
 import { buildVideoFilter, renderClip, activeCommands } from './base-render'
+import { renderStitchedClip } from './stitched-render'
 import { resolveQualityParams, parseResolution } from './quality'
 import { buildOutputPath } from './filename'
 
@@ -182,6 +183,59 @@ export async function startBatchRender(
     const allTempFiles: string[] = []
 
     try {
+      // ── Stitched clip shortcut ──────────────────────────────────────────
+      // When stitchedSegments are present, delegate to the dedicated stitched
+      // render path which encodes each segment individually then concatenates.
+      // Pass through all batch overlay options so stitched clips get captions,
+      // hook title, rehook, and progress bar overlays.
+      if (job.stitchedSegments && job.stitchedSegments.length > 0) {
+        const stitchedJob: RenderStitchedClipJob = {
+          clipId: job.clipId,
+          sourceVideoPath: job.sourceVideoPath,
+          segments: job.stitchedSegments,
+          cropRegion: job.cropRegion,
+          outputFileName: job.outputFileName,
+          hookTitleText: job.hookTitleText,
+          hookTitleConfig: options.hookTitleOverlay,
+          rehookConfig: options.rehookOverlay,
+          rehookText: job.rehookText,
+          progressBarConfig: options.progressBarOverlay,
+          captionsEnabled: options.captionsEnabled,
+          captionStyle: options.captionStyle,
+          wordTimestamps: job.wordTimestamps,
+          templateLayout: options.templateLayout,
+          brandKit: options.brandKit?.enabled ? {
+            logoPath: options.brandKit.logoPath,
+            logoPosition: options.brandKit.logoPosition,
+            logoScale: options.brandKit.logoScale,
+            logoOpacity: options.brandKit.logoOpacity,
+            introBumperPath: options.brandKit.introBumperPath,
+            outroBumperPath: options.brandKit.outroBumperPath
+          } : undefined
+        }
+
+        // Compute rehook text and appear time
+        if (stitchedJob.rehookConfig?.enabled) {
+          if (!stitchedJob.rehookText) {
+            const { getDefaultRehookPhrase } = await import('../overlays/rehook')
+            stitchedJob.rehookText = getDefaultRehookPhrase(job.clipId)
+          }
+          stitchedJob.rehookAppearTime = options.hookTitleOverlay?.displayDuration ?? 2.5
+        }
+
+        await renderStitchedClip(stitchedJob, outputPath, (percent) => {
+          if (!cancelRequested) {
+            window.webContents.send('render:clipProgress', { clipId: job.clipId, percent })
+          }
+        })
+
+        manifestResults.set(job.clipId, outputPath)
+        manifestRenderTimes.set(job.clipId, Date.now() - clipStartTime)
+        completed++
+        window.webContents.send('render:clipDone', { clipId: job.clipId, outputPath })
+        return
+      }
+
       // ── Phase 0: Get source metadata ────────────────────────────────────
       let meta: { width: number; height: number; codec: string; fps: number; audioCodec: string; duration: number }
       const cached = metadataCache.get(job.sourceVideoPath)

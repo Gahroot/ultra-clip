@@ -245,6 +245,7 @@ export function ClipGrid() {
   const setAutoModeResult = useStore((s) => s.setAutoModeResult)
   const pipeline = useStore((s) => s.pipeline)
   const setRenderError = useStore((s) => s.setRenderError)
+  const transcriptions = useStore((s) => s.transcriptions)
 
   // Batch multi-select
   const selectedClipIds = useStore((s) => s.selectedClipIds)
@@ -571,22 +572,34 @@ export function ClipGrid() {
       }
     }
 
-    // Add stitched clip render jobs
+    // Add stitched clip render jobs — include ALL segments so the pipeline
+    // routes them through renderStitchedClip() for proper concatenation.
+    // Get full transcription words for stitched clips (they span multiple segments)
+    const transcriptionWords = activeSourceId && transcriptions[activeSourceId]
+      ? transcriptions[activeSourceId].words.map((w) => ({ text: w.text, start: w.start, end: w.end }))
+      : undefined
+
     for (const sc of approvedStitchedClips) {
-      // For stitched clips, render using the first segment as the "primary" clip
-      // The actual multi-segment rendering is handled by the render pipeline
       const firstSeg = sc.segments[0]
       if (!firstSeg) continue
       jobs.push({
         clipId: sc.id,
         sourceVideoPath: sourcePath,
+        // startTime/endTime set to first segment for compatibility (ignored by stitched path)
         startTime: firstSeg.startTime,
         endTime: firstSeg.endTime,
         cropRegion: sc.cropRegion
           ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
           : undefined,
         hookTitleText: sc.hookText || undefined,
-        outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`
+        wordTimestamps: transcriptionWords,
+        outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
+        stitchedSegments: sc.segments.map((seg) => ({
+          startTime: seg.startTime,
+          endTime: seg.endTime,
+          overlayText: seg.overlayText ?? (seg.role === 'hook' ? sc.hookText : undefined),
+          role: seg.role
+        }))
       })
     }
 
@@ -836,7 +849,10 @@ export function ClipGrid() {
       }
     }
 
-    // Check stitched clip IDs
+    // Check stitched clip IDs — include ALL segments for proper concatenation
+    const retryTranscriptionWords = activeSourceId && transcriptions[activeSourceId]
+      ? transcriptions[activeSourceId].words.map((w) => ({ text: w.text, start: w.start, end: w.end }))
+      : undefined
     const approvedStitched = stitchedClips.filter((c) => c.status === 'approved')
     for (const sc of approvedStitched) {
       if (failedClipIds.has(sc.id)) {
@@ -851,7 +867,14 @@ export function ClipGrid() {
             ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
             : undefined,
           hookTitleText: sc.hookText || undefined,
-          outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`
+          wordTimestamps: retryTranscriptionWords,
+          outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
+          stitchedSegments: sc.segments.map((seg) => ({
+            startTime: seg.startTime,
+            endTime: seg.endTime,
+            overlayText: seg.overlayText ?? (seg.role === 'hook' ? sc.hookText : undefined),
+            role: seg.role
+          }))
         })
       }
     }
@@ -983,7 +1006,7 @@ export function ClipGrid() {
         templateLayout: {
           titleText: templateLayout.titleText,
           subtitles: templateLayout.subtitles,
-          rehookText: templateLayout.rehookText
+          rehookText: templateLayout.titleText
         }
       } as Parameters<typeof window.api.startBatchRender>[0])
     } catch (err) {
