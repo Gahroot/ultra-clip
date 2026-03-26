@@ -21,8 +21,6 @@ import {
   isGpuSessionError,
   type QualityParams
 } from '../ffmpeg'
-import { generateZoomFilter } from '../auto-zoom'
-import type { ZoomSettings } from '../auto-zoom'
 import { computeCenterCropForRatio } from '../aspect-ratios'
 import type { OutputAspectRatio } from '../aspect-ratios'
 import type { RenderClipJob, BrandKitRenderOptions } from './types'
@@ -41,17 +39,18 @@ export { activeCommands }
 // ---------------------------------------------------------------------------
 
 /**
- * Build the crop → scale [→ zoompan] video filter chain.
+ * Build the crop → scale video filter chain.
  *
  * When the job has a face-detected `cropRegion`, it's used directly.
  * Otherwise a center crop for the target aspect ratio is computed.
+ *
+ * Note: Auto-zoom (Ken Burns) is handled by the AutoZoomFeature's videoFilter()
+ * method. This function only produces the base crop + scale chain.
  */
 export function buildVideoFilter(
   job: RenderClipJob,
   sourceWidth: number,
   sourceHeight: number,
-  autoZoom?: ZoomSettings,
-  _hookFontPath?: string | null,
   targetResolution?: { width: number; height: number },
   outputAspectRatio?: OutputAspectRatio
 ): string {
@@ -80,15 +79,7 @@ export function buildVideoFilter(
 
   const scaleFilter = `scale=${outW}:${outH}`
 
-  // Build optional Ken Burns zoom filter (applied after scale, before subtitles)
-  const clipDuration = job.endTime - job.startTime
-  const zoomFilter = autoZoom ? generateZoomFilter(clipDuration, autoZoom, 0.38, outW, outH) : ''
-
-  // Build the filter chain: crop → scale [→ zoompan]
-  const chain: string[] = [cropFilter, scaleFilter]
-  if (zoomFilter) chain.push(zoomFilter)
-
-  return chain.join(',')
+  return `${cropFilter},${scaleFilter}`
 }
 
 // ---------------------------------------------------------------------------
