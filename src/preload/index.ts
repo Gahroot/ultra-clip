@@ -46,12 +46,12 @@ const api = {
     ipcRenderer.on('ai:scoringProgress', handler)
     return () => ipcRenderer.removeListener('ai:scoringProgress', handler)
   },
-  generateHookText: (apiKey: string, transcript: string) =>
-    ipcRenderer.invoke('ai:generateHookText', apiKey, transcript),
+  generateHookText: (apiKey: string, transcript: string, videoSummary?: string, keyTopics?: string[]) =>
+    ipcRenderer.invoke('ai:generateHookText', apiKey, transcript, videoSummary, keyTopics),
   rescoreSingleClip: (apiKey: string, clipText: string, clipDuration: number) =>
     ipcRenderer.invoke('ai:rescoreSingleClip', apiKey, clipText, clipDuration),
-  generateRehookText: (apiKey: string, transcript: string, clipStart: number, clipEnd: number) =>
-    ipcRenderer.invoke('ai:generateRehookText', apiKey, transcript, clipStart, clipEnd),
+  generateRehookText: (apiKey: string, transcript: string, clipStart: number, clipEnd: number, videoSummary?: string, keyTopics?: string[]) =>
+    ipcRenderer.invoke('ai:generateRehookText', apiKey, transcript, clipStart, clipEnd, videoSummary, keyTopics),
   validateGeminiKey: (apiKey: string) =>
     ipcRenderer.invoke('ai:validateGeminiKey', apiKey),
   validatePexelsKey: (apiKey: string) =>
@@ -329,6 +329,14 @@ const api = {
     originalEnd: number,
     transcript: unknown
   ) => ipcRenderer.invoke('ai:optimizeClipBoundaries', gap, originalStart, originalEnd, transcript),
+
+  optimizeClipEndpoints: (
+    mode: string,
+    clipStart: number,
+    clipEnd: number,
+    transcript: unknown,
+    gap?: unknown
+  ) => ipcRenderer.invoke('ai:optimizeClipEndpoints', mode, clipStart, clipEnd, transcript, gap),
 
   rankClipsByCuriosity: (
     clips: unknown[],

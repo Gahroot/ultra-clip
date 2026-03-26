@@ -116,10 +116,6 @@ interface RehookOverlaySettings {
   displayDuration: number
   fadeIn: number
   fadeOut: number
-  fontSize: number
-  textColor: string
-  outlineColor: string
-  outlineWidth: number
   positionFraction: number
 }
 
@@ -167,6 +163,17 @@ interface RenderClipJob {
   loopStrategy?: string
   /** Audio crossfade duration in seconds (only used when loopStrategy === 'crossfade') */
   crossfadeDuration?: number
+  /**
+   * When present, this job represents a stitched (multi-segment) clip.
+   * The pipeline routes these to renderStitchedClip() for proper concatenation.
+   * startTime/endTime are still set (to the first segment) but are ignored.
+   */
+  stitchedSegments?: Array<{
+    startTime: number
+    endTime: number
+    overlayText?: string
+    role?: string
+  }>
 }
 
 interface RenderBatchOptions {
@@ -200,6 +207,7 @@ interface RenderBatchOptions {
   templateLayout?: {
     titleText: { x: number; y: number }
     subtitles: { x: number; y: number }
+    /** @deprecated Always mirrors titleText — do not set independently */
     rehookText: { x: number; y: number }
   }
 }
@@ -676,9 +684,9 @@ interface Api {
   onTranscribeProgress: (callback: (data: TranscriptionProgress) => void) => () => void
   scoreTranscript: (apiKey: string, transcript: string, duration: number, targetDuration?: string) => Promise<ScoringResult>
   onScoringProgress: (callback: (data: ScoringProgress) => void) => () => void
-  generateHookText: (apiKey: string, transcript: string) => Promise<string>
+  generateHookText: (apiKey: string, transcript: string, videoSummary?: string, keyTopics?: string[]) => Promise<string>
   rescoreSingleClip: (apiKey: string, clipText: string, clipDuration: number) => Promise<{ score: number; reasoning: string; hookText: string }>
-  generateRehookText: (apiKey: string, transcript: string, clipStart: number, clipEnd: number) => Promise<string>
+  generateRehookText: (apiKey: string, transcript: string, clipStart: number, clipEnd: number, videoSummary?: string, keyTopics?: string[]) => Promise<string>
   validateGeminiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>
   validatePexelsKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>
   detectFaceCrops: (videoPath: string, segments: { start: number; end: number }[]) => Promise<CropRegion[]>
@@ -762,6 +770,13 @@ interface Api {
     originalStart: number,
     originalEnd: number,
     transcript: TranscriptionResult
+  ) => Promise<ClipBoundary>
+  optimizeClipEndpoints: (
+    mode: string,
+    clipStart: number,
+    clipEnd: number,
+    transcript: TranscriptionResult,
+    gap?: CuriosityGap
   ) => Promise<ClipBoundary>
   rankClipsByCuriosity: (
     clips: CuriosityClipCandidate[],

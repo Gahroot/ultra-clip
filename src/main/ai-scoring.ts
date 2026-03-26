@@ -96,7 +96,19 @@ TIMING RULES:
 - Start at natural sentence beginnings, end at natural conclusions
 
 HOOK TEXT:
-For each segment, write 1-6 words of on-screen hook text that would appear in the first 2 seconds. It should stop the scroll — create curiosity, shock, or intrigue. NOT a summary.
+For each segment, write 1-5 words of on-screen hook text that appears in the first 2 seconds. 80%+ viewers watch with sound off — the hook must work silently.
+
+The hook must do ONE of these:
+- CALL OUT the target audience: "Freelancers: stop doing this"
+- NAME the specific problem or desire: "$47K/month from rentals?"
+- OPEN a curiosity loop with a SPECIFIC detail: "The 3am rule changed everything"
+- ATTACK a common belief: "College is a scam and here's why"
+
+Rules:
+- Use a SPECIFIC noun, number, or detail from the transcript — never generic filler
+- NOT a summary of the clip
+- No generic hooks like "Wait for it", "Watch this", "You need to see this"
+- Must make the RIGHT audience stop scrolling — filter IN your people
 
 Return valid JSON with this exact structure:
 {
@@ -106,7 +118,7 @@ Return valid JSON with this exact structure:
       "end_time": "MM:SS",
       "text": "transcript text for this segment",
       "score": 85,
-      "hook_text": "Wait until you see this",
+      "hook_text": "Introverts: this changes everything",
       "reasoning": "Strong opening hook with surprising insight about..."
     }
   ],
@@ -356,13 +368,24 @@ SCORING (0-100):
 - 60-69: Decent — may need editing to shine
 - Below 60: Weak — limited viral potential
 
-HOOK TEXT: Write 1-6 words of on-screen text that would appear in the first 2 seconds. Stop-the-scroll energy — curiosity, shock, or intrigue.
+HOOK TEXT: Write 5 words or less of on-screen text for the first 2 seconds. 80%+ viewers watch with sound off — the hook must work silently.
+
+The hook must do ONE of these:
+- CALL OUT the target audience (e.g. "Freelancers: stop doing this")
+- NAME the specific problem or desire (e.g. "$47K/month from rentals?")
+- OPEN a curiosity loop with a SPECIFIC detail from the transcript
+- ATTACK a common belief with specifics
+
+Rules:
+- Pull a SPECIFIC noun, number, or detail from the transcript
+- No generic hooks like "Wait for it", "Watch this", "Nobody talks about this"
+- Must make the RIGHT audience stop scrolling
 
 Return valid JSON:
 {
   "score": 85,
   "reasoning": "Why this clip has viral potential (or lacks it)",
-  "hook_text": "Wait until you see this"
+  "hook_text": "$47K/month from rentals?"
 }
 
 Transcript: "${clipText.trim()}"`
@@ -392,39 +415,49 @@ Transcript: "${clipText.trim()}"`
 // generateHookText
 // ---------------------------------------------------------------------------
 
-export async function generateHookText(apiKey: string, transcript: string): Promise<string> {
+export async function generateHookText(apiKey: string, transcript: string, videoSummary?: string, keyTopics?: string[]): Promise<string> {
   const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+
+  let contextBlock = ''
+  if (videoSummary || (keyTopics && keyTopics.length > 0)) {
+    const parts: string[] = []
+    if (videoSummary) parts.push(`Video context: ${videoSummary}`)
+    if (keyTopics && keyTopics.length > 0) parts.push(`Key topics: ${keyTopics.join(', ')}`)
+    contextBlock = parts.join('\n') + '\n\n'
+  }
 
   try {
     return await callGeminiWithRetry(
       model,
       `You are an expert short-form content creator specializing in organic (non-ad) TikTok, Instagram Reels, and YouTube Shorts.
 
-Your job is to write on-screen hook text that appears in the first 2 seconds of a clip.
+Your job is to write on-screen hook text that appears in the first 2 seconds of a clip. 80%+ viewers watch with sound off — the hook must work silently, hooking attention AND adding context so the right audience stays.
 
-The hook MUST:
-- Stop the scroll — make the viewer pause
-- Open a curiosity loop or trigger an emotional response
+Rules:
+- 5 words or LESS — no exceptions
+- Stop the scroll — curiosity, shock, intrigue, or a question
 - Feel native and authentic — NOT like an ad
-- Be 1-6 words MAX
+- Be SPECIFIC to the transcript — fill in real details from the content
 
-Choose from one of these hook types based on the content:
-- Question: "Did you know this?", "Why does nobody talk about this?"
-- Controversy: "Unpopular opinion:", "They lied to you about this"
-- Intrigue: "This changed everything", "Nobody expected this"
-- Relatability: "Every [person] needs to see this", "If you've ever [done X]..."
+The hook MUST do one of:
+• AUDIENCE CALLOUT: Name who this is for — "Freelancers: stop doing this", "New parents: watch this", "Gym bros hate this"
+• SPECIFIC PROBLEM/DESIRE: Name the exact outcome — "$47K/month from rentals?", "Lost 30lbs eating pizza", "3x your close rate"
+• CURIOSITY LOOP with DETAIL: Use a specific noun/number from the transcript — "The 3am rule changed everything", "One word killed his deal", "She said 4 words..."
+• BELIEF ATTACK: Challenge with specifics — "College is a scam", "8 hours of sleep is a lie", "Stretching doesn't work"
 
-Adapt the pattern to be SPECIFIC to the transcript. Fill in real details from the content.
+BANNED (too generic, adds no context):
+"Wait for it", "Watch this", "You won't believe", "This changes everything",
+"Nobody talks about this", "Must watch", "Check this out", "Here's the thing",
+"Game changer", "Mind blown", "Unpopular opinion"
 
 Do NOT:
 - Summarize the clip
-- Use generic filler ("Check this out", "Must watch")
 - Add hashtags, emojis, or extra punctuation
 
 Given the transcript below, write ONE piece of on-screen hook text. Return ONLY the text, nothing else.
 
-Transcript: "${transcript}"`,
+${contextBlock}Transcript: "${transcript}"`,
       'hooks'
     )
   } catch (err) {

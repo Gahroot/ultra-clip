@@ -52,9 +52,10 @@ import type { SplitScreenLayout, VideoSource, SplitScreenConfig } from './layout
 import {
   detectCuriosityGaps,
   optimizeClipBoundaries,
+  optimizeClipEndpoints,
   rankClipsByCuriosity
 } from './ai/curiosity-gap'
-import type { CuriosityGap, ClipCandidate } from './ai/curiosity-gap'
+import type { CuriosityGap, ClipCandidate, ClipEndMode } from './ai/curiosity-gap'
 import {
   detectStoryArcs,
   generateSeriesMetadata,
@@ -179,8 +180,8 @@ app.whenReady().then(() => {
   })
 
   // IPC: FFmpeg — generate thumbnail as base64 data URI
-  ipcMain.handle('ffmpeg:thumbnail', (_event, videoPath: string) => {
-    return generateThumbnail(videoPath)
+  ipcMain.handle('ffmpeg:thumbnail', (_event, videoPath: string, timeSec?: number) => {
+    return generateThumbnail(videoPath, timeSec)
   })
 
   // IPC: FFmpeg — extract audio waveform peaks for the trim editor visualizer
@@ -243,16 +244,16 @@ app.whenReady().then(() => {
   // IPC: AI — generate hook text for a clip
   ipcMain.handle(
     'ai:generateHookText',
-    async (_event, apiKey: string, transcript: string) => {
-      return generateHookText(apiKey, transcript)
+    async (_event, apiKey: string, transcript: string, videoSummary?: string, keyTopics?: string[]) => {
+      return generateHookText(apiKey, transcript, videoSummary, keyTopics)
     }
   )
 
   // IPC: AI — generate re-hook / pattern interrupt text for the mid-clip overlay
   ipcMain.handle(
     'ai:generateRehookText',
-    async (_event, apiKey: string, transcript: string, clipStart: number, clipEnd: number) => {
-      return generateRehookText(apiKey, transcript, clipStart, clipEnd)
+    async (_event, apiKey: string, transcript: string, clipStart: number, clipEnd: number, videoSummary?: string, keyTopics?: string[]) => {
+      return generateRehookText(apiKey, transcript, clipStart, clipEnd, videoSummary, keyTopics)
     }
   )
 
@@ -780,6 +781,13 @@ app.whenReady().then(() => {
     }
   )
 
+  // IPC: AI — optimize clip start/end points using a specific mode strategy
+  ipcMain.handle(
+    'ai:optimizeClipEndpoints',
+    (_e, mode: ClipEndMode, clipStart: number, clipEnd: number, transcript: TranscriptionResult, gap?: CuriosityGap) =>
+      optimizeClipEndpoints(mode, clipStart, clipEnd, transcript, gap)
+  )
+
   // IPC: AI — re-rank clip candidates by blending virality + curiosity gap scores
   ipcMain.handle(
     'ai:rankClipsByCuriosity',
@@ -1190,6 +1198,10 @@ app.whenReady().then(() => {
   ipcMain.handle('python:getStatus', () => checkPythonSetup())
 
   // IPC: Python setup — start installation
+  // TODO: GPU acceleration opportunity — after venv creation, detect NVIDIA GPU
+  // (e.g. run nvidia-smi) and if present, install CUDA-enabled PyTorch before
+  // installing requirements.txt. This would give 10-50x transcription speedup.
+  // Command: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
   ipcMain.handle('python:startSetup', async (event) => {
     runFullSetup(event.sender).catch((err) => {
       event.sender.send('python:setupDone', { success: false, error: err.message })

@@ -26,20 +26,28 @@ export interface RehookConfig {
   fadeIn: number
   /** Fade-out time in seconds (default 0.3). */
   fadeOut: number
-  /** Font size in pixels on the 1080×1920 canvas (default 56). */
-  fontSize: number
-  /** Text color in CSS hex format (default '#FFFF00'). */
-  textColor: string
-  /** Outline / border color in CSS hex format (default '#000000'). */
-  outlineColor: string
-  /** Outline width in pixels (default 3). */
-  outlineWidth: number
   /**
    * Fraction through the clip duration to insert the re-hook (0.4–0.6).
    * The actual timestamp may shift to align with a natural word boundary
    * or pivot word. Default: 0.45.
    */
   positionFraction: number
+}
+
+/**
+ * Shared visual settings inherited from the hook title overlay config.
+ * Passed separately to `buildRehookFilter` so both overlays share the
+ * same font size, text color, outline color, and outline width.
+ */
+export interface OverlayVisualSettings {
+  /** Font size in pixels on the 1080×1920 canvas. */
+  fontSize: number
+  /** Text color in CSS hex format. */
+  textColor: string
+  /** Outline / border color in CSS hex format. */
+  outlineColor: string
+  /** Outline width in pixels. */
+  outlineWidth: number
 }
 
 // ---------------------------------------------------------------------------
@@ -73,18 +81,25 @@ const PIVOT_WORDS = new Set([
 /**
  * Curated fallback phrases used when AI generation is skipped or fails.
  * Picked deterministically from `getDefaultRehookPhrase()`.
+ *
+ * Original generic phrases (kept as reference for AI prompt examples):
+ *   "But here's the crazy part...", "Watch what happens next",
+ *   "This is where it gets interesting", "Wait for it...",
+ *   "Here's what nobody tells you", "The plot twist:",
+ *   "But it gets better...", "This changed everything",
+ *   "Nobody expected this", "And here's the kicker..."
  */
 export const DEFAULT_REHOOK_PHRASES: readonly string[] = [
-  "But here's the crazy part...",
-  'Watch what happens next',
-  "This is where it gets interesting",
-  'Wait for it...',
-  "Here's what nobody tells you",
-  'The plot twist:',
-  'But it gets better...',
-  'This changed everything',
-  'Nobody expected this',
-  "And here's the kicker..."
+  "But here's why it matters...",
+  "This is the part they skip...",
+  "Pay attention to this next part",
+  "Here's where most people get it wrong",
+  "This detail changes everything...",
+  "The part nobody mentions:",
+  "But then this happened...",
+  "Here's the actual reason:",
+  "Most people miss this part",
+  "And this is the real problem..."
 ]
 
 // ---------------------------------------------------------------------------
@@ -189,44 +204,60 @@ export async function generateRehookText(
   apiKey: string,
   transcript: string,
   clipStart: number,
-  clipEnd: number
+  clipEnd: number,
+  videoSummary?: string,
+  keyTopics?: string[]
 ): Promise<string> {
   if (!apiKey) return getDefaultRehookPhrase(transcript)
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
     const clipDuration = Math.round(clipEnd - clipStart)
+
+    let contextBlock = ''
+    if (videoSummary || (keyTopics && keyTopics.length > 0)) {
+      const parts: string[] = []
+      if (videoSummary) parts.push(`Video context: ${videoSummary}`)
+      if (keyTopics && keyTopics.length > 0) parts.push(`Key topics: ${keyTopics.join(', ')}`)
+      contextBlock = parts.join('\n') + '\n\n'
+    }
 
     const prompt =
       `You are an expert short-form video editor specializing in viewer retention.
 
-Your task: write a "pattern interrupt" text overlay that appears mid-way through a ${clipDuration}-second clip to reset attention and build anticipation for what comes next.
+Your task: write a "re-hook" text overlay that appears mid-way through a ${clipDuration}-second clip. 80%+ viewers watch with sound off — the re-hook must work silently to add context and make the viewer personally feel why this matters to THEM.
 
-These overlays are called "re-hooks". Examples:
+Re-hooks add context and tell viewers WHY they should keep watching. They are NOT generic filler.
+
+GOOD re-hooks (content-specific):
+- "But here's why it matters..."
+- "This is the part they skip..."
+- "Here's where most get it wrong"
+- "The part nobody mentions:"
+- "But then this happened..."
+- "Here's the actual reason:"
+
+GENERIC re-hooks to AVOID (these are the old style — do NOT produce these):
 - "But here's the crazy part..."
 - "Watch what happens next"
-- "This is where it gets interesting"
 - "Wait for it..."
-- "Here's what nobody tells you"
-- "The plot twist:"
 - "Nobody expected this"
-- "And here's the kicker..."
 
 Rules:
-- 3–6 words MAXIMUM
-- Must create curiosity or anticipation — do NOT reveal what's coming, tease it
+- 5 words or LESS — no exceptions
+- Add CONTEXT — hint at what's coming or why it matters
+- If possible, use a specific word or detail from the second half of the transcript
 - Feel organic, not like an advertisement
-- Match the energy and topic of the transcript
 - No hashtags, no emojis; only punctuation allowed: ellipsis (...) or colon (:)
 
-Transcript: "${transcript.slice(0, 600)}"
+${contextBlock}Transcript: "${transcript.slice(0, 600)}"
 
-Return ONLY the pattern interrupt text, nothing else.`
+Return ONLY the re-hook text, nothing else.`
 
     const result = await model.generateContent(prompt)
-    emitUsageFromResponse('rehook', 'gemini-2.5-flash-lite', result.response)
+    emitUsageFromResponse('rehook', 'gemini-2.5-flash', result.response)
     const raw = result.response.text().trim()
     const firstLine = raw.split('\n')[0].replace(/^["']|["']$/g, '').trim()
     return firstLine.length > 0 ? firstLine : getDefaultRehookPhrase(transcript)
@@ -296,7 +327,9 @@ function hexToFFmpegColor(hex: string, alpha: number = 1.0): string {
  * of both the hook title zone (top) and caption zone (bottom).
  *
  * @param text          The re-hook text (escaped automatically).
- * @param config        Re-hook display configuration.
+ * @param config        Re-hook display configuration (timing + style).
+ * @param visuals       Shared visual settings (fontSize, textColor, outlineColor,
+ *                      outlineWidth) — typically inherited from the hook title config.
  * @param appearTime    When to show the overlay (seconds from clip start, 0-based).
  * @param fontFilePath  Absolute path to a TTF/OTF font file, or null to use
  *                      the system fontconfig name "Sans Bold".
@@ -308,6 +341,7 @@ function hexToFFmpegColor(hex: string, alpha: number = 1.0): string {
 export function buildRehookFilter(
   text: string,
   config: RehookConfig,
+  visuals: OverlayVisualSettings,
   appearTime: number,
   fontFilePath: string | null,
   safeZone?: { y: number; height: number }
@@ -318,12 +352,10 @@ export function buildRehookFilter(
     style,
     displayDuration,
     fadeIn,
-    fadeOut,
-    fontSize,
-    textColor,
-    outlineColor,
-    outlineWidth
+    fadeOut
   } = config
+
+  const { fontSize, textColor, outlineColor, outlineWidth } = visuals
 
   const appearEnd = appearTime + displayDuration
   const fadeOutStart = appearEnd - fadeOut
