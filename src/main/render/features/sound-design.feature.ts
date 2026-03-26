@@ -1,0 +1,134 @@
+// ---------------------------------------------------------------------------
+// Sound design feature — background music + SFX audio mixing
+// ---------------------------------------------------------------------------
+
+import type { RenderFeature, PrepareResult } from './feature'
+import type { RenderClipJob, RenderBatchOptions, BrandKitRenderOptions, SoundPlacementData } from '../types'
+import { buildLogoPositionExpr } from './brand-kit.feature'
+
+// ---------------------------------------------------------------------------
+// Sound filter_complex builder — exported for use by base-render.ts
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a filter_complex string that:
+ *  - Processes the video stream (crop → scale → optional ASS subtitles → optional logo) → [outv]
+ *  - Mixes original audio with optional music and SFX layers → [outa]
+ *
+ * Sound input indices start at 1 (input 0 is the source video).
+ * Logo input index (if present) = placements.length + 1.
+ */
+export function buildSoundFilterComplex(
+  videoFilter: string,
+  placements: SoundPlacementData[],
+  clipDuration: number,
+  logoOverlay?: { bk: BrandKitRenderOptions; inputIndex: number }
+): string {
+  const segments: string[] = []
+
+  // ── Video node ─────────────────────────────────────────────────────────────
+  if (logoOverlay) {
+    const { bk, inputIndex } = logoOverlay
+    const logoW = Math.round(bk.logoScale * 1080)
+    const opacity = bk.logoOpacity.toFixed(3)
+    const posExpr = buildLogoPositionExpr(bk.logoPosition)
+
+    segments.push(`[0:v]${videoFilter}[mainv]`)
+    segments.push(
+      `[${inputIndex}:v]loop=loop=-1:size=1:start=0,scale=${logoW}:-2,` +
+      `format=rgba,colorchannelmixer=aa=${opacity}[logo]`
+    )
+    segments.push(`[mainv][logo]overlay=${posExpr}:format=auto[outv]`)
+  } else {
+    segments.push(`[0:v]${videoFilter}[outv]`)
+  }
+
+  // ── Audio nodes ───────────────────────────────────────────────────────────
+  // [0:a] = original speaker audio; additional inputs start at index 1
+  const mixInputs: string[] = ['[0:a]']
+
+  placements.forEach((p, i) => {
+    const inputIdx = i + 1
+    const label = `[snd${i}]`
+    const vol = p.volume.toFixed(3)
+
+    if (p.type === 'music') {
+      // Loop the entire music file (size=0), trim to clip duration, apply volume
+      segments.push(
+        `[${inputIdx}:a]aloop=loop=1000:size=0,` +
+          `atrim=0:${clipDuration.toFixed(3)},` +
+          `volume=${vol}${label}`
+      )
+    } else {
+      // SFX: delay to target timestamp, apply volume.
+      // `adelay=delays=MS:all=1` applies the same delay to all channels
+      const delayMs = Math.round(p.startTime * 1000)
+      segments.push(
+        `[${inputIdx}:a]adelay=delays=${delayMs}:all=1,volume=${vol}${label}`
+      )
+    }
+
+    mixInputs.push(label)
+  })
+
+  // ── Mix node ───────────────────────────────────────────────────────────────
+  if (mixInputs.length > 1) {
+    // duration=first: use the original audio stream (0:a) as length reference
+    // normalize=0: don't reduce volume by 1/N — preserve levels
+    segments.push(
+      `${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=first:normalize=0[outa]`
+    )
+  }
+
+  return segments.join(';')
+}
+
+// ---------------------------------------------------------------------------
+// Sound design feature implementation
+// ---------------------------------------------------------------------------
+
+/**
+ * Sound design feature handles background music and SFX mixing.
+ *
+ * Sound placements are pre-computed by the IPC handler in index.ts (via
+ * `generateSoundPlacements`) and stored on `job.soundPlacements` before
+ * `startBatchRender` is called.
+ *
+ * Like brand kit, sound design does NOT use `overlayPass()`. The actual audio
+ * mixing is integrated into the base render's filter_complex path using
+ * `buildSoundFilterComplex()`.
+ *
+ * This feature's `prepare()` only validates that placements exist and logs
+ * the result. The heavy lifting is done by the exported builder function.
+ */
+export const soundDesignFeature: RenderFeature = {
+  name: 'sound-design',
+
+  async prepare(
+    job: RenderClipJob,
+    _batchOptions: RenderBatchOptions
+  ): Promise<PrepareResult> {
+    // Per-clip override can disable sound design
+    const perClipOverride = job.clipOverrides?.enableSoundDesign
+    if (perClipOverride === false) {
+      // Explicitly disabled — clear placements so base render skips sound path
+      job.soundPlacements = undefined
+      return { tempFiles: [], modified: false }
+    }
+
+    const hasPlacements =
+      Array.isArray(job.soundPlacements) && job.soundPlacements.length > 0
+
+    if (!hasPlacements) {
+      return { tempFiles: [], modified: false }
+    }
+
+    const musicCount = job.soundPlacements!.filter(p => p.type === 'music').length
+    const sfxCount = job.soundPlacements!.filter(p => p.type === 'sfx').length
+    console.log(
+      `[SoundDesign] Clip ${job.clipId}: ${musicCount} music track(s), ${sfxCount} SFX placement(s)`
+    )
+
+    return { tempFiles: [], modified: true }
+  }
+}
