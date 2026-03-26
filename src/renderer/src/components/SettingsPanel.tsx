@@ -43,7 +43,6 @@ import {
   type ZoomIntensity,
   type LogoPosition,
   type HookTitleStyle,
-  type RehookStyle,
   type ProgressBarStyle,
   type ProgressBarPosition,
   type HookTextTemplate,
@@ -62,18 +61,6 @@ const ANIMATION_OPTIONS: { value: CaptionAnimation; label: string }[] = [
   { value: 'fade-in', label: 'Fade In' },
   { value: 'glow', label: 'Glow' }
 ]
-
-const POSITION_OPTIONS = [
-  { value: 'bottom', label: 'Bottom (default)' },
-  { value: 'center', label: 'Center' },
-  { value: 'top', label: 'Top' }
-]
-
-// Caption position is encoded via the fontName convention we track separately
-// We store it as a custom field on a derived style object
-interface CaptionStyleWithPosition extends CaptionStyle {
-  position?: 'bottom' | 'center' | 'top'
-}
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
@@ -157,12 +144,7 @@ export function SettingsPanel() {
     setHookTitleTextColor,
     setHookTitleOutlineColor,
     setRehookEnabled,
-    setRehookStyle,
     setRehookDisplayDuration,
-    setRehookFontSize,
-    setRehookTextColor,
-    setRehookOutlineColor,
-    setRehookPositionFraction,
     setProgressBarEnabled,
     setProgressBarPosition,
     setProgressBarHeight,
@@ -225,12 +207,7 @@ export function SettingsPanel() {
     setHookTitleTextColor: s.setHookTitleTextColor,
     setHookTitleOutlineColor: s.setHookTitleOutlineColor,
     setRehookEnabled: s.setRehookEnabled,
-    setRehookStyle: s.setRehookStyle,
     setRehookDisplayDuration: s.setRehookDisplayDuration,
-    setRehookFontSize: s.setRehookFontSize,
-    setRehookTextColor: s.setRehookTextColor,
-    setRehookOutlineColor: s.setRehookOutlineColor,
-    setRehookPositionFraction: s.setRehookPositionFraction,
     setProgressBarEnabled: s.setProgressBarEnabled,
     setProgressBarPosition: s.setProgressBarPosition,
     setProgressBarHeight: s.setProgressBarHeight,
@@ -316,9 +293,6 @@ export function SettingsPanel() {
   type ValidationState = 'idle' | 'testing' | 'valid' | 'invalid'
   const [geminiValidation, setGeminiValidation] = useState<{ state: ValidationState; error?: string }>({ state: 'idle' })
   const [pexelsValidation, setPexelsValidation] = useState<{ state: ValidationState; error?: string }>({ state: 'idle' })
-
-  // Extended caption style tracks position independently
-  const [captionPosition, setCaptionPosition] = useState<'bottom' | 'center' | 'top'>('bottom')
 
   // Available fonts loaded from main process
   const [availableFonts, setAvailableFonts] = useState<Array<{ name: string; path: string; source: 'bundled' | 'system' }>>([])
@@ -1125,22 +1099,6 @@ export function SettingsPanel() {
                 </Select>
               </FieldRow>
 
-              {/* Position */}
-              <FieldRow label="Position">
-                <Select value={captionPosition} onValueChange={(v) => setCaptionPosition(v as typeof captionPosition)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {POSITION_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FieldRow>
-
               {/* Font size */}
               <FieldRow label={`Font Size — ${fontSizePercent}% of frame height`}>
                 <Slider
@@ -1737,50 +1695,9 @@ export function SettingsPanel() {
                 />
               </FieldRow>
 
-              <FieldRow
-                label={`Font Size — ${settings.rehookOverlay.fontSize}px`}
-                hint="Text size on 1080×1920 canvas"
-              >
-                <Slider
-                  min={32}
-                  max={96}
-                  step={4}
-                  value={[settings.rehookOverlay.fontSize]}
-                  onValueChange={([v]) => setRehookFontSize(v)}
-                />
-              </FieldRow>
-
-              <div className="grid grid-cols-2 gap-3">
-                <FieldRow label="Text Color" htmlFor="rehook-text-color">
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="rehook-text-color"
-                      type="color"
-                      value={settings.rehookOverlay.textColor}
-                      onChange={(e) => setRehookTextColor(e.target.value)}
-                      className="w-8 h-8 rounded cursor-pointer border border-input bg-transparent p-0.5"
-                    />
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {settings.rehookOverlay.textColor}
-                    </span>
-                  </div>
-                </FieldRow>
-
-                <FieldRow label="Outline Color" htmlFor="rehook-outline-color">
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="rehook-outline-color"
-                      type="color"
-                      value={settings.rehookOverlay.outlineColor}
-                      onChange={(e) => setRehookOutlineColor(e.target.value)}
-                      className="w-8 h-8 rounded cursor-pointer border border-input bg-transparent p-0.5"
-                    />
-                    <span className="text-xs text-muted-foreground font-mono">
-                      {settings.rehookOverlay.outlineColor}
-                    </span>
-                  </div>
-                </FieldRow>
-              </div>
+              <p className="text-xs text-muted-foreground italic">
+                Visual settings (font size, text color, outline) are inherited from Hook Title Overlay above.
+              </p>
 
 
             </div>
