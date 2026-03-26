@@ -1,0 +1,415 @@
+// ---------------------------------------------------------------------------
+// Base render — core FFmpeg encoding (crop → scale → encode)
+// ---------------------------------------------------------------------------
+//
+// Three paths depending on active features:
+//   1. Sound design path: filter_complex with video + audio nodes + optional logo
+//   2. Logo-only path: filter_complex with 2 inputs (video + logo image)
+//   3. Simple path: just -vf with crop+scale+zoom
+//
+// After the base encode, optional bumper concat and overlay passes are applied.
+// ---------------------------------------------------------------------------
+
+import { existsSync, unlinkSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import type { FfmpegCommand } from 'fluent-ffmpeg'
+import {
+  ffmpeg,
+  getEncoder,
+  getSoftwareEncoder,
+  isGpuSessionError,
+  type QualityParams
+} from '../ffmpeg'
+import { generateZoomFilter } from '../auto-zoom'
+import type { ZoomSettings } from '../auto-zoom'
+import { computeCenterCropForRatio } from '../aspect-ratios'
+import type { OutputAspectRatio } from '../aspect-ratios'
+import type { RenderClipJob, BrandKitRenderOptions } from './types'
+import { toFFmpegPath } from './helpers'
+import { buildLogoOnlyFilterComplex } from './features/brand-kit.feature'
+import { buildSoundFilterComplex } from './features/sound-design.feature'
+import { concatWithBumpers } from './bumpers'
+import { activeCommands, runOverlayPasses } from './overlay-runner'
+import type { OverlayPassResult } from './features/feature'
+
+// Re-export activeCommands so the pipeline orchestrator can access it
+export { activeCommands }
+
+// ---------------------------------------------------------------------------
+// Video filter builder
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the crop → scale [→ zoompan] video filter chain.
+ *
+ * When the job has a face-detected `cropRegion`, it's used directly.
+ * Otherwise a center crop for the target aspect ratio is computed.
+ */
+export function buildVideoFilter(
+  job: RenderClipJob,
+  sourceWidth: number,
+  sourceHeight: number,
+  autoZoom?: ZoomSettings,
+  _hookFontPath?: string | null,
+  targetResolution?: { width: number; height: number },
+  outputAspectRatio?: OutputAspectRatio
+): string {
+  const outW = targetResolution?.width ?? 1080
+  const outH = targetResolution?.height ?? 1920
+
+  // Determine the target aspect ratio for center-crop fallback.
+  // When an explicit aspect ratio is given, use it; otherwise derive from outW/outH.
+  const aspectRatioForCrop: OutputAspectRatio = outputAspectRatio ?? '9:16'
+
+  let cropFilter: string
+
+  if (job.cropRegion) {
+    const { x, y, width, height } = job.cropRegion
+    // Clamp values so the crop stays within the source frame
+    const cw = Math.min(width, sourceWidth)
+    const ch = Math.min(height, sourceHeight)
+    const cx = Math.max(0, Math.min(x, sourceWidth - cw))
+    const cy = Math.max(0, Math.min(y, sourceHeight - ch))
+    cropFilter = `crop=${cw}:${ch}:${cx}:${cy}`
+  } else {
+    // Center crop to the target aspect ratio
+    const { x, y, width, height } = computeCenterCropForRatio(sourceWidth, sourceHeight, aspectRatioForCrop)
+    cropFilter = `crop=${width}:${height}:${x}:${y}`
+  }
+
+  const scaleFilter = `scale=${outW}:${outH}`
+
+  // Build optional Ken Burns zoom filter (applied after scale, before subtitles)
+  const clipDuration = job.endTime - job.startTime
+  const zoomFilter = autoZoom ? generateZoomFilter(clipDuration, autoZoom, 0.38, outW, outH) : ''
+
+  // Build the filter chain: crop → scale [→ zoompan]
+  const chain: string[] = [cropFilter, scaleFilter]
+  if (zoomFilter) chain.push(zoomFilter)
+
+  return chain.join(',')
+}
+
+// ---------------------------------------------------------------------------
+// Single-clip render
+// ---------------------------------------------------------------------------
+
+/**
+ * Render a single clip through the base encode pipeline, then optionally:
+ *   - Concatenate bumpers (intro/outro)
+ *   - Apply overlay passes (captions, hook title, rehook, progress bar)
+ *
+ * Returns the path to the final rendered file (always `outputPath`).
+ */
+export function renderClip(
+  job: RenderClipJob,
+  outputPath: string,
+  videoFilter: string,
+  onProgress: (percent: number) => void,
+  onCommand?: (command: string) => void,
+  qualityParams?: QualityParams,
+  outputFormat?: 'mp4' | 'webm',
+  _hookFontPath?: string | null,
+  _captionFontsDir?: string | null,
+  overlaySteps?: OverlayPassResult[]
+): Promise<string> {
+  console.log(`[Render] clipId=${job.clipId}`)
+  console.log(`[Render] outputPath=${outputPath}`)
+  console.log(`[Render] sourceVideoPath=${job.sourceVideoPath}`)
+  console.log(`[Render] toFFmpegPath(outputPath)=${toFFmpegPath(outputPath)}`)
+
+  const bk = job.brandKit
+  const hasLogo = !!(bk?.logoPath && existsSync(bk.logoPath))
+  const hasSoundDesign =
+    Array.isArray(job.soundPlacements) && job.soundPlacements.length > 0
+  const hasBumpers = !!(
+    (bk?.introBumperPath && existsSync(bk.introBumperPath)) ||
+    (bk?.outroBumperPath && existsSync(bk.outroBumperPath))
+  )
+  const useWebm = outputFormat === 'webm'
+
+  // If bumpers are needed, render main content to a temp file first, then concat
+  const mainOutputPath = hasBumpers
+    ? join(tmpdir(), `batchcontent-main-${Date.now()}.mp4`)
+    : outputPath
+
+  // For WebM, use libvpx-vp9 with matching CRF (vp9 uses -crf + -b:v 0 for constrained quality)
+  // GPU encoders don't support WebM; always use software for WebM
+  function getVideoCodecFlags(): { encoder: string; flags: string[] } {
+    if (useWebm) {
+      const crf = qualityParams?.crf ?? 23
+      return {
+        encoder: 'libvpx-vp9',
+        flags: ['-crf', String(crf), '-b:v', '0', '-cpu-used', '4']
+      }
+    }
+    const { encoder, presetFlag } = getEncoder(qualityParams)
+    return { encoder, flags: presetFlag }
+  }
+
+  function getSoftwareCodecFlags(): { encoder: string; flags: string[] } {
+    if (useWebm) {
+      const crf = qualityParams?.crf ?? 23
+      return {
+        encoder: 'libvpx-vp9',
+        flags: ['-crf', String(crf), '-b:v', '0', '-cpu-used', '4']
+      }
+    }
+    const sw = getSoftwareEncoder(qualityParams)
+    return { encoder: sw.encoder, flags: sw.presetFlag }
+  }
+
+  const audioOptions = useWebm ? ['-c:a', 'libopus', '-b:a', '128k'] : ['-c:a', 'aac', '-b:a', '192k']
+  const containerFlags = useWebm ? ['-y'] : ['-y', '-movflags', '+faststart']
+
+  const hasOverlays = overlaySteps && overlaySteps.length > 0
+
+  const renderMain = (): Promise<string> => {
+    return new Promise<string>((resolve, reject) => {
+      const { encoder, flags: presetFlag } = getVideoCodecFlags()
+      let activeCommand: FfmpegCommand | null = null
+
+      if (hasSoundDesign) {
+        // ── Sound-design path ────────────────────────────────────────────────
+        const clipDuration = job.endTime - job.startTime
+        const placements = job.soundPlacements!
+
+        const logoOverlay: { bk: BrandKitRenderOptions; inputIndex: number } | undefined =
+          hasLogo ? { bk: bk!, inputIndex: placements.length + 1 } : undefined
+
+        function runWithSoundEncoder(enc: string, flags: string[]): FfmpegCommand {
+          const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
+
+          // Enable hardware-accelerated decoding when using NVENC
+          if (enc === 'h264_nvenc') {
+            cmd.inputOptions(['-hwaccel', 'auto'])
+          }
+
+          cmd
+            .seekInput(job.startTime)
+            .duration(clipDuration)
+
+          // Sound placement inputs (indices 1..N)
+          for (const p of placements) {
+            cmd.input(toFFmpegPath(p.filePath))
+          }
+
+          // Logo input (index N+1), looped to cover full clip duration
+          if (hasLogo) {
+            cmd.input(toFFmpegPath(bk!.logoPath!)).inputOptions(['-loop', '1'])
+          }
+
+          const filterComplex = buildSoundFilterComplex(
+            videoFilter,
+            placements,
+            clipDuration,
+            logoOverlay
+          )
+
+          // When sound design IS present, [outa] is always produced by amix.
+          const audioMap = hasSoundDesign ? '[outa]' : '0:a'
+
+          cmd
+            .outputOptions([
+              '-filter_complex', filterComplex,
+              '-filter_threads', '0',
+              '-filter_complex_threads', '0',
+              '-map', '[outv]',
+              '-map', audioMap,
+              '-c:v', enc,
+              ...flags,
+              ...audioOptions,
+              ...containerFlags
+            ])
+            .on('start', (cmdLine: string) => { onCommand?.(cmdLine) })
+            .on('progress', (progress) => {
+              onProgress(Math.min(hasBumpers ? 85 : (hasOverlays ? 65 : 99), progress.percent ?? 0))
+            })
+            .on('end', () => {
+              onProgress(hasBumpers ? 85 : (hasOverlays ? 65 : 100))
+              activeCommands.delete(cmd)
+              activeCommand = null
+              resolve(mainOutputPath)
+            })
+            .on('error', (err: Error) => {
+              activeCommands.delete(cmd)
+              activeCommand = null
+              if (isGpuSessionError(err.message)) {
+                const { encoder: swEnc, flags: swFlags } = getSoftwareCodecFlags()
+                const swCmd = runWithSoundEncoder(swEnc, swFlags)
+                activeCommand = swCmd
+                activeCommands.add(swCmd)
+              } else {
+                reject(err)
+              }
+            })
+            .save(toFFmpegPath(mainOutputPath))
+
+          return cmd
+        }
+
+        const cmd = runWithSoundEncoder(encoder, presetFlag)
+        activeCommand = cmd
+        activeCommands.add(cmd)
+
+      } else if (hasLogo) {
+        // ── Logo-only path (no sound design) ────────────────────────────────
+        const filterComplex = buildLogoOnlyFilterComplex(videoFilter, bk!)
+
+        function runWithLogoEncoder(enc: string, flags: string[]): FfmpegCommand {
+          const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
+
+          // Enable hardware-accelerated decoding when using NVENC
+          if (enc === 'h264_nvenc') {
+            cmd.inputOptions(['-hwaccel', 'auto'])
+          }
+
+          cmd
+            .seekInput(job.startTime)
+            .duration(job.endTime - job.startTime)
+            // Logo image input — loop it for the clip duration
+            .input(toFFmpegPath(bk!.logoPath!))
+            .inputOptions(['-loop', '1'])
+
+          cmd
+            .outputOptions([
+              '-filter_complex', filterComplex,
+              '-filter_threads', '0',
+              '-filter_complex_threads', '0',
+              '-map', '[outv]',
+              '-map', '0:a',
+              '-c:v', enc,
+              ...flags,
+              ...audioOptions,
+              ...containerFlags
+            ])
+            .on('start', (cmdLine: string) => { onCommand?.(cmdLine) })
+            .on('progress', (progress) => {
+              onProgress(Math.min(hasBumpers ? 85 : (hasOverlays ? 65 : 99), progress.percent ?? 0))
+            })
+            .on('end', () => {
+              onProgress(hasBumpers ? 85 : (hasOverlays ? 65 : 100))
+              activeCommands.delete(cmd)
+              activeCommand = null
+              resolve(mainOutputPath)
+            })
+            .on('error', (err: Error) => {
+              activeCommands.delete(cmd)
+              activeCommand = null
+              if (isGpuSessionError(err.message)) {
+                const { encoder: swEnc, flags: swFlags } = getSoftwareCodecFlags()
+                const swCmd = runWithLogoEncoder(swEnc, swFlags)
+                activeCommand = swCmd
+                activeCommands.add(swCmd)
+              } else {
+                reject(err)
+              }
+            })
+            .save(toFFmpegPath(mainOutputPath))
+
+          return cmd
+        }
+
+        const cmd = runWithLogoEncoder(encoder, presetFlag)
+        activeCommand = cmd
+        activeCommands.add(cmd)
+
+      } else {
+        // ── Simple path: no sound mixing, no logo (existing behavior) ────────
+        function runWithEncoder(enc: string, flags: string[]): FfmpegCommand {
+          const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
+
+          // Enable hardware-accelerated decoding when using NVENC
+          if (enc === 'h264_nvenc') {
+            cmd.inputOptions(['-hwaccel', 'auto'])
+          }
+
+          cmd
+            .seekInput(job.startTime)
+            .duration(job.endTime - job.startTime)
+            .videoFilters(videoFilter)
+            .outputOptions([
+              '-c:v', enc,
+              ...flags,
+              ...audioOptions,
+              ...containerFlags
+            ])
+            .on('start', (cmdLine: string) => { onCommand?.(cmdLine) })
+            .on('progress', (progress) => {
+              onProgress(Math.min(hasBumpers ? 85 : (hasOverlays ? 65 : 99), progress.percent ?? 0))
+            })
+            .on('end', () => {
+              onProgress(hasBumpers ? 85 : (hasOverlays ? 65 : 100))
+              activeCommands.delete(cmd)
+              activeCommand = null
+              resolve(mainOutputPath)
+            })
+            .on('error', (err: Error) => {
+              activeCommands.delete(cmd)
+              activeCommand = null
+              if (isGpuSessionError(err.message)) {
+                const { encoder: swEnc, flags: swFlags } = getSoftwareCodecFlags()
+                const swCmd = runWithEncoder(swEnc, swFlags)
+                activeCommand = swCmd
+                activeCommands.add(swCmd)
+              } else {
+                reject(err)
+              }
+            })
+            .save(toFFmpegPath(mainOutputPath))
+
+          return cmd
+        }
+
+        const cmd = runWithEncoder(encoder, presetFlag)
+        activeCommand = cmd
+        activeCommands.add(cmd)
+      }
+    })
+  }
+
+  // ── Phase 1: Base render (crop + scale + zoom + logo + sound design) ──────
+  const baseResult = hasBumpers
+    ? renderMain().then(async (mainPath) => {
+        try {
+          onProgress(68)
+          await concatWithBumpers(
+            mainPath,
+            outputPath,
+            bk?.introBumperPath ?? null,
+            bk?.outroBumperPath ?? null
+          )
+          onProgress(70)
+          return outputPath
+        } finally {
+          try { unlinkSync(mainPath) } catch { /* ignore cleanup errors */ }
+        }
+      })
+    : renderMain()
+
+  return baseResult.then(async (resultPath) => {
+    // ── Phase 2: Multi-pass overlay post-processing ─────────────────────────
+    if (!overlaySteps || overlaySteps.length === 0) {
+      onProgress(100)
+      return resultPath
+    }
+
+    const overlayProgressBase = 70
+    const overlayProgressRange = 30
+
+    const finalPath = await runOverlayPasses(
+      resultPath,
+      overlaySteps,
+      resultPath,
+      {
+        onProgress: (percent) => {
+          onProgress(Math.round(overlayProgressBase + (overlayProgressRange * percent / 100)))
+        }
+      }
+    )
+
+    onProgress(100)
+    return finalPath
+  })
+}
