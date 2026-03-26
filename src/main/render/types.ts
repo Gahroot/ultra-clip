@@ -242,6 +242,16 @@ export interface RenderBatchOptions {
    */
   outputAspectRatio?: OutputAspectRatio
   /**
+   * Template layout positions for on-screen text elements.
+   * Controls where hook title, re-hook text, and subtitles are placed
+   * on the canvas. Values are percentages (0–100) from the top-left corner.
+   */
+  templateLayout?: {
+    titleText: { x: number; y: number }
+    subtitles: { x: number; y: number }
+    rehookText: { x: number; y: number }
+  }
+  /**
    * Filename template for rendered clips. Supports these variables:
    *   {source}   — source video name without extension
    *   {index}    — clip number, zero-padded (01, 02, …)

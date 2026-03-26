@@ -25,7 +25,8 @@ function generateHookTitleASSFile(
   text: string,
   config: HookTitleConfig,
   frameWidth = 1080,
-  frameHeight = 1920
+  frameHeight = 1920,
+  yPositionPx?: number
 ): string {
   const {
     displayDuration,
@@ -41,8 +42,8 @@ function generateHookTitleASSFile(
   const primaryASS = cssHexToASS(textColor)
   const outlineASS = cssHexToASS(outlineColor)
 
-  // Y position from top: ~220px
-  const marginV = 220
+  // Y position from top: use provided value or fall back to 220px
+  const marginV = yPositionPx ?? 220
 
   // Filled rounded-rect look: BorderStyle 3 = opaque box behind text.
   // White box background, black text, with generous outline (padding).
@@ -119,7 +120,12 @@ export function createHookTitleFeature(): RenderFeature {
         return { tempFiles: [], modified: false }
       }
 
-      const assPath = generateHookTitleASSFile(job.hookTitleText, job.hookTitleConfig)
+      const frameHeight = 1920
+      const yPositionPx = batchOptions.templateLayout?.titleText
+        ? Math.round((batchOptions.templateLayout.titleText.y / 100) * frameHeight)
+        : undefined
+
+      const assPath = generateHookTitleASSFile(job.hookTitleText, job.hookTitleConfig, 1080, frameHeight, yPositionPx)
       assPathMap.set(job.clipId, assPath)
       console.log(`[HookTitle] Generated ASS overlay: ${assPath}`)
       return { tempFiles: [assPath], modified: true }

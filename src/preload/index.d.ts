@@ -196,6 +196,12 @@ interface RenderBatchOptions {
     outputFormat: 'mp4' | 'webm'
     encodingPreset: 'ultrafast' | 'veryfast' | 'medium' | 'slow'
   }
+  /** Template layout — controls on-screen text placement (hook title, re-hook, subtitles) */
+  templateLayout?: {
+    titleText: { x: number; y: number }
+    subtitles: { x: number; y: number }
+    rehookText: { x: number; y: number }
+  }
 }
 
 interface RenderClipStartEvent {
@@ -660,7 +666,7 @@ interface Api {
   getPathForFile: (file: File) => string
   getMetadata: (filePath: string) => Promise<VideoMetadata>
   extractAudio: (videoPath: string) => Promise<string>
-  getThumbnail: (videoPath: string) => Promise<string>
+  getThumbnail: (videoPath: string, timeSec?: number) => Promise<string>
   /** Extract audio amplitude peaks for the trim editor waveform visualizer. Returns ~500 normalized [0,1] values. */
   getWaveform: (videoPath: string, startTime: number, endTime: number, numPoints?: number) => Promise<number[]>
   downloadYouTube: (url: string) => Promise<YouTubeDownloadResult>

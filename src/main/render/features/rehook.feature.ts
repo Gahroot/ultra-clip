@@ -30,7 +30,8 @@ function generateRehookASSFile(
   config: RehookConfig,
   appearTime: number,
   frameWidth = 1080,
-  frameHeight = 1920
+  frameHeight = 1920,
+  yPositionPx?: number
 ): string {
   const {
     displayDuration,
@@ -46,9 +47,8 @@ function generateRehookASSFile(
   const primaryASS = cssHexToASS(textColor)
   const outlineASS = cssHexToASS(outlineColor)
 
-  // Position rehook just below the hook title area (~340px from top)
-  // Hook title sits at marginV=220, so rehook goes a bit lower
-  const marginV = 340
+  // Y position from top: use provided value or fall back to 220px (same default as hook title)
+  const marginV = yPositionPx ?? 220
 
   // Filled rounded-rect look: same as hook title — BorderStyle 3 = opaque box.
   // White box background, black text, with generous outline (padding).
@@ -135,11 +135,20 @@ export function createRehookFeature(): RenderFeature {
         `[Rehook] Clip ${job.clipId}: appear at ${job.rehookAppearTime.toFixed(2)}s (after hook) — "${job.rehookText}"`
       )
 
+      // Compute Y position from template layout
+      const frameHeight = 1920
+      const yPositionPx = batchOptions.templateLayout?.rehookText
+        ? Math.round((batchOptions.templateLayout.rehookText.y / 100) * frameHeight)
+        : undefined
+
       // Generate the ASS overlay file
       const assPath = generateRehookASSFile(
         job.rehookText,
         job.rehookConfig,
-        job.rehookAppearTime
+        job.rehookAppearTime,
+        1080,
+        frameHeight,
+        yPositionPx
       )
       assPathMap.set(job.clipId, assPath)
 

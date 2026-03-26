@@ -81,12 +81,20 @@ export function createCaptionsFeature(): RenderFeature {
 
       try {
         const arCfg = ASPECT_RATIO_CONFIGS[batchOptions.outputAspectRatio ?? '9:16']
+
+        // Subtitles use bottom-center alignment (AN2); y% is from top,
+        // so marginV (from bottom) = (1 - y/100) * height
+        const marginVOverride = batchOptions.templateLayout?.subtitles
+          ? Math.round((1 - batchOptions.templateLayout.subtitles.y / 100) * arCfg.height)
+          : undefined
+
         job.assFilePath = await generateCaptions(
           localWords,
           batchOptions.captionStyle,
           undefined,
           arCfg.width,
-          arCfg.height
+          arCfg.height,
+          marginVOverride
         )
         console.log(`[Captions] Clip ${job.clipId}: generated ${job.assFilePath}`)
         return { tempFiles: [job.assFilePath], modified: true }

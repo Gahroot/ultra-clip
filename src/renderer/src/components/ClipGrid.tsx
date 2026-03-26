@@ -208,6 +208,7 @@ export function ClipGrid() {
   const rejectAll = useStore((s) => s.rejectAll)
   const minScore = useStore((s) => s.settings.minScore)
   const settings = useStore((s) => s.settings)
+  const templateLayout = useStore((s) => s.templateLayout)
   const isRendering = useStore((s) => s.isRendering)
   const setIsRendering = useStore((s) => s.setIsRendering)
   const renderProgress = useStore((s) => s.renderProgress)
@@ -751,7 +752,12 @@ export function ClipGrid() {
         developerMode: settings.developerMode,
         renderQuality: settings.renderQuality,
         outputAspectRatio: settings.outputAspectRatio,
-        filenameTemplate: settings.filenameTemplate
+        filenameTemplate: settings.filenameTemplate,
+        templateLayout: {
+          titleText: templateLayout.titleText,
+          subtitles: templateLayout.subtitles,
+          rehookText: templateLayout.rehookText
+        }
       } as Parameters<typeof window.api.startBatchRender>[0])
     } catch (err) {
       setIsRendering(false)
@@ -760,7 +766,7 @@ export function ClipGrid() {
     }
   }, [
     activeSourceId, activeSource, approved, approvedClips, approvedVariants, approvedStitchedClips,
-    stitchedClips, updateStitchedClipStatus, sourcePath, settings,
+    stitchedClips, updateStitchedClipStatus, sourcePath, settings, templateLayout,
     setRenderProgress, setIsRendering, detachListeners, addError, setRenderError
   ])
 
@@ -973,7 +979,12 @@ export function ClipGrid() {
         developerMode: settings.developerMode,
         renderQuality: settings.renderQuality,
         outputAspectRatio: settings.outputAspectRatio,
-        filenameTemplate: settings.filenameTemplate
+        filenameTemplate: settings.filenameTemplate,
+        templateLayout: {
+          titleText: templateLayout.titleText,
+          subtitles: templateLayout.subtitles,
+          rehookText: templateLayout.rehookText
+        }
       } as Parameters<typeof window.api.startBatchRender>[0])
     } catch (err) {
       setIsRendering(false)
@@ -981,7 +992,7 @@ export function ClipGrid() {
       addError({ source: 'render', message: `Failed to start retry render: ${err instanceof Error ? err.message : String(err)}` })
     }
   }, [
-    isRendering, activeSource, approvedClips, stitchedClips, sourcePath, settings,
+    isRendering, activeSource, approvedClips, stitchedClips, sourcePath, settings, templateLayout,
     setRenderProgress, setIsRendering, detachListeners, addError, setRenderError
   ])
 

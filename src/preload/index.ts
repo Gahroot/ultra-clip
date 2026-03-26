@@ -10,7 +10,7 @@ const api = {
   // FFmpeg
   getMetadata: (filePath: string) => ipcRenderer.invoke('ffmpeg:getMetadata', filePath),
   extractAudio: (videoPath: string) => ipcRenderer.invoke('ffmpeg:extractAudio', videoPath),
-  getThumbnail: (videoPath: string) => ipcRenderer.invoke('ffmpeg:thumbnail', videoPath),
+  getThumbnail: (videoPath: string, timeSec?: number) => ipcRenderer.invoke('ffmpeg:thumbnail', videoPath, timeSec),
   getWaveform: (videoPath: string, startTime: number, endTime: number, numPoints?: number) =>
     ipcRenderer.invoke('ffmpeg:getWaveform', videoPath, startTime, endTime, numPoints ?? 500),
 
@@ -154,6 +154,11 @@ const api = {
       outlineColor: string
       outlineWidth: number
       positionFraction: number
+    }
+    templateLayout?: {
+      titleText: { x: number; y: number }
+      subtitles: { x: number; y: number }
+      rehookText: { x: number; y: number }
     }
   }) => ipcRenderer.invoke('render:startBatch', options),
 

@@ -5,6 +5,15 @@ import { v4 as uuidv4 } from 'uuid'
 // Interfaces
 // ---------------------------------------------------------------------------
 
+export type Platform = 'tiktok' | 'reels' | 'shorts' | 'universal'
+
+export interface TemplateLayout {
+  titleText: { x: number; y: number }
+  subtitles: { x: number; y: number }
+  rehookText: { x: number; y: number }
+  media: { x: number; y: number }
+}
+
 export interface SourceVideo {
   id: string
   path: string
@@ -748,6 +757,7 @@ interface AppState {
     startTime: number,
     endTime: number
   ) => void
+  updateClipThumbnail: (sourceId: string, clipId: string, thumbnail: string) => void
   updateClipCrop: (sourceId: string, clipId: string, crop: CropRegion) => void
   updateClipHookText: (sourceId: string, clipId: string, hookText: string) => void
   updateClipLoop: (sourceId: string, clipId: string, loopData: { loopScore: number; loopStrategy: string; loopOptimized: boolean; crossfadeDuration?: number }) => void
@@ -903,6 +913,12 @@ interface AppState {
   /** Set when auto-mode ran: captures what it did for the banner in ClipGrid */
   autoModeResult: { sourceId: string; approved: number; threshold: number; didRender: boolean } | null
   setAutoModeResult: (result: { sourceId: string; approved: number; threshold: number; didRender: boolean } | null) => void
+
+  // Template layout
+  templateLayout: TemplateLayout
+  setTemplateLayout: (layout: TemplateLayout) => void
+  targetPlatform: Platform
+  setTargetPlatform: (platform: Platform) => void
 
   // Network status
   isOnline: boolean
@@ -1157,6 +1173,15 @@ export const useStore = create<AppState>((set, get) => ({
   lastSeenVersion: localStorage.getItem('batchcontent-last-seen-version') ?? null,
   isOnline: navigator.onLine,
   comparisonClipIds: null,
+  targetPlatform: 'universal',
+  setTargetPlatform: (platform) => set({ targetPlatform: platform }),
+  templateLayout: {
+    titleText: { x: 50, y: 12 },
+    subtitles: { x: 50, y: 88 },
+    rehookText: { x: 50, y: 12 },
+    media: { x: 50, y: 75 }
+  },
+  setTemplateLayout: (layout) => set({ templateLayout: layout }),
 
   // AI Token Usage
   aiUsage: {
@@ -1278,6 +1303,20 @@ export const useStore = create<AppState>((set, get) => ({
       }
     })
   },
+
+  updateClipThumbnail: (sourceId, clipId, thumbnail) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      return {
+        clips: {
+          ...state.clips,
+          [sourceId]: sourceClips.map((c) =>
+            c.id === clipId ? { ...c, thumbnail } : c
+          )
+        }
+      }
+    }),
 
   updateClipCrop: (sourceId, clipId, crop) =>
     set((state) => {
@@ -2185,7 +2224,9 @@ export const useStore = create<AppState>((set, get) => ({
       sources: state.sources,
       transcriptions: state.transcriptions,
       clips: state.clips,
-      settings: state.settings
+      settings: state.settings,
+      templateLayout: state.templateLayout,
+      targetPlatform: state.targetPlatform
     }
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2222,7 +2263,9 @@ export const useStore = create<AppState>((set, get) => ({
         renderCompletedAt: null,
         clipRenderTimes: {},
         errorLog: [],
-        activeSourceId: null
+        activeSourceId: null,
+        templateLayout: project.templateLayout ?? { titleText: { x: 50, y: 12 }, subtitles: { x: 50, y: 88 }, rehookText: { x: 50, y: 12 }, media: { x: 50, y: 75 } },
+        targetPlatform: project.targetPlatform ?? 'universal'
       })
       return true
     } catch {
@@ -2253,7 +2296,9 @@ export const useStore = create<AppState>((set, get) => ({
         renderCompletedAt: null,
         clipRenderTimes: {},
         errorLog: [],
-        activeSourceId: null
+        activeSourceId: null,
+        templateLayout: project.templateLayout ?? { titleText: { x: 50, y: 12 }, subtitles: { x: 50, y: 88 }, rehookText: { x: 50, y: 12 }, media: { x: 50, y: 75 } },
+        targetPlatform: project.targetPlatform ?? 'universal'
       })
       return true
     } catch {

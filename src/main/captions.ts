@@ -245,7 +245,8 @@ function buildASSDocument(
   words: WordInput[],
   style: CaptionStyleInput,
   frameWidth: number = DEFAULT_FRAME_WIDTH,
-  frameHeight: number = DEFAULT_FRAME_HEIGHT
+  frameHeight: number = DEFAULT_FRAME_HEIGHT,
+  marginVOverride?: number
 ): string {
   const fontSize = Math.round(style.fontSize * frameHeight)
   const primaryASS = hexToASS(style.primaryColor)
@@ -253,7 +254,7 @@ function buildASSDocument(
   const backASS = hexToASS(style.backColor)
 
   // Vertical alignment: bottom-center (AN2) with a comfortable margin
-  const marginV = Math.round(frameHeight * 0.12) // ~12% from bottom
+  const marginV = marginVOverride ?? Math.round(frameHeight * 0.12) // ~12% from bottom
 
   const header = [
     '[Script Info]',
@@ -315,13 +316,14 @@ export async function generateCaptions(
   style: CaptionStyleInput,
   outputPath?: string,
   frameWidth: number = DEFAULT_FRAME_WIDTH,
-  frameHeight: number = DEFAULT_FRAME_HEIGHT
+  frameHeight: number = DEFAULT_FRAME_HEIGHT,
+  marginVOverride?: number
 ): Promise<string> {
   if (words.length === 0) {
     throw new Error('No words provided for caption generation')
   }
 
-  const assContent = buildASSDocument(words, style, frameWidth, frameHeight)
+  const assContent = buildASSDocument(words, style, frameWidth, frameHeight, marginVOverride)
 
   const filePath =
     outputPath ?? join(tmpdir(), `batchcontent-captions-${Date.now()}.ass`)
