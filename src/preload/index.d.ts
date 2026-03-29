@@ -476,6 +476,73 @@ interface WordEmphasisResult {
 }
 
 // ---------------------------------------------------------------------------
+// AI Edit Plan types
+// ---------------------------------------------------------------------------
+
+type AIEditPlanSFXType =
+  | 'whoosh-soft'
+  | 'whoosh-hard'
+  | 'impact-low'
+  | 'impact-high'
+  | 'rise-tension'
+  | 'notification-pop'
+  | 'word-pop'
+  | 'bass-drop'
+  | 'rise-tension-short'
+
+interface AIEditPlanWordEmphasis {
+  wordIndex: number
+  text: string
+  start: number
+  end: number
+  level: 'emphasis' | 'supersize'
+}
+
+interface AIEditPlanBRollSuggestion {
+  timestamp: number
+  duration: number
+  keyword: string
+  displayMode: 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
+  transition: 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
+  reason: string
+}
+
+interface AIEditPlanSFXSuggestion {
+  timestamp: number
+  type: AIEditPlanSFXType
+  reason: string
+}
+
+interface AIEditPlan {
+  clipId: string
+  stylePresetId: string
+  stylePresetName: string
+  wordEmphasis: AIEditPlanWordEmphasis[]
+  brollSuggestions: AIEditPlanBRollSuggestion[]
+  sfxSuggestions: AIEditPlanSFXSuggestion[]
+  reasoning: string
+  generatedAt: number
+}
+
+/** Input descriptor for a single clip in a batch edit plan request. */
+interface BatchEditPlanInput {
+  clipId: string
+  clipStart: number
+  clipEnd: number
+  words: WordTimestamp[]
+  transcriptText: string
+}
+
+/** Progress event emitted per-clip during a batch edit plan run. */
+interface BatchEditPlanProgress {
+  clipIndex: number
+  totalClips: number
+  clipId: string
+  stage: 'generating' | 'done' | 'error'
+  message: string
+}
+
+// ---------------------------------------------------------------------------
 // Clip Variant Generator types
 // ---------------------------------------------------------------------------
 
@@ -879,6 +946,27 @@ interface Api {
   generateVariantLabels: (variants: ClipVariant[]) => Promise<VariantLabel[]>
   // Word Emphasis
   analyzeWordEmphasis: (words: WordTimestamp[], apiKey?: string) => Promise<WordEmphasisResult>
+  // AI Edit Plan — single-shot complete edit plan for a clip
+  generateEditPlan: (
+    apiKey: string,
+    clipId: string,
+    clipStart: number,
+    clipEnd: number,
+    words: WordTimestamp[],
+    transcriptText: string,
+    stylePresetId: string,
+    stylePresetName: string,
+    stylePresetCategory: string
+  ) => Promise<AIEditPlan>
+  // AI Edit Plan — batch orchestrator: generate plans for all clips in one pipeline step
+  generateBatchEditPlans: (
+    apiKey: string,
+    clips: BatchEditPlanInput[],
+    stylePresetId: string,
+    stylePresetName: string,
+    stylePresetCategory: string
+  ) => Promise<AIEditPlan[]>
+  onAiEditProgress: (callback: (data: BatchEditPlanProgress) => void) => () => void
   // B-Roll
   generateBRollPlacements: (
     geminiApiKey: string,

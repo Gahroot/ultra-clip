@@ -33,6 +33,7 @@ import {
 import type { DescriptionClipInput } from '../ai/description-generator'
 import { resolveHookFont } from '../hook-title'
 import { analyzeWordEmphasis } from '../word-emphasis'
+import { generateEditPlan } from '../ai/edit-plan'
 import type { WordTimestamp } from '@shared/types'
 
 const AI_VALIDATION_MODEL = 'gemini-2.5-flash-lite'
@@ -206,6 +207,98 @@ export function registerAiHandlers(): void {
     Ch.Invoke.AI_ANALYZE_WORD_EMPHASIS,
     wrapHandler(Ch.Invoke.AI_ANALYZE_WORD_EMPHASIS, async (_event, words: WordTimestamp[], apiKey?: string) => {
       return analyzeWordEmphasis(words, apiKey)
+    })
+  )
+
+  // AI Edit Plan — single-shot complete edit plan (emphasis + B-Roll + SFX)
+  ipcMain.handle(
+    Ch.Invoke.AI_GENERATE_EDIT_PLAN,
+    wrapHandler(Ch.Invoke.AI_GENERATE_EDIT_PLAN, async (
+      _event,
+      apiKey: string,
+      clipId: string,
+      clipStart: number,
+      clipEnd: number,
+      words: WordTimestamp[],
+      transcriptText: string,
+      stylePresetId: string,
+      stylePresetName: string,
+      stylePresetCategory: string
+    ) => {
+      return generateEditPlan({
+        apiKey,
+        clipId,
+        clipStart,
+        clipEnd,
+        words,
+        transcriptText,
+        stylePresetId,
+        stylePresetName,
+        stylePresetCategory
+      })
+    })
+  )
+
+  // AI Edit Plan — batch mode: generate plans for all clips in one orchestrated call
+  ipcMain.handle(
+    Ch.Invoke.AI_GENERATE_BATCH_EDIT_PLANS,
+    wrapHandler(Ch.Invoke.AI_GENERATE_BATCH_EDIT_PLANS, async (
+      event,
+      apiKey: string,
+      clips: Array<{
+        clipId: string
+        clipStart: number
+        clipEnd: number
+        words: WordTimestamp[]
+        transcriptText: string
+      }>,
+      stylePresetId: string,
+      stylePresetName: string,
+      stylePresetCategory: string
+    ) => {
+      const plans = []
+      for (let i = 0; i < clips.length; i++) {
+        const clip = clips[i]
+        event.sender.send(Ch.Send.AI_EDIT_PROGRESS, {
+          clipIndex: i,
+          totalClips: clips.length,
+          clipId: clip.clipId,
+          stage: 'generating' as const,
+          message: `Generating edit plan ${i + 1}/${clips.length}…`
+        })
+        try {
+          const plan = await generateEditPlan({
+            apiKey,
+            clipId: clip.clipId,
+            clipStart: clip.clipStart,
+            clipEnd: clip.clipEnd,
+            words: clip.words,
+            transcriptText: clip.transcriptText,
+            stylePresetId,
+            stylePresetName,
+            stylePresetCategory
+          })
+          plans.push(plan)
+          event.sender.send(Ch.Send.AI_EDIT_PROGRESS, {
+            clipIndex: i,
+            totalClips: clips.length,
+            clipId: clip.clipId,
+            stage: 'done' as const,
+            message: `Edit plan ready (${i + 1}/${clips.length})`
+          })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          event.sender.send(Ch.Send.AI_EDIT_PROGRESS, {
+            clipIndex: i,
+            totalClips: clips.length,
+            clipId: clip.clipId,
+            stage: 'error' as const,
+            message: `Failed for clip ${i + 1}: ${msg.slice(0, 80)}`
+          })
+          // Continue with remaining clips — partial success is useful
+        }
+      }
+      return plans
     })
   )
 

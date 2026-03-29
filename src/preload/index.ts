@@ -131,6 +131,9 @@ const api = {
 
   // Word Emphasis
   analyzeWordEmphasis: invoke(I.AI_ANALYZE_WORD_EMPHASIS),
+  generateEditPlan: invoke(I.AI_GENERATE_EDIT_PLAN),
+  generateBatchEditPlans: invoke(I.AI_GENERATE_BATCH_EDIT_PLANS),
+  onAiEditProgress: listen(S.AI_EDIT_PROGRESS),
 
   // B-Roll
   generateBRollPlacements: invoke(I.BROLL_GENERATE_PLACEMENTS),

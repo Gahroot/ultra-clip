@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Play, ChevronDown, ChevronUp, Clock, Check, X, Pencil, RefreshCw, BookOpen, Layers, SlidersHorizontal, Copy, Eye, FileText, RotateCcw, GitCompare, Loader2, FolderOpen, ImageIcon } from 'lucide-react'
+import { Play, ChevronDown, ChevronUp, Clock, Check, X, Pencil, RefreshCw, BookOpen, Layers, SlidersHorizontal, Copy, Eye, FileText, RotateCcw, GitCompare, Loader2, FolderOpen, ImageIcon, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -94,6 +94,9 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
   const updateVariantStatus = useStore((s) => s.updateVariantStatus)
   const resetClipBoundaries = useStore((s) => s.resetClipBoundaries)
   const rescoreClip = useStore((s) => s.rescoreClip)
+  const setClipAIEditPlan = useStore((s) => s.setClipAIEditPlan)
+  const clearClipAIEditPlan = useStore((s) => s.clearClipAIEditPlan)
+  const activeStylePresetId = useStore((s) => s.activeStylePresetId)
   const setSingleRenderState = useStore((s) => s.setSingleRenderState)
   const addError = useStore((s) => s.addError)
   const isRendering = useStore((s) => s.isRendering)
@@ -117,6 +120,8 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
   const [showReasoning, setShowReasoning] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [isRescoring, setIsRescoring] = useState(false)
+  const [isGeneratingEditPlan, setIsGeneratingEditPlan] = useState(false)
+  const [showEditPlanPanel, setShowEditPlanPanel] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   // Whether the current trim differs from the AI-selected boundaries
@@ -226,6 +231,56 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
       setIsRescoring(false)
     }
   }, [settings.geminiApiKey, isRescoring, clip, sourceId, rescoreClip, addError])
+
+  // Generate AI Edit Plan — one Gemini call for emphasis + B-Roll + SFX
+  const handleGenerateEditPlan = useCallback(async () => {
+    if (!settings.geminiApiKey || isGeneratingEditPlan) return
+    const words = clip.wordTimestamps ?? []
+    if (words.length === 0) {
+      addError({ source: 'scoring', message: 'AI Edit Plan requires word timestamps. Transcribe this clip first.' })
+      return
+    }
+
+    // Resolve the active style preset for prompt calibration
+    const { BUILT_IN_EDIT_STYLE_PRESETS } = await import('../store/helpers')
+    const activePreset = activeStylePresetId
+      ? BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === activeStylePresetId)
+      : null
+    const stylePresetId = activePreset?.id ?? 'custom'
+    const stylePresetName = activePreset?.name ?? 'Custom'
+    const stylePresetCategory = activePreset?.category ?? 'custom'
+
+    const transcriptText = words
+      .filter((w) => w.start >= clip.startTime && w.end <= clip.endTime)
+      .map((w) => w.text)
+      .join(' ')
+
+    setIsGeneratingEditPlan(true)
+    try {
+      const plan = await window.api.generateEditPlan(
+        settings.geminiApiKey,
+        clip.id,
+        clip.startTime,
+        clip.endTime,
+        words,
+        transcriptText,
+        stylePresetId,
+        stylePresetName,
+        stylePresetCategory
+      )
+      setClipAIEditPlan(sourceId, clip.id, plan)
+      setShowEditPlanPanel(true)
+    } catch (err) {
+      addError({ source: 'scoring', message: `AI Edit Plan failed: ${err instanceof Error ? err.message : String(err)}` })
+    } finally {
+      setIsGeneratingEditPlan(false)
+    }
+  }, [settings.geminiApiKey, isGeneratingEditPlan, clip, sourceId, activeStylePresetId, setClipAIEditPlan, addError])
+
+  const handleClearEditPlan = useCallback(() => {
+    clearClipAIEditPlan(sourceId, clip.id)
+    setShowEditPlanPanel(false)
+  }, [sourceId, clip.id, clearClipAIEditPlan])
 
   const handleToggleApprove = useCallback(() => {
     updateClipStatus(sourceId, clip.id, clip.status === 'approved' ? 'pending' : 'approved')
@@ -575,6 +630,26 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
                   <RefreshCw className="w-3 h-3" />
                   {clip.loopScore}
                 </Badge>
+              )}
+              {clip.aiEditPlan && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className="text-xs flex items-center gap-1 border-violet-500/40 text-violet-400 bg-violet-500/10 cursor-pointer hover:bg-violet-500/20 transition-colors"
+                        onClick={() => setShowEditPlanPanel((v) => !v)}
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        AI Edit
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[260px]">
+                      <p className="text-xs">AI Edit Plan applied — {clip.aiEditPlan.wordEmphasis.length} emphasis tags, {clip.aiEditPlan.brollSuggestions.length} B-Roll suggestions, {clip.aiEditPlan.sfxSuggestions.length} SFX hits</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">Click to view details</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
               <Badge variant="outline" className="text-xs flex items-center gap-1">
                 <Clock className="w-3 h-3" />

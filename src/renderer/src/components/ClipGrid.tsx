@@ -565,7 +565,20 @@ export function ClipGrid() {
         reasoning: clip.reasoning,
         transcriptText: clip.text,
         loopScore: clip.loopScore
-      }
+      },
+      // AI Edit Plan word emphasis — when present, bypasses heuristic analysis
+      wordEmphasisOverride: clip.aiEditPlan?.wordEmphasis?.length
+        ? clip.aiEditPlan.wordEmphasis.map((e) => ({
+            text: e.text,
+            start: e.start,
+            end: e.end,
+            emphasis: e.level as 'emphasis' | 'supersize'
+          }))
+        : undefined,
+      // AI Edit Plan SFX suggestions — injected into sound design engine
+      aiSfxSuggestions: clip.aiEditPlan?.sfxSuggestions?.length
+        ? clip.aiEditPlan.sfxSuggestions.map((s) => ({ timestamp: s.timestamp, type: s.type }))
+        : undefined
     }))
 
     // Add variant render jobs

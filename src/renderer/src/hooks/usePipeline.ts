@@ -12,6 +12,7 @@ import {
   stitchGenerationStage,
   faceDetectionStage,
   storyArcStage,
+  aiEditStage,
   notificationStage
 } from './pipeline-stages'
 
@@ -24,7 +25,8 @@ const PIPELINE_STAGE_ORDER: PipelineStage[] = [
   'generating-variants',
   'stitching',
   'detecting-faces',
-  'detecting-arcs'
+  'detecting-arcs',
+  'ai-editing'
 ]
 
 export function usePipeline() {
@@ -40,6 +42,7 @@ export function usePipeline() {
   const setStitchedClips = useStore((s) => s.setStitchedClips)
   const setStoryArcs = useStore((s) => s.setStoryArcs)
   const setClipPartInfo = useStore((s) => s.setClipPartInfo)
+  const setClipAIEditPlan = useStore((s) => s.setClipAIEditPlan)
   const markStageCompleted = useStore((s) => s.markStageCompleted)
   const setFailedPipelineStage = useStore((s) => s.setFailedPipelineStage)
   const setCachedSourcePath = useStore((s) => s.setCachedSourcePath)
@@ -116,7 +119,8 @@ export function usePipeline() {
           setStitchedClips,
           setStoryArcs,
           setClipPartInfo,
-          setCachedSourcePath
+          setCachedSourcePath,
+          setClipAIEditPlan
         },
         geminiApiKey: currentState.settings.geminiApiKey,
         processingConfig: {
@@ -125,7 +129,8 @@ export function usePipeline() {
           clipEndMode: currentState.processingConfig.clipEndMode,
           enableVariants: currentState.processingConfig.enableVariants,
           enableClipStitching: currentState.processingConfig.enableClipStitching,
-          enableMultiPart: currentState.processingConfig.enableMultiPart
+          enableMultiPart: currentState.processingConfig.enableMultiPart,
+          enableAiEdit: currentState.processingConfig.enableAiEdit
         }
       }
         // ── Step 1: Download (YouTube only) ──────────────────────────
@@ -163,6 +168,10 @@ export function usePipeline() {
         currentStage = 'detecting-arcs'
         await storyArcStage(ctx, transcription, clips)
 
+        // ── Step 6: AI edit orchestration (optional) ─────────────────
+        currentStage = 'ai-editing'
+        await aiEditStage(ctx, clips)
+
         // ── Done ─────────────────────────────────────────────────────
         notificationStage(ctx, clips, autoModeRanRef)
 
@@ -187,7 +196,7 @@ export function usePipeline() {
       updateClipTrim, updateClipThumbnail, addError, setClipVariants,
       setStitchedClips, setStoryArcs, setClipPartInfo, markStageCompleted,
       setFailedPipelineStage, setCachedSourcePath, clearPipelineCache,
-      snapshotSettings
+      snapshotSettings, setClipAIEditPlan
     ]
   )
 
@@ -201,7 +210,8 @@ export function usePipeline() {
       stage === 'generating-variants' ||
       stage === 'stitching' ||
       stage === 'detecting-faces' ||
-      stage === 'detecting-arcs'
+      stage === 'detecting-arcs' ||
+      stage === 'ai-editing'
     )
   }, [])
 

@@ -13,6 +13,7 @@ import type { BRollPlacement } from '../broll-placement'
 import type { FillerDetectionSettings } from '../filler-detection'
 import type { CaptionStyleInput } from '../captions'
 import type { SegmentRole } from '../ai/clip-stitcher'
+import type { EmphasizedWord } from '@shared/types'
 
 // Re-export pass-through types so consumers can import from one place
 export type {
@@ -29,7 +30,8 @@ export type {
   BRollPlacement,
   FillerDetectionSettings,
   CaptionStyleInput,
-  OutputAspectRatio
+  OutputAspectRatio,
+  EmphasizedWord
 }
 
 export interface BrandKitRenderOptions {
@@ -169,6 +171,20 @@ export interface RenderClipJob {
    * set (to the first segment) for compatibility but are ignored.
    */
   stitchedSegments?: RenderStitchedClipSegment[]
+  /**
+   * AI Edit Plan word emphasis override.
+   * When present, the captions feature uses this instead of running
+   * the heuristic emphasis analysis, providing AI-quality word tagging.
+   * Times are clip-relative (0-based, in seconds).
+   */
+  wordEmphasisOverride?: EmphasizedWord[]
+  /**
+   * AI Edit Plan SFX suggestions.
+   * When present and sound design is enabled, these are injected as
+   * additional edit events into the sound design placement engine.
+   * Times are clip-relative (0-based, in seconds).
+   */
+  aiSfxSuggestions?: Array<{ timestamp: number; type: string }>
 }
 
 export interface RenderStitchedClipSegment {

@@ -9,6 +9,7 @@ import type {
   StitchedClipCandidate,
   StoryArcUI,
 } from './types'
+import type { AIEditPlan } from '@shared/types'
 import { updateItemById } from './helpers'
 import { _pushUndo } from './history-slice'
 
@@ -44,6 +45,8 @@ export interface ClipsSlice {
   clearClipOverrides: (sourceId: string, clipId: string) => void
   resetClipBoundaries: (sourceId: string, clipId: string) => void
   rescoreClip: (sourceId: string, clipId: string, newScore: number, newReasoning: string, newHookText?: string) => void
+  setClipAIEditPlan: (sourceId: string, clipId: string, plan: AIEditPlan) => void
+  clearClipAIEditPlan: (sourceId: string, clipId: string) => void
   approveAll: (sourceId: string) => void
   approveClipsAboveScore: (sourceId: string, minScore: number) => { approved: number; rejected: number }
   rejectAll: (sourceId: string) => void
@@ -361,6 +364,30 @@ export const createClipsSlice: StateCreator<
             ...(newHookText ? { hookText: newHookText } : {}),
             originalScore: c.originalScore ?? c.score
           }))
+        }
+      }
+    }),
+
+  setClipAIEditPlan: (sourceId, clipId, plan) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      return {
+        clips: {
+          ...state.clips,
+          [sourceId]: updateItemById(sourceClips, clipId, { aiEditPlan: plan })
+        }
+      }
+    }),
+
+  clearClipAIEditPlan: (sourceId, clipId) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      return {
+        clips: {
+          ...state.clips,
+          [sourceId]: updateItemById(sourceClips, clipId, { aiEditPlan: undefined })
         }
       }
     }),
