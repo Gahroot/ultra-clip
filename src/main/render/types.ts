@@ -327,6 +327,10 @@ export interface RenderStitchedClipJob {
   captionsEnabled?: boolean
   /** Word timestamps from the source video transcription (absolute times). */
   wordTimestamps?: { text: string; start: number; end: number }[]
+  /** Pre-computed word emphasis data (from AI edit plan or heuristic). */
+  wordEmphasis?: EmphasizedWord[]
+  /** AI Edit Plan word emphasis override. */
+  wordEmphasisOverride?: EmphasizedWord[]
   /** Template layout positions for on-screen text elements (percentage-based). */
   templateLayout?: { titleText: { x: number; y: number }; subtitles: { x: number; y: number }; rehookText: { x: number; y: number } }
 }
