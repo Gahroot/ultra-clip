@@ -764,7 +764,7 @@ export function ClipGrid() {
         outputDirectory: outputDir,
         soundDesign: settings.soundDesign.enabled ? settings.soundDesign : undefined,
         autoZoom: settings.autoZoom.enabled
-          ? { enabled: true, intensity: settings.autoZoom.intensity, intervalSeconds: settings.autoZoom.intervalSeconds }
+          ? { enabled: true, mode: settings.autoZoom.mode, intensity: settings.autoZoom.intensity, intervalSeconds: settings.autoZoom.intervalSeconds }
           : undefined,
         brandKit: settings.brandKit.enabled ? settings.brandKit : undefined,
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
@@ -1002,7 +1002,7 @@ export function ClipGrid() {
         outputDirectory: outputDir,
         soundDesign: settings.soundDesign.enabled ? settings.soundDesign : undefined,
         autoZoom: settings.autoZoom.enabled
-          ? { enabled: true, intensity: settings.autoZoom.intensity, intervalSeconds: settings.autoZoom.intervalSeconds }
+          ? { enabled: true, mode: settings.autoZoom.mode, intensity: settings.autoZoom.intensity, intervalSeconds: settings.autoZoom.intervalSeconds }
           : undefined,
         brandKit: settings.brandKit.enabled ? settings.brandKit : undefined,
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
