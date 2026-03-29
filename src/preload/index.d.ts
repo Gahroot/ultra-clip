@@ -178,6 +178,14 @@ interface RenderClipJob {
     overlayText?: string
     role?: string
   }>
+  /** Pre-computed word emphasis (normal/emphasis/supersize per word). Bypasses heuristic when present. */
+  wordEmphasis?: Array<{ text: string; start: number; end: number; emphasis: 'normal' | 'emphasis' | 'supersize' }>
+  /** Pre-computed emphasis keyframes for reactive zoom. Bypasses in-pipeline computation when present. */
+  emphasisKeyframesInput?: Array<{ time: number; end: number; level: 'emphasis' | 'supersize' }>
+  /** Pre-computed edit events for sound design sync. Merged with internally derived events. */
+  editEvents?: Array<{ type: 'broll-transition' | 'jump-cut'; time: number; transition?: string }>
+  /** ID of the active edit style preset (informational, not consumed by render features). */
+  stylePresetId?: string
 }
 
 interface RenderBatchOptions {

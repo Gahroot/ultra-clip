@@ -50,27 +50,35 @@ class AutoZoomFeature implements RenderFeature {
     const clipDuration = job.endTime - job.startTime
 
     // For reactive mode, ensure emphasis keyframes are available on the job.
-    // Captions feature populates them during its own prepare() (which runs
-    // before this feature). If captions were disabled (or produced no words),
-    // compute them here as a fallback so reactive zoom still works.
+    // Priority: pre-computed keyframes from job > captions feature output > heuristic fallback.
     if (globalSettings.mode === 'reactive' && !job.emphasisKeyframes) {
-      const clipWords = (job.wordTimestamps ?? [])
-        .filter((w) => w.start >= job.startTime && w.end <= job.endTime)
-        .map((w) => ({
-          text: w.text,
-          start: w.start - job.startTime,
-          end: w.end - job.startTime
-        }))
-
-      if (clipWords.length > 0) {
-        const emphasized = analyzeEmphasisHeuristic(clipWords)
-        job.emphasisKeyframes = emphasized
-          .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize')
-          .map((w) => ({ time: w.start, end: w.end, level: w.emphasis as 'emphasis' | 'supersize' }))
+      // Check for pre-computed keyframes passed on the job
+      if (job.emphasisKeyframesInput && job.emphasisKeyframesInput.length > 0) {
+        job.emphasisKeyframes = job.emphasisKeyframesInput
         console.log(
-          `[AutoZoom] Reactive mode — computed ${job.emphasisKeyframes.length} emphasis keyframes ` +
-            `for clip ${job.clipId} (captions were not active)`
+          `[AutoZoom] Reactive mode — using ${job.emphasisKeyframes.length} pre-computed keyframes ` +
+            `for clip ${job.clipId}`
         )
+      } else {
+        // Fallback: compute from word timestamps using heuristic
+        const clipWords = (job.wordTimestamps ?? [])
+          .filter((w) => w.start >= job.startTime && w.end <= job.endTime)
+          .map((w) => ({
+            text: w.text,
+            start: w.start - job.startTime,
+            end: w.end - job.startTime
+          }))
+
+        if (clipWords.length > 0) {
+          const emphasized = analyzeEmphasisHeuristic(clipWords)
+          job.emphasisKeyframes = emphasized
+            .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize')
+            .map((w) => ({ time: w.start, end: w.end, level: w.emphasis as 'emphasis' | 'supersize' }))
+          console.log(
+            `[AutoZoom] Reactive mode — computed ${job.emphasisKeyframes.length} emphasis keyframes ` +
+              `for clip ${job.clipId} (captions were not active)`
+          )
+        }
       }
     }
 

@@ -185,6 +185,52 @@ export interface RenderClipJob {
    * Times are clip-relative (0-based, in seconds).
    */
   aiSfxSuggestions?: Array<{ timestamp: number; type: string }>
+  /**
+   * Pre-computed emphasis data for this clip.
+   *
+   * When present, the captions feature uses this as the canonical word
+   * emphasis source instead of running the heuristic analysis or matching
+   * wordEmphasisOverride by timestamp. This carries the full emphasis
+   * resolution (normal/emphasis/supersize for every word) and is used by
+   * captions, reactive zoom, and sound design features.
+   *
+   * If absent, emphasis is derived from wordEmphasisOverride (AI edit plan)
+   * or the heuristic fallback — no behavioural change for existing clips.
+   */
+  wordEmphasis?: EmphasizedWord[]
+  /**
+   * Pre-computed emphasis keyframes for reactive zoom.
+   *
+   * Normally computed at render time by the captions feature (or by the
+   * auto-zoom feature as a fallback). When provided on the job, the
+   * auto-zoom feature skips its own computation and uses these directly.
+   *
+   * Times are clip-relative (0-based, in seconds).
+   * If absent, auto-zoom computes keyframes normally — no behavioural change.
+   */
+  emphasisKeyframesInput?: EmphasisKeyframe[]
+  /**
+   * Pre-computed edit events for sound design synchronisation.
+   *
+   * When present and sound design is enabled, the IPC handler merges these
+   * with its own derived edit events (from B-Roll placements and jump-cut
+   * points). This allows external callers to inject content-aware edit
+   * events that trigger synchronised SFX placement.
+   *
+   * Times should be clip-relative (0-based, in seconds).
+   * If absent, sound design uses only its internally derived edit events.
+   */
+  editEvents?: EditEvent[]
+  /**
+   * ID of the active edit style preset when the job was created.
+   *
+   * Used by the AI edit plan system to tag generated plans and by the
+   * render manifest to record which creative style was applied. Not
+   * consumed directly by any render feature — purely informational.
+   *
+   * If absent, no style preset was active (user used manual settings).
+   */
+  stylePresetId?: string
 }
 
 export interface RenderStitchedClipSegment {
