@@ -898,7 +898,9 @@ interface Api {
   // System
   getDiskSpace: (dirPath: string) => Promise<{ free: number; total: number }>
   getEncoder: () => Promise<{ encoder: string; isHardware: boolean }>
-  getAvailableFonts: () => Promise<Array<{ name: string; path: string; source: 'bundled' | 'system' }>>
+  getAvailableFonts: () => Promise<Array<{ name: string; path: string; source: 'bundled' | 'system'; category?: string; weight?: string }>>
+  /** Get font file data as base64 string for renderer FontFace loading. */
+  getFontData: (fontPath: string) => Promise<string | null>
   sendNotification: (opts: { title: string; body: string; silent?: boolean }) => Promise<void>
   getTempSize: () => Promise<{ bytes: number; count: number }>
   cleanupTemp: () => Promise<{ deleted: number; freed: number }>

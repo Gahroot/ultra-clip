@@ -175,6 +175,7 @@ const api = {
   getDiskSpace: invoke(I.SYSTEM_GET_DISK_SPACE),
   getEncoder: invoke(I.SYSTEM_GET_ENCODER),
   getAvailableFonts: invoke(I.SYSTEM_GET_AVAILABLE_FONTS),
+  getFontData: invoke(I.SYSTEM_GET_FONT_DATA),
   sendNotification: invoke(I.SYSTEM_NOTIFY),
   getTempSize: invoke(I.SYSTEM_GET_TEMP_SIZE),
   cleanupTemp: invoke(I.SYSTEM_CLEANUP_TEMP),

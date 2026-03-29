@@ -139,6 +139,7 @@ export const InvokeChannels = {
   SYSTEM_NOTIFY: 'system:notify',
   SYSTEM_GET_ENCODER: 'system:getEncoder',
   SYSTEM_GET_AVAILABLE_FONTS: 'system:getAvailableFonts',
+  SYSTEM_GET_FONT_DATA: 'system:getFontData',
   SYSTEM_GET_TEMP_SIZE: 'system:getTempSize',
   SYSTEM_CLEANUP_TEMP: 'system:cleanupTemp',
   SYSTEM_GET_CACHE_SIZE: 'system:getCacheSize',

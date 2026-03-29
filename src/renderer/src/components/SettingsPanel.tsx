@@ -946,10 +946,17 @@ export function SettingsPanel() {
     return () => { cancelled = true }
   }, [settings.outputDirectory])
 
-  // Load available fonts once on mount
+  // Load available fonts once on mount (de-duplicate bundled fonts by family name)
   useEffect(() => {
     window.api.getAvailableFonts().then((fonts) => {
-      setAvailableFonts(fonts)
+      const seen = new Set<string>()
+      const deduped = fonts.filter((f) => {
+        const key = `${f.source}:${f.name}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      setAvailableFonts(deduped)
     }).catch(() => {
       // Ignore — font picker will simply be empty
     })
