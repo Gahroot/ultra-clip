@@ -65,6 +65,14 @@ import {
   type EditStyleCategory,
 } from '@/store'
 import { cn, formatFileSize } from '@/lib/utils'
+import {
+  pregenerateThumbnails,
+  getThumbnail,
+  generateThumbnail,
+  getThumbnailStatus,
+  onStatusChange,
+  type ThumbnailStatus,
+} from '@/lib/caption-thumbnail-cache'
 import { DropZone } from './DropZone'
 
 const ANIMATION_OPTIONS: { value: CaptionAnimation; label: string }[] = [
@@ -353,15 +361,17 @@ function CaptionPhonePreview({ captionStyle }: { captionStyle: CaptionStyle }) {
   )
 }
 
-/** Thumbnail scale: 120px wide on a 1080px frame */
-const THUMB_W = 120
-const THUMB_H = 160
-const THUMB_PREVIEW_H = THUMB_H - 24
-const THUMB_SCALE = THUMB_W / 1080
+/** Thumbnail dimensions: 200×350 portrait card */
+const THUMB_W = 200
+const THUMB_H = 350
+const THUMB_PREVIEW_H = THUMB_H - 32 // leave room for label
 
 /**
- * A 120×160 mini preview card showing a caption style with sample words
+ * A 200×350 portrait thumbnail card showing a caption style with sample words
  * in normal, emphasis, and supersize states against a dark background.
+ *
+ * Uses pre-rendered PNG thumbnails from the cache for instant display.
+ * Falls back to the live CSS renderer while the canvas thumbnails generate.
  */
 function CaptionStyleThumbnail({
   style,
@@ -372,107 +382,27 @@ function CaptionStyleThumbnail({
   isSelected: boolean
   onClick: () => void
 }) {
-  const scaledFontSize = Math.max(6, Math.round(style.fontSize * 1920 * THUMB_SCALE))
-  const isWordBox = style.animation === 'word-box'
-  const hasBox = style.borderStyle === 3 && !isWordBox
-  const isCaptionsAI = style.animation === 'captions-ai'
-  const outlineWidth = Math.max(1, Math.round(style.outline * THUMB_SCALE))
+  const cachedUrl = getThumbnail(style.id)
+  const [localUrl, setLocalUrl] = useState<string | undefined>(cachedUrl)
+  const [thumbStatus, setThumbStatus] = useState<ThumbnailStatus>(getThumbnailStatus())
 
-  const words = [
-    { text: 'This', type: 'normal' as const },
-    { text: 'IS', type: 'emphasis' as const },
-    { text: 'EPIC', type: 'supersize' as const }
-  ]
+  // Subscribe to cache status changes
+  useEffect(() => {
+    const unsub = onStatusChange(setThumbStatus)
+    return unsub
+  }, [])
 
-  const baseTextStyle: React.CSSProperties = {
-    fontFamily: `"${style.fontName}", sans-serif`,
-    fontSize: `${Math.max(6, scaledFontSize)}px`,
-    fontWeight: 700,
-    lineHeight: 1.3,
-    textAlign: 'center',
-    WebkitTextStroke: hasBox ? undefined : `${outlineWidth}px ${style.outlineColor}`,
-    textShadow: hasBox ? undefined : `1px 1px 2px ${style.outlineColor}`
-  }
-
-  const renderWord = (word: { text: string; type: 'normal' | 'emphasis' | 'supersize' }, i: number) => {
-    if (isWordBox) {
-      const boxColor =
-        word.type === 'supersize'
-          ? (style.supersizeColor ?? '#DC2626')
-          : word.type === 'emphasis'
-            ? (style.emphasisColor ?? style.highlightColor)
-            : style.outlineColor
-      const scale = word.type === 'supersize' ? 1.2 : word.type === 'emphasis' ? 1.1 : 1
-      return (
-        <span
-          key={i}
-          style={{
-            fontFamily: `"${style.fontName}", sans-serif`,
-            fontSize: `${Math.max(5, Math.round(scaledFontSize * scale))}px`,
-            fontWeight: word.type === 'supersize' ? 900 : 700,
-            color: style.primaryColor,
-            backgroundColor: boxColor,
-            borderRadius: '3px',
-            padding: '1px 3px',
-            display: 'inline-block',
-            lineHeight: 1.3
-          }}
-        >
-          {word.text}
-        </span>
-      )
+  // When cache becomes ready or style changes, try to get/generate thumbnail
+  useEffect(() => {
+    const url = getThumbnail(style.id)
+    if (url) {
+      setLocalUrl(url)
+    } else if (thumbStatus === 'ready') {
+      // Generate on-the-fly for styles not pre-generated (e.g. custom)
+      const generated = generateThumbnail(style)
+      setLocalUrl(generated)
     }
-
-    if (isCaptionsAI && word.type === 'supersize') {
-      return (
-        <span
-          key={i}
-          style={{
-            ...baseTextStyle,
-            color: style.supersizeColor ?? '#FFD700',
-            fontSize: `${Math.max(8, Math.round(scaledFontSize * 2.0))}px`,
-            fontWeight: 900,
-            display: 'inline'
-          }}
-        >
-          {word.text}
-        </span>
-      )
-    }
-
-    if (isCaptionsAI && word.type === 'emphasis') {
-      return (
-        <span
-          key={i}
-          style={{
-            ...baseTextStyle,
-            color: style.emphasisColor ?? style.highlightColor,
-            fontSize: `${Math.max(7, Math.round(scaledFontSize * 1.25))}px`,
-            fontWeight: 800,
-            display: 'inline'
-          }}
-        >
-          {word.text}
-        </span>
-      )
-    }
-
-    return (
-      <span
-        key={i}
-        style={{
-          ...baseTextStyle,
-          color: word.type === 'emphasis' ? style.highlightColor : style.primaryColor
-        }}
-      >
-        {word.text}
-      </span>
-    )
-  }
-
-  const containerStyle: React.CSSProperties = hasBox
-    ? { padding: '1px 4px', backgroundColor: style.backColor, borderRadius: '2px' }
-    : {}
+  }, [style.id, thumbStatus])
 
   return (
     <button
@@ -485,30 +415,113 @@ function CaptionStyleThumbnail({
       style={{ width: THUMB_W }}
     >
       <div
-        className="flex flex-col items-center justify-center gap-0.5 w-full"
+        className="flex items-center justify-center w-full relative"
         style={{
           width: THUMB_W,
           height: THUMB_PREVIEW_H,
           background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
         }}
       >
-        <div
-          className={cn(
-            'flex flex-col items-center gap-0.5',
-            isWordBox && 'gap-[2px]'
-          )}
-          style={containerStyle}
-        >
-          {words.map((w, i) => renderWord(w, i))}
-        </div>
+        {localUrl ? (
+          <img
+            src={localUrl}
+            alt={style.label}
+            width={THUMB_W}
+            height={THUMB_PREVIEW_H}
+            style={{ width: THUMB_W, height: THUMB_PREVIEW_H, objectFit: 'cover' }}
+            draggable={false}
+          />
+        ) : (
+          <span className="text-muted-foreground text-xs">
+            {thumbStatus === 'loading-fonts' || thumbStatus === 'generating' ? '…' : 'Preview'}
+          </span>
+        )}
       </div>
       <div
-        className="w-full text-center truncate px-1 py-1 text-[9px] text-muted-foreground bg-card"
+        className="w-full text-center truncate px-2 py-1.5 text-[10px] text-muted-foreground bg-card"
         title={style.label}
       >
         {style.label}
       </div>
     </button>
+  )
+}
+
+/**
+ * Grid of caption style thumbnails. Pre-generates all thumbnail PNGs on first
+ * render so subsequent scrolling shows them instantly.
+ */
+function CaptionPresetGrid({
+  presets,
+  selectedPresetId,
+  onPresetChange,
+}: {
+  presets: CaptionStyle[]
+  selectedPresetId: string
+  onPresetChange: (id: string) => void
+}) {
+  const [thumbStatus, setThumbStatus] = useState<ThumbnailStatus>(getThumbnailStatus())
+
+  // Pre-generate all thumbnails on mount (run once)
+  const pregenStarted = useRef(false)
+  useEffect(() => {
+    if (!pregenStarted.current) {
+      pregenStarted.current = true
+      pregenerateThumbnails(presets)
+    }
+  }, [presets])
+
+  // Subscribe to status changes
+  useEffect(() => {
+    const unsub = onStatusChange(setThumbStatus)
+    return unsub
+  }, [])
+
+  return (
+    <div className="space-y-1.5">
+      {thumbStatus !== 'ready' && (
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {thumbStatus === 'loading-fonts' ? 'Loading fonts…' : 'Generating thumbnails…'}
+        </div>
+      )}
+      <div className="grid grid-cols-3 gap-2 max-h-[600px] overflow-y-auto pr-1">
+        {presets.map((preset) => (
+          <CaptionStyleThumbnail
+            key={preset.id}
+            style={preset}
+            isSelected={selectedPresetId === preset.id}
+            onClick={() => onPresetChange(preset.id)}
+          />
+        ))}
+        {/* Custom option */}
+        <button
+          onClick={() => onPresetChange('custom')}
+          className={cn(
+            'flex flex-col items-center rounded-lg overflow-hidden transition-all cursor-pointer',
+            'hover:ring-2 hover:ring-primary/50',
+            selectedPresetId === 'custom'
+              ? 'ring-2 ring-primary shadow-lg shadow-primary/20'
+              : 'ring-1 ring-border'
+          )}
+          style={{ width: THUMB_W }}
+        >
+          <div
+            className="flex items-center justify-center w-full text-muted-foreground"
+            style={{
+              width: THUMB_W,
+              height: THUMB_PREVIEW_H,
+              background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+            }}
+          >
+            <span className="text-xl">✎</span>
+          </div>
+          <div className="w-full text-center truncate px-2 py-1.5 text-[10px] text-muted-foreground bg-card">
+            Custom
+          </div>
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -2000,42 +2013,11 @@ export function SettingsPanel() {
 
               {/* Preset selector — visual thumbnail grid */}
               <FieldRow label="Preset">
-                <div className="grid grid-cols-4 gap-2 max-h-[400px] overflow-y-auto pr-1">
-                  {Object.values(CAPTION_PRESETS).map((preset) => (
-                    <CaptionStyleThumbnail
-                      key={preset.id}
-                      style={preset}
-                      isSelected={selectedPresetId === preset.id}
-                      onClick={() => handlePresetChange(preset.id)}
-                    />
-                  ))}
-                  {/* Custom option */}
-                  <button
-                    onClick={() => handlePresetChange('custom')}
-                    className={cn(
-                      'flex flex-col items-center rounded-lg overflow-hidden transition-all cursor-pointer',
-                      'hover:ring-2 hover:ring-primary/50',
-                      selectedPresetId === 'custom'
-                        ? 'ring-2 ring-primary shadow-lg shadow-primary/20'
-                        : 'ring-1 ring-border'
-                    )}
-                    style={{ width: THUMB_W }}
-                  >
-                    <div
-                      className="flex items-center justify-center w-full text-muted-foreground"
-                      style={{
-                        width: THUMB_W,
-                        height: THUMB_PREVIEW_H,
-                        background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
-                      }}
-                    >
-                      <span className="text-xl">✎</span>
-                    </div>
-                    <div className="w-full text-center truncate px-1 py-1 text-[9px] text-muted-foreground bg-card">
-                      Custom
-                    </div>
-                  </button>
-                </div>
+                <CaptionPresetGrid
+                  presets={Object.values(CAPTION_PRESETS)}
+                  selectedPresetId={selectedPresetId}
+                  onPresetChange={handlePresetChange}
+                />
               </FieldRow>
 
               {/* Animation */}

@@ -991,7 +991,271 @@ export const CAPTION_PRESETS: Record<string, CaptionStyle> = {
     animation: 'fade-in',
     emphasisColor: '#FF3B30',
     supersizeColor: '#FFE600'
-  }
+  },
+
+  // ---------------------------------------------------------------------------
+  // Additional basic caption styles (48–60)
+  // ---------------------------------------------------------------------------
+
+  /** Menkar — Anton display font, warm amber highlight, fade-in. Bold and warm. */
+  'menkar': {
+    id: 'menkar',
+    label: 'Menkar',
+    fontName: 'Anton',
+    fontFile: 'Anton-Regular.ttf',
+    fontSize: 0.065,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFA726',
+    outlineColor: '#000000',
+    backColor: '#80000000',
+    outline: 3,
+    shadow: 1,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'fade-in',
+    emphasisColor: '#FFA726',
+    supersizeColor: '#FF6D00'
+  },
+
+  /** Wezen — Bebas Neue tall condensed, neon mint on dark. Clean and modern. */
+  'wezen': {
+    id: 'wezen',
+    label: 'Wezen',
+    fontName: 'Bebas Neue',
+    fontFile: 'BebasNeue-Regular.ttf',
+    fontSize: 0.06,
+    primaryColor: '#E0F2F1',
+    highlightColor: '#64FFDA',
+    outlineColor: '#004D40',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'word-pop',
+    emphasisColor: '#64FFDA',
+    supersizeColor: '#1DE9B6'
+  },
+
+  /** Markab — Oswald medium, teal accent, typewriter reveal. */
+  'markab': {
+    id: 'markab',
+    label: 'Markab',
+    fontName: 'Oswald',
+    fontFile: 'Oswald.ttf',
+    fontSize: 0.06,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#26C6DA',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'typewriter',
+    emphasisColor: '#26C6DA',
+    supersizeColor: '#00BCD4'
+  },
+
+  /** Alphecca — Playfair Display serif, gold highlight, fade-in. Elegant editorial. */
+  'alphecca': {
+    id: 'alphecca',
+    label: 'Alphecca',
+    fontName: 'Playfair Display',
+    fontFile: 'PlayfairDisplay.ttf',
+    fontSize: 0.055,
+    primaryColor: '#FFF8E1',
+    highlightColor: '#FFD54F',
+    outlineColor: '#3E2723',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 1,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'fade-in',
+    emphasisColor: '#FFD54F',
+    supersizeColor: '#FFC107'
+  },
+
+  /** Caph — Permanent Marker handwritten, red accent, cascade. Casual energy. */
+  'caph': {
+    id: 'caph',
+    label: 'Caph',
+    fontName: 'Permanent Marker',
+    fontFile: 'PermanentMarker-Regular.ttf',
+    fontSize: 0.055,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#EF5350',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 1,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'cascade',
+    emphasisColor: '#EF5350',
+    supersizeColor: '#F44336'
+  },
+
+  /** Alhena — Lora serif, soft purple highlight, elastic bounce. */
+  'alhena': {
+    id: 'alhena',
+    label: 'Alhena',
+    fontName: 'Lora',
+    fontFile: 'Lora.ttf',
+    fontSize: 0.055,
+    primaryColor: '#F3E5F5',
+    highlightColor: '#CE93D8',
+    outlineColor: '#4A148C',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'elastic-bounce',
+    emphasisColor: '#CE93D8',
+    supersizeColor: '#AB47BC'
+  },
+
+  /** Zuben — Anton display, magenta highlight, word-pop. Punchy and bright. */
+  'zuben': {
+    id: 'zuben',
+    label: 'Zuben',
+    fontName: 'Anton',
+    fontFile: 'Anton-Regular.ttf',
+    fontSize: 0.06,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FF4081',
+    outlineColor: '#000000',
+    backColor: '#80000000',
+    outline: 3,
+    shadow: 2,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'word-pop',
+    emphasisColor: '#FF4081',
+    supersizeColor: '#F50057'
+  },
+
+  /** Algorab — Bebas Neue condensed, lime green on black. Techy and sharp. */
+  'algorab': {
+    id: 'algorab',
+    label: 'Algorab',
+    fontName: 'Bebas Neue',
+    fontFile: 'BebasNeue-Regular.ttf',
+    fontSize: 0.055,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#C6FF00',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'impact-two',
+    emphasisColor: '#C6FF00',
+    supersizeColor: '#AEEA00'
+  },
+
+  /** Ain — Oswald, coral highlight, karaoke-fill. Warm and readable. */
+  'ain': {
+    id: 'ain',
+    label: 'Ain',
+    fontName: 'Oswald',
+    fontFile: 'Oswald.ttf',
+    fontSize: 0.055,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FF8A65',
+    outlineColor: '#000000',
+    backColor: '#80000000',
+    outline: 2,
+    shadow: 1,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'karaoke-fill',
+    emphasisColor: '#FF8A65',
+    supersizeColor: '#FF7043'
+  },
+
+  /** Mizar — Playfair Display, emerald green highlight. Sophisticated editorial. */
+  'mizar': {
+    id: 'mizar',
+    label: 'Mizar',
+    fontName: 'Playfair Display',
+    fontFile: 'PlayfairDisplay.ttf',
+    fontSize: 0.05,
+    primaryColor: '#E8F5E9',
+    highlightColor: '#66BB6A',
+    outlineColor: '#1B5E20',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 4,
+    animation: 'fade-in',
+    emphasisColor: '#66BB6A',
+    supersizeColor: '#4CAF50'
+  },
+
+  /** Kaus — Bangers comic, hot pink, glow. Fun and energetic. */
+  'kaus': {
+    id: 'kaus',
+    label: 'Kaus',
+    fontName: 'Bangers',
+    fontFile: 'Bangers-Regular.ttf',
+    fontSize: 0.06,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FF80AB',
+    outlineColor: '#880E4F',
+    backColor: '#00000000',
+    outline: 3,
+    shadow: 2,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'glow',
+    emphasisColor: '#FF80AB',
+    supersizeColor: '#FF4081'
+  },
+
+  /** Vindemiatrix — Lora serif, ice blue highlight, captions-ai animation. Cool and refined. */
+  'vindemiatrix': {
+    id: 'vindemiatrix',
+    label: 'Vindemiatrix',
+    fontName: 'Lora',
+    fontFile: 'Lora.ttf',
+    fontSize: 0.055,
+    primaryColor: '#E3F2FD',
+    highlightColor: '#64B5F6',
+    outlineColor: '#0D47A1',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'captions-ai',
+    emphasisColor: '#64B5F6',
+    supersizeColor: '#42A5F5'
+  },
+
+  /** Tania — Inter with rounded background boxes, coral fill. Modern web aesthetic. */
+  'tania': {
+    id: 'tania',
+    label: 'Tania',
+    fontName: 'Inter',
+    fontFile: 'Inter-Bold.ttf',
+    fontSize: 0.06,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#E5393533',
+    backColor: '#00000000',
+    outline: 14,
+    shadow: 0,
+    borderStyle: 3,
+    wordsPerLine: 2,
+    animation: 'word-box',
+    emphasisColor: '#EF5350',
+    supersizeColor: '#E53935'
+  },
 }
 
 // ---------------------------------------------------------------------------
