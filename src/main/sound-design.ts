@@ -1,7 +1,7 @@
 import { join } from 'path'
 import { app } from 'electron'
 import { existsSync } from 'fs'
-import type { MusicTrack, WordTimestamp, EmphasizedWord } from '@shared/types'
+import type { MusicTrack, WordTimestamp, EmphasizedWord, ShotStyleConfig } from '@shared/types'
 
 // ---------------------------------------------------------------------------
 // Types (MusicTrack canonical definition lives in @shared/types)
@@ -341,6 +341,184 @@ export function buildMusicDuckingExpr(
   return `${fv}+(${dv}-${fv})*(${inSpeechTerms})`
 }
 
+// ---------------------------------------------------------------------------
+// Per-shot music helpers — crossfade between different tracks per shot
+// ---------------------------------------------------------------------------
+
+/** A resolved music segment: which track plays over which time range. */
+interface ShotMusicSegment {
+  startTime: number
+  endTime: number
+  track: MusicTrack
+}
+
+/** A group of consecutive shots sharing the same track. */
+interface TrackGroup {
+  track: MusicTrack
+  startTime: number
+  endTime: number
+}
+
+/**
+ * Resolve per-shot music track assignments into time-ranged segments.
+ * Shots without a musicTrack override use the global fallback track.
+ */
+function resolvePerShotMusic(
+  clipDuration: number,
+  globalTrack: MusicTrack,
+  shotStyleConfigs?: ShotStyleConfig[]
+): ShotMusicSegment[] {
+  if (!shotStyleConfigs || shotStyleConfigs.length === 0) {
+    return [{ startTime: 0, endTime: clipDuration, track: globalTrack }]
+  }
+
+  // Sort shots by startTime
+  const sorted = [...shotStyleConfigs].sort((a, b) => a.startTime - b.startTime)
+  const segments: ShotMusicSegment[] = []
+
+  let cursor = 0
+  for (const shot of sorted) {
+    // Fill gap before this shot with global track
+    if (shot.startTime > cursor + 0.01) {
+      segments.push({ startTime: cursor, endTime: shot.startTime, track: globalTrack })
+    }
+    segments.push({
+      startTime: shot.startTime,
+      endTime: shot.endTime,
+      track: shot.musicTrack ?? globalTrack
+    })
+    cursor = shot.endTime
+  }
+
+  // Fill remaining clip duration with global track
+  if (cursor < clipDuration - 0.01) {
+    segments.push({ startTime: cursor, endTime: clipDuration, track: globalTrack })
+  }
+
+  return segments
+}
+
+/**
+ * Group consecutive shot music segments by track, merging adjacent segments
+ * that use the same track into a single group for efficient rendering.
+ */
+function groupShotMusicByTrack(segments: ShotMusicSegment[]): TrackGroup[] {
+  if (segments.length === 0) return []
+
+  const groups: TrackGroup[] = []
+  let current: TrackGroup = {
+    track: segments[0].track,
+    startTime: segments[0].startTime,
+    endTime: segments[0].endTime
+  }
+
+  for (let i = 1; i < segments.length; i++) {
+    if (segments[i].track === current.track) {
+      current.endTime = segments[i].endTime
+    } else {
+      groups.push(current)
+      current = {
+        track: segments[i].track,
+        startTime: segments[i].startTime,
+        endTime: segments[i].endTime
+      }
+    }
+  }
+  groups.push(current)
+  return groups
+}
+
+/**
+ * Build a volume expression for a per-shot music track that:
+ *  - Fades in at the track's start boundary over `crossfadeSec`
+ *  - Fades out at the track's end boundary over `crossfadeSec`
+ *  - Stays at 0 outside its active region
+ *  - Applies speech ducking within its active region
+ *
+ * Uses comma-free infix math for Windows FFmpeg safety.
+ *
+ * Crossfade envelope (before ducking):
+ *   - Before active region: 0
+ *   - Fade-in ramp: t in [start - cf, start] → linearly 0 → fullVol
+ *   - Active plateau: fullVol
+ *   - Fade-out ramp: t in [end, end + cf] → linearly fullVol → 0
+ *   - After active region: 0
+ */
+function buildPerShotMusicVolExpr(
+  startTime: number,
+  endTime: number,
+  clipDuration: number,
+  fullVol: number,
+  duckVol: number,
+  crossfadeSec: number,
+  speechSegments: Array<[number, number]>,
+  ducking: boolean
+): string {
+  const fv = fullVol.toFixed(3)
+
+  // Crossfade boundaries (clamped to clip edges)
+  const fadeInStart = Math.max(0, startTime - crossfadeSec)
+  const fadeInEnd = startTime
+  const fadeOutStart = endTime
+  const fadeOutEnd = Math.min(clipDuration, endTime + crossfadeSec)
+
+  // Build envelope expression:
+  // envelope = fadeIn * plateau * fadeOut
+  // fadeIn: clamp((t - fadeInStart) / fadeInDur, 0, 1)
+  // fadeOut: clamp((fadeOutEnd - t) / fadeOutDur, 0, 1)
+  // Using min/max since FFmpeg has them as comma-free: min(a;b), max(a;b)
+  // Actually FFmpeg min/max use `;` separator which might have issues.
+  // Safer approach: use arithmetic clamping with multiplication.
+
+  const fadeInDur = fadeInEnd - fadeInStart
+  const fadeOutDur = fadeOutEnd - fadeOutStart
+
+  // Comma-free clamping: clamp(x, 0, 1) = x*(x>=0)*(x<=1) + 1*(x>1)
+  // Simpler: use smooth step with multiplied conditions
+  const parts: string[] = []
+
+  if (fadeInDur > 0.01) {
+    // Fade-in ramp: ramp = (t - fadeInStart) / fadeInDur, clamped to [0,1]
+    // = ramp * (ramp >= 0) * (ramp <= 1) + (ramp > 1)
+    const s = fadeInStart.toFixed(3)
+    const d = fadeInDur.toFixed(3)
+    parts.push(`((t-${s})/${d}*(t>=${s})*(t<=${fadeInEnd.toFixed(3)})+(t>${fadeInEnd.toFixed(3)}))`)
+  }
+
+  if (fadeOutDur > 0.01) {
+    // Fade-out ramp: ramp = (fadeOutEnd - t) / fadeOutDur, clamped to [0,1]
+    const e = fadeOutEnd.toFixed(3)
+    const d = fadeOutDur.toFixed(3)
+    parts.push(`((${e}-t)/${d}*(t>=${fadeOutStart.toFixed(3)})*(t<=${e})+(t<${fadeOutStart.toFixed(3)}))`)
+  }
+
+  // Silence outside the [fadeInStart, fadeOutEnd] window
+  parts.push(`(t>=${fadeInStart.toFixed(3)})*(t<=${fadeOutEnd.toFixed(3)})`)
+
+  let envelope = parts.join('*')
+
+  // Apply base volume
+  let expr = `${fv}*${envelope}`
+
+  // Apply speech ducking within the active region
+  if (ducking && speechSegments.length > 0) {
+    const dv = duckVol.toFixed(3)
+    // Filter speech segments to those overlapping our active region
+    const relevantSpeech = speechSegments.filter(
+      ([s, e]) => e > fadeInStart && s < fadeOutEnd
+    )
+    if (relevantSpeech.length > 0) {
+      const inSpeechTerms = relevantSpeech
+        .map(([s, e]) => `(t>=${s.toFixed(3)})*(t<=${e.toFixed(3)})`)
+        .join('+')
+      // Ducked volume: fullVol + (duckVol - fullVol) * inSpeech, then multiply by envelope
+      expr = `(${fv}+(${dv}-${fv})*(${inSpeechTerms}))*${envelope}`
+    }
+  }
+
+  return expr
+}
+
 /**
  * Generate emphasis-aware sound placements for a clip.
  *
@@ -362,13 +540,18 @@ export function buildMusicDuckingExpr(
  * @param emphasizedWords  Optional pre-computed emphasis data (normal/emphasis/supersize).
  *                         When omitted, a simple heuristic is used internally.
  * @param editEvents       Optional edit events (B-Roll transitions, jump-cuts) for sync SFX.
+ * @param shotStyleConfigs Optional per-shot style configs with music track overrides.
+ *                         When shots specify different music tracks, each shot gets its
+ *                         own music placement with crossfade volume envelopes for smooth
+ *                         transitions between tracks.
  */
 export function generateSoundPlacements(
   clipDuration: number,
   wordTimestamps: WordTimestampInput[],
   options: SoundDesignOptions,
   emphasizedWords?: EmphasizedWord[],
-  editEvents?: EditEvent[]
+  editEvents?: EditEvent[],
+  shotStyleConfigs?: ShotStyleConfig[]
 ): SoundPlacementData[] {
   if (!options.enabled) return []
 
@@ -389,29 +572,79 @@ export function generateSoundPlacements(
     glitchHit:        tryResolve('glitch-hit'),
   }
 
-  // ── 1. Background music ────────────────────────────────────────────────────
-  const musicPath = resolveMusicPath(options.backgroundMusicTrack)
-  if (existsSync(musicPath)) {
-    const fullVol = Math.max(0, Math.min(1, options.musicVolume))
-    const musicPlacement: SoundPlacementData = {
-      type: 'music',
-      filePath: musicPath,
-      startTime: 0,
-      duration: clipDuration,
-      volume: fullVol
-    }
+  // ── 1. Background music (with per-shot crossfade support) ──────────────────
+  const fullVol = Math.max(0, Math.min(1, options.musicVolume))
+  const speechSegments = (options.musicDucking && wordTimestamps.length > 0)
+    ? mergeSpeechSegments(wordTimestamps)
+    : []
+  const duckVol = fullVol * Math.max(0, Math.min(1, options.musicDuckLevel))
 
-    // Build time-varying ducking expression when ducking is enabled and we
-    // have word timestamps to derive speech/pause windows from.
-    if (options.musicDucking && wordTimestamps.length > 0) {
-      const duckVol = fullVol * Math.max(0, Math.min(1, options.musicDuckLevel))
-      const speechSegments = mergeSpeechSegments(wordTimestamps)
-      musicPlacement.volumeExpr = buildMusicDuckingExpr(speechSegments, fullVol, duckVol)
-    }
+  // Determine per-shot music segments: collect unique music tracks across shots
+  const shotMusicSegments = resolvePerShotMusic(
+    clipDuration, options.backgroundMusicTrack, shotStyleConfigs
+  )
 
-    placements.push(musicPlacement)
+  // Check if all shots use the same track (common case — no crossfade needed)
+  const uniqueTracks = new Set(shotMusicSegments.map(s => s.track))
+
+  if (uniqueTracks.size <= 1) {
+    // Single track — original simple path
+    const track = shotMusicSegments[0]?.track ?? options.backgroundMusicTrack
+    const musicPath = resolveMusicPath(track)
+    if (existsSync(musicPath)) {
+      const musicPlacement: SoundPlacementData = {
+        type: 'music',
+        filePath: musicPath,
+        startTime: 0,
+        duration: clipDuration,
+        volume: fullVol
+      }
+
+      if (options.musicDucking && speechSegments.length > 0) {
+        musicPlacement.volumeExpr = buildMusicDuckingExpr(speechSegments, fullVol, duckVol)
+      }
+
+      placements.push(musicPlacement)
+    } else {
+      console.warn(`[SoundDesign] Music file not found, skipping: ${musicPath}`)
+    }
   } else {
-    console.warn(`[SoundDesign] Music file not found, skipping: ${musicPath}`)
+    // Multiple tracks across shots — create per-track placements with crossfade envelopes
+    const CROSSFADE_SEC = 0.5 // crossfade duration between different tracks
+
+    // Group consecutive segments by track
+    const trackGroups = groupShotMusicByTrack(shotMusicSegments)
+
+    for (const group of trackGroups) {
+      const musicPath = resolveMusicPath(group.track)
+      if (!existsSync(musicPath)) {
+        console.warn(`[SoundDesign] Per-shot music file not found, skipping: ${musicPath}`)
+        continue
+      }
+
+      // Build a volume envelope that fades this track in/out at shot boundaries
+      const volExpr = buildPerShotMusicVolExpr(
+        group.startTime, group.endTime, clipDuration,
+        fullVol, duckVol, CROSSFADE_SEC,
+        speechSegments, options.musicDucking
+      )
+
+      placements.push({
+        type: 'music',
+        filePath: musicPath,
+        startTime: 0,
+        duration: clipDuration,
+        volume: fullVol,
+        volumeExpr: volExpr
+      })
+    }
+
+    if (trackGroups.length > 1) {
+      console.log(
+        `[SoundDesign] Per-shot music: ${trackGroups.length} tracks with ${CROSSFADE_SEC}s crossfades ` +
+        `(${trackGroups.map(g => `${g.track}@${g.startTime.toFixed(1)}-${g.endTime.toFixed(1)}s`).join(', ')})`
+      )
+    }
   }
 
   if (wordTimestamps.length === 0 && (!editEvents || editEvents.length === 0)) {

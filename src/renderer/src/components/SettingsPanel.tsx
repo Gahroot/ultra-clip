@@ -111,9 +111,25 @@ function FieldRow({
 }
 
 const MUSIC_TRACK_OPTIONS: { value: MusicTrack; label: string; description: string }[] = [
+  // ── Style-curated tracks ──
+  { value: 'cinematic-ambient', label: 'Cinematic Ambient', description: 'Atmospheric orchestral pads' },
+  { value: 'cinematic-noir', label: 'Cinematic Noir', description: 'Jazzy, smoky, mysterious' },
+  { value: 'cinematic-golden', label: 'Cinematic Golden', description: 'Warm strings, hopeful' },
+  { value: 'high-energy-beats', label: 'High Energy Beats', description: 'Punchy electronic, 140+ BPM' },
+  { value: 'high-energy-trap', label: 'Trap Beats', description: 'Aggressive 808s, dark energy' },
+  { value: 'gritty-lofi', label: 'Gritty Lo-Fi', description: 'Vinyl crackle, grungy bass' },
+  { value: 'gritty-dark', label: 'Gritty Dark', description: 'Industrial, distorted, raw' },
+  { value: 'synthwave-neon', label: 'Synthwave', description: 'Retro 80s arpeggios' },
+  { value: 'synthwave-vapor', label: 'Vaporwave', description: 'Dreamy pads, lo-fi nostalgia' },
+  { value: 'impact-hype', label: 'Impact Hype', description: 'Hard-hitting hip-hop instrumental' },
+  { value: 'corporate-upbeat', label: 'Corporate Upbeat', description: 'Clean, professional, uplifting' },
+  { value: 'ember-warm', label: 'Ember Warm', description: 'Indie acoustic, soulful' },
+  { value: 'volt-electric', label: 'Volt Electric', description: 'Electro house, driving bassline' },
+  { value: 'clarity-focus', label: 'Clarity Focus', description: 'Minimal piano + soft pads' },
+  // ── Legacy generic tracks ──
   { value: 'ambient-tech', label: 'Ambient Tech', description: 'Subtle electronic / corporate' },
   { value: 'ambient-motivational', label: 'Motivational', description: 'Uplifting, inspiring' },
-  { value: 'ambient-chill', label: 'Chill Lo-Fi', description: 'Relaxed, laid-back' }
+  { value: 'ambient-chill', label: 'Chill Lo-Fi', description: 'Relaxed, laid-back' },
 ]
 
 type SectionKey = 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'progressBar' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality'

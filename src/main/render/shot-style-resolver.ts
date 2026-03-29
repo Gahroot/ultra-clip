@@ -15,7 +15,8 @@ import type {
   ZoomMode,
   ZoomIntensity,
   ColorGradeConfig,
-  ShotTransitionConfig
+  ShotTransitionConfig,
+  MusicTrack
 } from '@shared/types'
 
 // ---------------------------------------------------------------------------
@@ -51,11 +52,16 @@ interface PresetZoom {
   intervalSeconds: number
 }
 
+interface PresetSound {
+  backgroundMusicTrack?: MusicTrack
+}
+
 /** Minimal preset shape needed for shot-style resolution. */
 export interface StylePresetForResolution {
   id: string
   captions: PresetCaptions
   zoom: PresetZoom
+  sound?: PresetSound
   colorGrade?: ColorGradeConfig
   transitionIn?: ShotTransitionConfig
   transitionOut?: ShotTransitionConfig
@@ -125,7 +131,8 @@ export function resolveShotStyles(
       colorGrade: preset.colorGrade ?? null,
       transitionIn: preset.transitionIn ?? null,
       transitionOut: preset.transitionOut ?? null,
-      brollMode: preset.brollMode ?? null
+      brollMode: preset.brollMode ?? null,
+      musicTrack: preset.sound?.backgroundMusicTrack ?? null
     })
   }
 

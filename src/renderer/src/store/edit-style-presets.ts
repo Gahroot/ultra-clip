@@ -65,7 +65,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
     sound: {
       enabled: true,
       sfxStyle: 'energetic',
-      backgroundMusicTrack: 'ambient-tech',
+      backgroundMusicTrack: 'impact-hype',
       sfxVolume: 0.7,
       musicVolume: 0.12,
       musicDucking: true,
@@ -187,7 +187,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
     sound: {
       enabled: false,
       sfxStyle: 'minimal',
-      backgroundMusicTrack: 'ambient-chill',
+      backgroundMusicTrack: 'clarity-focus',
       sfxVolume: 0.3,
       musicVolume: 0.07,
       musicDucking: true,
@@ -307,7 +307,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
     sound: {
       enabled: true,
       sfxStyle: 'energetic',
-      backgroundMusicTrack: 'ambient-tech',
+      backgroundMusicTrack: 'high-energy-beats',
       sfxVolume: 0.65,
       musicVolume: 0.12,
       musicDucking: true,
@@ -437,7 +437,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
     sound: {
       enabled: true,
       sfxStyle: 'standard',
-      backgroundMusicTrack: 'ambient-motivational',
+      backgroundMusicTrack: 'corporate-upbeat',
       sfxVolume: 0.45,
       musicVolume: 0.1,
       musicDucking: true,
@@ -490,7 +490,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         description: 'Earthy green tones — calm growth, mindful energy.',
         thumbnail: '🍃',
         captions: { style: { highlightColor: '#4ADE80', emphasisColor: '#4ADE80' } },
-        sound: { sfxStyle: 'minimal', musicVolume: 0.08, backgroundMusicTrack: 'ambient-chill' },
+        sound: { sfxStyle: 'minimal', musicVolume: 0.08, backgroundMusicTrack: 'clarity-focus' },
         overlays: { progressBar: { color: '#4ADE80' } },
       },
       {
@@ -559,7 +559,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
     sound: {
       enabled: true,
       sfxStyle: 'energetic',
-      backgroundMusicTrack: 'ambient-tech',
+      backgroundMusicTrack: 'volt-electric',
       sfxVolume: 0.8,
       musicVolume: 0.1,
       musicDucking: true,
@@ -681,7 +681,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
     sound: {
       enabled: true,
       sfxStyle: 'minimal',
-      backgroundMusicTrack: 'ambient-chill',
+      backgroundMusicTrack: 'cinematic-ambient',
       sfxVolume: 0.25,
       musicVolume: 0.12,
       musicDucking: true,
@@ -734,7 +734,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         description: 'Rich amber warmth — shot-on-film nostalgia.',
         thumbnail: '🌅',
         captions: { style: { primaryColor: '#FFF7ED', highlightColor: '#F59E0B', emphasisColor: '#F59E0B' } },
-        sound: { backgroundMusicTrack: 'ambient-motivational' },
+        sound: { backgroundMusicTrack: 'cinematic-golden' },
         overlays: { hookTitle: { textColor: '#F59E0B' } },
       },
       {
@@ -802,7 +802,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
     sound: {
       enabled: true,
       sfxStyle: 'standard',
-      backgroundMusicTrack: 'ambient-motivational',
+      backgroundMusicTrack: 'ember-warm',
       sfxVolume: 0.5,
       musicVolume: 0.11,
       musicDucking: true,
@@ -925,7 +925,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
     sound: {
       enabled: true,
       sfxStyle: 'energetic',
-      backgroundMusicTrack: 'ambient-tech',
+      backgroundMusicTrack: 'gritty-lofi',
       sfxVolume: 0.9,
       musicVolume: 0.08,
       musicDucking: true,
@@ -987,7 +987,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         description: 'Deep purple highlights — dark, moody Rebel with heavy bass energy.',
         thumbnail: '👾',
         captions: { style: { highlightColor: '#A855F7', emphasisColor: '#A855F7', supersizeColor: '#E879F9' } },
-        sound: { backgroundMusicTrack: 'ambient-tech', musicVolume: 0.1 },
+        sound: { backgroundMusicTrack: 'gritty-dark', musicVolume: 0.1 },
         overlays: { hookTitle: { textColor: '#A855F7' } },
       },
     ],
@@ -1047,7 +1047,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
     sound: {
       enabled: true,
       sfxStyle: 'energetic',
-      backgroundMusicTrack: 'ambient-tech',
+      backgroundMusicTrack: 'synthwave-neon',
       sfxVolume: 0.6,
       musicVolume: 0.12,
       musicDucking: true,
@@ -1108,7 +1108,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         description: 'Warm gold neon glow — premium nightlife aesthetic.',
         thumbnail: '✨',
         captions: { style: { highlightColor: '#FFD700', emphasisColor: '#FFD700', supersizeColor: '#FFFFFF', outlineColor: '#3D2800' } },
-        sound: { backgroundMusicTrack: 'ambient-motivational' },
+        sound: { backgroundMusicTrack: 'synthwave-vapor' },
         overlays: { progressBar: { color: '#FFD700' }, hookTitle: { textColor: '#FFD700' } },
       },
       {
@@ -1177,7 +1177,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
     sound: {
       enabled: false,
       sfxStyle: 'minimal',
-      backgroundMusicTrack: 'ambient-chill',
+      backgroundMusicTrack: 'corporate-upbeat',
       sfxVolume: 0.3,
       musicVolume: 0.08,
       musicDucking: true,
@@ -1238,7 +1238,7 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         description: 'Amber corporate accent — professional with a human touch.',
         thumbnail: '🧡',
         captions: { style: { highlightColor: '#F59E0B', emphasisColor: '#F59E0B', supersizeColor: '#FBBF24' } },
-        sound: { enabled: true, backgroundMusicTrack: 'ambient-motivational', musicVolume: 0.06 },
+        sound: { enabled: true, backgroundMusicTrack: 'ember-warm', musicVolume: 0.06 },
         overlays: { progressBar: { color: '#F59E0B' } },
       },
     ],
@@ -1255,3 +1255,11 @@ export const BUILT_IN_EDIT_STYLE_PRESET_IDS = EDIT_STYLE_PRESETS.filter(p => p.b
 export function getEditStylePreset(id: string): EditStylePreset | undefined {
   return EDIT_STYLE_PRESETS.find(p => p.id === id)
 }
+
+)
+}
+
+
+}
+
+
