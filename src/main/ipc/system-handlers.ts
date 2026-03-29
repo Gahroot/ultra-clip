@@ -8,6 +8,7 @@ import { Ch } from '@shared/ipc-channels'
 import { wrapHandler } from '../ipc-error-handler'
 import { getEncoder } from '../ffmpeg'
 import { getLogPath, getLogSize, getLogDir, log } from '../logger'
+import { getEditPlanCacheSize } from '../ai/edit-plan-cache'
 
 let autoCleanupOnExit = false
 
@@ -340,6 +341,8 @@ export function registerSystemHandlers(): void {
     }
 
     await walkDir(cacheDir)
+    // Include AI edit plan cache size
+    bytes += getEditPlanCacheSize()
     return { bytes }
   })
 

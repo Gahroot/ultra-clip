@@ -14,6 +14,12 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { emitUsageFromResponse } from '../ai-usage'
+import {
+  buildEditPlanCacheKey,
+  getCachedEditPlan,
+  setCachedEditPlan,
+  evictEditPlanCache
+} from './edit-plan-cache'
 import type {
   AIEditPlan,
   AIEditPlanWordEmphasis,
@@ -323,6 +329,18 @@ export async function generateEditPlan(options: GenerateEditPlanOptions): Promis
     }
   }
 
+  // ---- Cache lookup --------------------------------------------------------
+  const cacheKey = buildEditPlanCacheKey(words, clipStart, clipEnd, stylePresetId)
+  const cached = getCachedEditPlan(cacheKey)
+  if (cached) {
+    console.log(`[EditPlan] Cache HIT for clip ${clipId} (key=${cacheKey})`)
+    // Preserve the original clipId in case the same transcript is shared
+    return { ...cached, clipId, generatedAt: Date.now() }
+  }
+
+  console.log(`[EditPlan] Cache MISS for clip ${clipId} (key=${cacheKey}) — calling Gemini`)
+
+  // ---- API call ------------------------------------------------------------
   const prompt = buildEditPlanPrompt(
     formattedTranscript,
     clipDuration,
@@ -354,7 +372,7 @@ export async function generateEditPlan(options: GenerateEditPlanOptions): Promis
     `${brollSuggestions.length} B-Roll suggestions, ${sfxSuggestions.length} SFX hits`
   )
 
-  return {
+  const plan: AIEditPlan = {
     clipId,
     stylePresetId,
     stylePresetName,
@@ -364,4 +382,11 @@ export async function generateEditPlan(options: GenerateEditPlanOptions): Promis
     reasoning,
     generatedAt: Date.now()
   }
+
+  // ---- Cache store ---------------------------------------------------------
+  setCachedEditPlan(cacheKey, plan)
+  // Opportunistic eviction — lightweight, runs after every write
+  evictEditPlanCache()
+
+  return plan
 }

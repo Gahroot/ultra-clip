@@ -134,6 +134,8 @@ const api = {
   generateEditPlan: invoke(I.AI_GENERATE_EDIT_PLAN),
   generateBatchEditPlans: invoke(I.AI_GENERATE_BATCH_EDIT_PLANS),
   onAiEditProgress: listen(S.AI_EDIT_PROGRESS),
+  clearEditPlanCache: invoke(I.AI_EDIT_PLAN_CACHE_CLEAR),
+  getEditPlanCacheSize: invoke(I.AI_EDIT_PLAN_CACHE_SIZE),
 
   // B-Roll
   generateBRollPlacements: invoke(I.BROLL_GENERATE_PLACEMENTS),

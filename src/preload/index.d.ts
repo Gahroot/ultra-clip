@@ -967,6 +967,9 @@ interface Api {
     stylePresetCategory: string
   ) => Promise<AIEditPlan[]>
   onAiEditProgress: (callback: (data: BatchEditPlanProgress) => void) => () => void
+  // AI Edit Plan Cache
+  clearEditPlanCache: () => Promise<{ removed: number }>
+  getEditPlanCacheSize: () => Promise<{ bytes: number }>
   // B-Roll
   generateBRollPlacements: (
     geminiApiKey: string,
