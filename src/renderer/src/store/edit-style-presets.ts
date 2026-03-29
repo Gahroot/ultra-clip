@@ -8,7 +8,7 @@
  * all rendered clips.
  */
 
-import type { EditStylePreset } from './types'
+import type { EditStylePreset, EditStyleVariant } from './types'
 
 export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
   // ─────────────────────────────────────────────────────────────────────────
@@ -96,6 +96,41 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         opacity: 1.0,
       },
     },
+
+    variants: [
+      {
+        id: 'impact-classic',
+        name: 'Classic',
+        description: 'The original Impact look — bold pops with yellow highlight.',
+        thumbnail: '💥',
+      },
+      {
+        id: 'impact-whiteout',
+        name: 'Whiteout',
+        description: 'Clean white-on-black, no color highlights — all contrast, zero distraction.',
+        thumbnail: '⚪',
+        captions: { style: { highlightColor: '#FFFFFF', emphasisColor: '#FFFFFF', supersizeColor: '#FFFFFF', outline: 6 } },
+        overlays: { progressBar: { color: '#FFFFFF' }, hookTitle: { textColor: '#FFFFFF' } },
+      },
+      {
+        id: 'impact-fire',
+        name: 'Fire',
+        description: 'Red-orange heat — aggressive SFX density and jump-cut zoom.',
+        thumbnail: '🔥',
+        captions: { style: { highlightColor: '#FF3B30', emphasisColor: '#FF6B35', animation: 'impact-two' } },
+        zoom: { mode: 'jump-cut', intervalSeconds: 2 },
+        sound: { sfxVolume: 0.85 },
+        overlays: { progressBar: { color: '#FF3B30' }, hookTitle: { textColor: '#FF3B30' } },
+      },
+      {
+        id: 'impact-neon',
+        name: 'Neon',
+        description: 'Electric cyan pop on dark — Impact energy with a neon club feel.',
+        thumbnail: '💎',
+        captions: { style: { highlightColor: '#00FFFF', emphasisColor: '#00FFFF', supersizeColor: '#FF00FF', outlineColor: '#1A0033', animation: 'elastic-bounce' } },
+        overlays: { progressBar: { color: '#00FFFF', style: 'glow' }, hookTitle: { textColor: '#00FFFF' } },
+      },
+    ],
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -183,6 +218,39 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         opacity: 0.85,
       },
     },
+
+    variants: [
+      {
+        id: 'clarity-classic',
+        name: 'Classic',
+        description: 'Original sticky-note word boxes with yellow background.',
+        thumbnail: '📌',
+      },
+      {
+        id: 'clarity-mint',
+        name: 'Mint',
+        description: 'Cool mint-green boxes — fresh and easy on the eyes.',
+        thumbnail: '🌿',
+        captions: { style: { outlineColor: '#A7F3D0', backColor: '#A7F3D0', highlightColor: '#059669' } },
+        overlays: { progressBar: { color: '#059669' } },
+      },
+      {
+        id: 'clarity-slate',
+        name: 'Slate',
+        description: 'Dark rounded boxes on light text — modern editor aesthetic.',
+        thumbnail: '🖤',
+        captions: { style: { primaryColor: '#F1F5F9', outlineColor: '#1E293B', backColor: '#E61E293B', highlightColor: '#60A5FA' } },
+        overlays: { progressBar: { color: '#60A5FA' }, hookTitle: { textColor: '#F1F5F9', outlineColor: '#1E293B' } },
+      },
+      {
+        id: 'clarity-coral',
+        name: 'Coral',
+        description: 'Warm coral boxes with a friendly, approachable teaching vibe.',
+        thumbnail: '🪸',
+        captions: { style: { outlineColor: '#FED7AA', backColor: '#FED7AA', highlightColor: '#EA580C' } },
+        overlays: { progressBar: { color: '#EA580C' } },
+      },
+    ],
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -270,6 +338,49 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         opacity: 1.0,
       },
     },
+
+    variants: [
+      {
+        id: 'velocity-classic',
+        name: 'Classic',
+        description: 'Cyan bounce with magenta outlines — the original Velocity.',
+        thumbnail: '⚡',
+      },
+      {
+        id: 'velocity-bold',
+        name: 'Bold',
+        description: 'Larger font, thicker outlines, maximum pop energy.',
+        thumbnail: '💪',
+        captions: { style: { fontSize: 0.08, outline: 5, wordsPerLine: 1 } },
+        zoom: { intensity: 'dynamic', intervalSeconds: 1.5 },
+        sound: { sfxVolume: 0.8 },
+      },
+      {
+        id: 'velocity-clean',
+        name: 'Clean',
+        description: 'Subtle bounce, thinner outlines — fast energy, polished finish.',
+        thumbnail: '✨',
+        captions: { style: { outline: 1, fontSize: 0.065, wordsPerLine: 3, animation: 'fade-in' } },
+        zoom: { intensity: 'medium', intervalSeconds: 3 },
+        sound: { sfxStyle: 'standard', sfxVolume: 0.4 },
+      },
+      {
+        id: 'velocity-neon',
+        name: 'Neon',
+        description: 'Green glow with purple undertones — nightclub Velocity.',
+        thumbnail: '💡',
+        captions: { style: { highlightColor: '#00FF99', outlineColor: '#9900FF', animation: 'glow' } },
+        overlays: { progressBar: { color: '#00FF99' }, hookTitle: { textColor: '#00FF99' } },
+      },
+      {
+        id: 'velocity-sunset',
+        name: 'Sunset',
+        description: 'Warm orange-pink bounce — Velocity with golden-hour warmth.',
+        thumbnail: '🌅',
+        captions: { style: { highlightColor: '#FF6B35', outlineColor: '#D946EF', emphasisColor: '#FF6B35', supersizeColor: '#FFD700' } },
+        overlays: { progressBar: { color: '#FF6B35' }, hookTitle: { textColor: '#FF6B35' } },
+      },
+    ],
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -357,6 +468,41 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         opacity: 0.9,
       },
     },
+
+    variants: [
+      {
+        id: 'growth-classic',
+        name: 'Classic',
+        description: 'Warm amber highlight with motivational music — the original Growth.',
+        thumbnail: '🌱',
+      },
+      {
+        id: 'growth-golden',
+        name: 'Golden',
+        description: 'Richer gold palette — premium motivational energy.',
+        thumbnail: '🏆',
+        captions: { style: { highlightColor: '#FFD700', emphasisColor: '#FFD700', supersizeColor: '#FFFFFF' } },
+        overlays: { progressBar: { color: '#FFD700' }, hookTitle: { textColor: '#FFD700' } },
+      },
+      {
+        id: 'growth-sage',
+        name: 'Sage',
+        description: 'Earthy green tones — calm growth, mindful energy.',
+        thumbnail: '🍃',
+        captions: { style: { highlightColor: '#4ADE80', emphasisColor: '#4ADE80' } },
+        sound: { sfxStyle: 'minimal', musicVolume: 0.08, backgroundMusicTrack: 'ambient-chill' },
+        overlays: { progressBar: { color: '#4ADE80' } },
+      },
+      {
+        id: 'growth-bold',
+        name: 'Bold',
+        description: 'Bigger font, more SFX — Growth with more punch for shorter clips.',
+        thumbnail: '💪',
+        captions: { style: { fontSize: 0.078, animation: 'word-pop', wordsPerLine: 1 } },
+        zoom: { mode: 'reactive', intensity: 'dynamic' },
+        sound: { sfxStyle: 'energetic', sfxVolume: 0.6 },
+      },
+    ],
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -444,6 +590,41 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         opacity: 1.0,
       },
     },
+
+    variants: [
+      {
+        id: 'volt-classic',
+        name: 'Classic',
+        description: 'Lime-green stacked impact with jump-cut aggression.',
+        thumbnail: '🔋',
+      },
+      {
+        id: 'volt-red',
+        name: 'Red Alert',
+        description: 'Blood-red highlights with maximum contrast — pure adrenaline.',
+        thumbnail: '🚨',
+        captions: { style: { highlightColor: '#FF2D2D', emphasisColor: '#FF2D2D', supersizeColor: '#FFE600' } },
+        overlays: { progressBar: { color: '#FF2D2D' }, hookTitle: { textColor: '#FF2D2D' } },
+      },
+      {
+        id: 'volt-electric',
+        name: 'Electric',
+        description: 'Cyan-blue voltage — Volt with a cooler, more digital edge.',
+        thumbnail: '⚡',
+        captions: { style: { highlightColor: '#00BFFF', emphasisColor: '#00BFFF', animation: 'elastic-bounce' } },
+        zoom: { mode: 'reactive', intervalSeconds: 2 },
+        overlays: { progressBar: { color: '#00BFFF' }, hookTitle: { textColor: '#00BFFF' } },
+      },
+      {
+        id: 'volt-stealth',
+        name: 'Stealth',
+        description: 'Muted grey-green palette — aggressive pacing with understated color.',
+        thumbnail: '🥷',
+        captions: { style: { highlightColor: '#A3E635', outline: 3, fontSize: 0.06, wordsPerLine: 2 } },
+        sound: { sfxStyle: 'standard', sfxVolume: 0.5 },
+        overlays: { progressBar: { color: '#A3E635', opacity: 0.7 } },
+      },
+    ],
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -531,6 +712,40 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         opacity: 0.6,
       },
     },
+
+    variants: [
+      {
+        id: 'film-classic',
+        name: 'Classic',
+        description: 'Warm sepia typewriter — the original cinematic Film look.',
+        thumbnail: '🎬',
+      },
+      {
+        id: 'film-noir',
+        name: 'Noir',
+        description: 'Pure white text on deep black — stark, dramatic, timeless.',
+        thumbnail: '🖤',
+        captions: { style: { primaryColor: '#FFFFFF', highlightColor: '#FFFFFF', outlineColor: '#000000', backColor: '#CC000000', emphasisColor: '#FFFFFF' } },
+        overlays: { hookTitle: { textColor: '#FFFFFF', outlineColor: '#000000' } },
+      },
+      {
+        id: 'film-golden',
+        name: 'Golden Hour',
+        description: 'Rich amber warmth — shot-on-film nostalgia.',
+        thumbnail: '🌅',
+        captions: { style: { primaryColor: '#FFF7ED', highlightColor: '#F59E0B', emphasisColor: '#F59E0B' } },
+        sound: { backgroundMusicTrack: 'ambient-motivational' },
+        overlays: { hookTitle: { textColor: '#F59E0B' } },
+      },
+      {
+        id: 'film-teal',
+        name: 'Teal & Orange',
+        description: 'Hollywood color grading — cool teal captions with warm accents.',
+        thumbnail: '🎞️',
+        captions: { style: { primaryColor: '#E0F2FE', highlightColor: '#FF8C42', emphasisColor: '#FF8C42', outlineColor: '#0C4A6E' } },
+        overlays: { hookTitle: { textColor: '#E0F2FE', outlineColor: '#0C4A6E' } },
+      },
+    ],
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -618,6 +833,42 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         opacity: 0.9,
       },
     },
+
+    variants: [
+      {
+        id: 'ember-classic',
+        name: 'Classic',
+        description: 'Fire-orange cascade on warm tones — the original Ember.',
+        thumbnail: '🔥',
+      },
+      {
+        id: 'ember-rose',
+        name: 'Rosé',
+        description: 'Pink-rose warmth — softer, more intimate cascade energy.',
+        thumbnail: '🌹',
+        captions: { style: { highlightColor: '#F472B6', emphasisColor: '#F472B6', supersizeColor: '#FBBF24' } },
+        overlays: { progressBar: { color: '#F472B6' }, hookTitle: { textColor: '#F472B6' } },
+      },
+      {
+        id: 'ember-inferno',
+        name: 'Inferno',
+        description: 'Deep red fire — Ember at maximum heat with faster motion.',
+        thumbnail: '🌋',
+        captions: { style: { highlightColor: '#DC2626', emphasisColor: '#DC2626', animation: 'word-pop' } },
+        zoom: { mode: 'reactive', intensity: 'dynamic', intervalSeconds: 3 },
+        sound: { sfxStyle: 'energetic', sfxVolume: 0.7 },
+        overlays: { progressBar: { color: '#DC2626' } },
+      },
+      {
+        id: 'ember-honey',
+        name: 'Honey',
+        description: 'Golden-amber glow — warm and inviting, relaxed cascade.',
+        thumbnail: '🍯',
+        captions: { style: { highlightColor: '#F59E0B', emphasisColor: '#F59E0B', fontSize: 0.065 } },
+        zoom: { intensity: 'subtle', intervalSeconds: 5 },
+        sound: { sfxStyle: 'minimal', sfxVolume: 0.3 },
+      },
+    ],
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -705,6 +956,41 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         opacity: 1.0,
       },
     },
+
+    variants: [
+      {
+        id: 'rebel-classic',
+        name: 'Classic',
+        description: 'Blood-red graffiti pop — the original Rebel.',
+        thumbnail: '🤘',
+      },
+      {
+        id: 'rebel-blackout',
+        name: 'Blackout',
+        description: 'White on pure black, zero color — raw and stripped back.',
+        thumbnail: '🏴',
+        captions: { style: { highlightColor: '#FFFFFF', emphasisColor: '#FFFFFF', supersizeColor: '#FFFFFF' } },
+        overlays: { hookTitle: { textColor: '#FFFFFF' } },
+      },
+      {
+        id: 'rebel-toxic',
+        name: 'Toxic',
+        description: 'Acid green highlights with maximum aggression — radioactive rebel.',
+        thumbnail: '☢️',
+        captions: { style: { highlightColor: '#84CC16', emphasisColor: '#84CC16', supersizeColor: '#FACC15' } },
+        sound: { sfxVolume: 1.0 },
+        overlays: { hookTitle: { textColor: '#84CC16' } },
+      },
+      {
+        id: 'rebel-bruise',
+        name: 'Bruise',
+        description: 'Deep purple highlights — dark, moody Rebel with heavy bass energy.',
+        thumbnail: '👾',
+        captions: { style: { highlightColor: '#A855F7', emphasisColor: '#A855F7', supersizeColor: '#E879F9' } },
+        sound: { backgroundMusicTrack: 'ambient-tech', musicVolume: 0.1 },
+        overlays: { hookTitle: { textColor: '#A855F7' } },
+      },
+    ],
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -792,6 +1078,49 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         opacity: 0.95,
       },
     },
+
+    variants: [
+      {
+        id: 'neon-classic',
+        name: 'Classic',
+        description: 'Green glow on purple — the original Neon.',
+        thumbnail: '💡',
+      },
+      {
+        id: 'neon-pink',
+        name: 'Hot Pink',
+        description: 'Magenta-pink neon — vibrant club glow.',
+        thumbnail: '💖',
+        captions: { style: { highlightColor: '#FF00FF', emphasisColor: '#FF00FF', supersizeColor: '#00FFFF', outlineColor: '#4A0066' } },
+        overlays: { progressBar: { color: '#FF00FF' }, hookTitle: { textColor: '#FF00FF' } },
+      },
+      {
+        id: 'neon-ice',
+        name: 'Ice',
+        description: 'Cool blue neon glow — frozen, crystalline energy.',
+        thumbnail: '🧊',
+        captions: { style: { highlightColor: '#60A5FA', emphasisColor: '#60A5FA', supersizeColor: '#C4B5FD', outlineColor: '#1E3A5F' } },
+        overlays: { progressBar: { color: '#60A5FA' }, hookTitle: { textColor: '#60A5FA' } },
+      },
+      {
+        id: 'neon-gold',
+        name: 'Gold',
+        description: 'Warm gold neon glow — premium nightlife aesthetic.',
+        thumbnail: '✨',
+        captions: { style: { highlightColor: '#FFD700', emphasisColor: '#FFD700', supersizeColor: '#FFFFFF', outlineColor: '#3D2800' } },
+        sound: { backgroundMusicTrack: 'ambient-motivational' },
+        overlays: { progressBar: { color: '#FFD700' }, hookTitle: { textColor: '#FFD700' } },
+      },
+      {
+        id: 'neon-matrix',
+        name: 'Matrix',
+        description: 'Green-on-black terminal glow — digital, hacker aesthetic.',
+        thumbnail: '🟢',
+        captions: { style: { highlightColor: '#22C55E', emphasisColor: '#22C55E', supersizeColor: '#4ADE80', outlineColor: '#052E16' } },
+        zoom: { mode: 'jump-cut', intervalSeconds: 2 },
+        overlays: { progressBar: { color: '#22C55E' }, hookTitle: { textColor: '#22C55E' } },
+      },
+    ],
   },
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -879,6 +1208,40 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
         opacity: 0.9,
       },
     },
+
+    variants: [
+      {
+        id: 'prime-classic',
+        name: 'Classic',
+        description: 'Corporate blue boxes with fade-in — the original Prime.',
+        thumbnail: '💼',
+      },
+      {
+        id: 'prime-dark',
+        name: 'Dark Mode',
+        description: 'Near-black boxes with cool blue text — executive dark theme.',
+        thumbnail: '🌑',
+        captions: { style: { primaryColor: '#E2E8F0', outlineColor: '#0F172A', backColor: '#E60F172A', highlightColor: '#3B82F6' } },
+        overlays: { hookTitle: { textColor: '#E2E8F0', outlineColor: '#0F172A' } },
+      },
+      {
+        id: 'prime-emerald',
+        name: 'Emerald',
+        description: 'Green corporate palette — fresh, modern startup energy.',
+        thumbnail: '💚',
+        captions: { style: { highlightColor: '#10B981', emphasisColor: '#10B981', supersizeColor: '#34D399' } },
+        overlays: { progressBar: { color: '#10B981' } },
+      },
+      {
+        id: 'prime-warm',
+        name: 'Warm',
+        description: 'Amber corporate accent — professional with a human touch.',
+        thumbnail: '🧡',
+        captions: { style: { highlightColor: '#F59E0B', emphasisColor: '#F59E0B', supersizeColor: '#FBBF24' } },
+        sound: { enabled: true, backgroundMusicTrack: 'ambient-motivational', musicVolume: 0.06 },
+        overlays: { progressBar: { color: '#F59E0B' } },
+      },
+    ],
   },
 ]
 

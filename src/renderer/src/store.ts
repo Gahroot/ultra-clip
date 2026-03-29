@@ -45,6 +45,8 @@ export type {
   AppSettings,
   SettingsProfile,
   EditStylePreset,
+  EditStyleVariant,
+  DeepPartial,
   EditStyleCategory,
   ProcessingConfig,
   AutoModeConfig,
@@ -94,6 +96,7 @@ export {
   applyHookTemplate,
   extractProfileFromSettings,
   BUILT_IN_EDIT_STYLE_PRESETS,
+  resolvePresetVariant,
 } from './store/helpers'
 
 export type { ProjectFileData } from './store/helpers'

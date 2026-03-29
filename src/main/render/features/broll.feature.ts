@@ -40,6 +40,32 @@ export const brollFeature: RenderFeature = {
       job.editEvents = []
     }
 
+    // Apply per-shot brollMode overrides from shotStyleConfigs.
+    // When a shot has an explicit brollMode, B-Roll placements that fall
+    // within that shot's time range inherit the override display mode.
+    let modesOverridden = 0
+    if (job.shotStyleConfigs && job.shotStyleConfigs.length > 0) {
+      for (const br of job.brollPlacements) {
+        const brMidpoint = br.startTime + br.duration / 2
+        const matchingShot = job.shotStyleConfigs.find(
+          (s) =>
+            s.brollMode !== null &&
+            s.brollMode !== undefined &&
+            brMidpoint >= s.startTime &&
+            brMidpoint <= s.endTime
+        )
+        if (matchingShot && matchingShot.brollMode && matchingShot.brollMode !== br.displayMode) {
+          br.displayMode = matchingShot.brollMode
+          modesOverridden++
+        }
+      }
+      if (modesOverridden > 0) {
+        console.log(
+          `[B-Roll] Clip ${job.clipId}: overrode display mode for ${modesOverridden} placement(s) from per-shot style`
+        )
+      }
+    }
+
     // Derive broll-transition edit events from each placement
     let emitted = 0
     for (const br of job.brollPlacements) {
@@ -63,7 +89,7 @@ export const brollFeature: RenderFeature = {
       )
     }
 
-    return { tempFiles: [], modified: emitted > 0 }
+    return { tempFiles: [], modified: emitted > 0 || modesOverridden > 0 }
   },
 
   async postProcess(

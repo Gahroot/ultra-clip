@@ -159,11 +159,13 @@ export type WordTimestampInput = WordTimestamp
  */
 export interface EditEvent {
   /** Type of edit event */
-  type: 'broll-transition' | 'jump-cut'
+  type: 'broll-transition' | 'jump-cut' | 'shot-transition'
   /** Time in seconds (0-based, relative to clip start) */
   time: number
   /** B-Roll transition style (only for broll-transition events) */
   transition?: 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
+  /** Shot transition style (only for shot-transition events) */
+  shotTransition?: 'crossfade' | 'dip-black' | 'swipe-left' | 'swipe-up' | 'zoom-in'
 }
 
 // ---------------------------------------------------------------------------
