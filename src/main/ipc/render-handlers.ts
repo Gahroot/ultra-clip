@@ -63,6 +63,12 @@ export function registerRenderHandlers(): void {
         // Skip clips that already have pre-computed placements
         if (job.brollPlacements && job.brollPlacements.length > 0) continue
 
+        win.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+          clipId: job.clipId,
+          message: 'Generating B-Roll placements…',
+          percent: 5
+        })
+
         const clipDuration = job.endTime - job.startTime
         const clipWords = (job.wordTimestamps ?? []).filter(
           (w) => w.start >= job.startTime && w.end <= job.endTime
@@ -89,6 +95,11 @@ export function registerRenderHandlers(): void {
             )
           } else {
             // Extract keywords via Gemini (requires transcript text)
+            win.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+              clipId: job.clipId,
+              message: 'Extracting B-Roll keywords…',
+              percent: 10
+            })
             const localWords = clipWords.map((w) => ({
               text: w.text,
               start: w.start - job.startTime,
@@ -143,6 +154,11 @@ export function registerRenderHandlers(): void {
 
           // Fetch Pexels stock footage for stock keywords
           if (stockKeywords.length > 0 && options.broll.pexelsApiKey) {
+            win.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+              clipId: job.clipId,
+              message: `Downloading stock footage for ${stockKeywords.length} keyword(s)…`,
+              percent: 20
+            })
             const pexelsClips = await fetchBRollClips(
               stockKeywords,
               options.broll.pexelsApiKey,
@@ -157,7 +173,14 @@ export function registerRenderHandlers(): void {
           if (aiKeywords.length > 0 && geminiApiKey) {
             const transcriptText = clipWords.map((w) => w.text).join(' ')
 
-            for (const kw of aiKeywords) {
+            win.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+              clipId: job.clipId,
+              message: `Generating ${aiKeywords.length} AI image(s)…`,
+              percent: 30
+            })
+
+            for (let ki = 0; ki < aiKeywords.length; ki++) {
+              const kw = aiKeywords[ki]
               try {
                 // Get a few words of transcript context around the keyword's timestamp
                 const kwEntry = keywords.find((k) => k.keyword === kw)
@@ -184,6 +207,11 @@ export function registerRenderHandlers(): void {
                     pexelsId: 0 // Not from Pexels — AI-generated
                   })
                   console.log(`[B-Roll] AI image generated for "${kw}"`)
+                  win.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+                    clipId: job.clipId,
+                    message: `Generated B-Roll image: "${kw}"`,
+                    percent: 30 + Math.round(((ki + 1) / aiKeywords.length) * 20)
+                  })
                 }
               } catch (aiErr) {
                 const aiMsg = aiErr instanceof Error ? aiErr.message : String(aiErr)
@@ -198,6 +226,12 @@ export function registerRenderHandlers(): void {
           }
 
           // Build placements from keywords + downloaded footage
+          win.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+            clipId: job.clipId,
+            message: 'Building B-Roll placements…',
+            percent: 80
+          })
+
           const brollSettings: BRollSettingsConfig = {
             enabled: true,
             pexelsApiKey: options.broll.pexelsApiKey,
@@ -234,6 +268,12 @@ export function registerRenderHandlers(): void {
           console.log(
             `[B-Roll] Clip ${job.clipId}: generated ${job.brollPlacements.length} placement(s)`
           )
+
+          win.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+            clipId: job.clipId,
+            message: `B-Roll ready (${job.brollPlacements.length} placement${job.brollPlacements.length !== 1 ? 's' : ''})`,
+            percent: 90
+          })
         } catch (brollErr) {
           const msg = brollErr instanceof Error ? brollErr.message : String(brollErr)
           console.warn(`[B-Roll] Clip ${job.clipId}: placement generation failed — ${msg}`)
@@ -254,6 +294,12 @@ export function registerRenderHandlers(): void {
         }
 
         try {
+          win.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+            clipId: job.clipId,
+            message: 'Resolving shot styles…',
+            percent: 91
+          })
+
           job.shotStyleConfigs = resolveShotStyles(
             job.shotStyles,
             job.shots as import('@shared/types').ShotSegment[],
@@ -366,6 +412,12 @@ export function registerRenderHandlers(): void {
           editEvents.length > 0 ? editEvents : undefined,
           job.shotStyleConfigs
         )
+
+        win.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+          clipId: job.clipId,
+          message: `Sound design ready (${job.soundPlacements.length} placement${job.soundPlacements.length !== 1 ? 's' : ''})`,
+          percent: 95
+        })
 
         const counts = {
           music: job.soundPlacements.filter(p => p.type === 'music').length,
