@@ -124,9 +124,24 @@ export const soundDesignFeature: RenderFeature = {
     }
 
     const musicCount = job.soundPlacements!.filter(p => p.type === 'music').length
-    const sfxCount = job.soundPlacements!.filter(p => p.type === 'sfx').length
+    const sfxPlacements = job.soundPlacements!.filter(p => p.type === 'sfx')
+
+    // Categorize SFX for diagnostic logging
+    const categories = {
+      pops: sfxPlacements.filter(p => p.filePath.includes('word-pop')).length,
+      impacts: sfxPlacements.filter(p =>
+        p.filePath.includes('impact-high') || p.filePath.includes('bass-drop') || p.filePath.includes('impact-low')
+      ).length,
+      tension: sfxPlacements.filter(p => p.filePath.includes('rise-tension')).length,
+      transitions: sfxPlacements.filter(p => p.filePath.includes('swipe')).length,
+      shutters: sfxPlacements.filter(p => p.filePath.includes('camera-shutter')).length,
+      whooshes: sfxPlacements.filter(p => p.filePath.includes('whoosh')).length,
+    }
+
     console.log(
-      `[SoundDesign] Clip ${job.clipId}: ${musicCount} music track(s), ${sfxCount} SFX placement(s)`
+      `[SoundDesign] Clip ${job.clipId}: ${musicCount} music, ${sfxPlacements.length} sfx ` +
+      `(${categories.pops} pops, ${categories.impacts} impacts, ${categories.tension} tension, ` +
+      `${categories.transitions} transitions, ${categories.shutters} shutters, ${categories.whooshes} whooshes)`
     )
 
     return { tempFiles: [], modified: true }

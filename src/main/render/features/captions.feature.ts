@@ -84,6 +84,12 @@ export function createCaptionsFeature(): RenderFeature {
         emphasis: emphasized[i]?.emphasis ?? ('normal' as const)
       }))
 
+      // Store emphasis keyframes on the job so other features (e.g., reactive
+      // zoom) can read them without re-running the analysis.
+      job.emphasisKeyframes = localWords
+        .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize')
+        .map((w) => ({ time: w.start, end: w.end, level: w.emphasis as 'emphasis' | 'supersize' }))
+
       // Resolve fonts dir (cached after first call)
       await resolveFontsDir()
 

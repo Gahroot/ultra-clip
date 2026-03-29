@@ -4,6 +4,7 @@
 
 import { generateZoomFilter } from '../../auto-zoom'
 import type { ZoomSettings } from '../../auto-zoom'
+import { analyzeEmphasisHeuristic } from '../../word-emphasis'
 import type { RenderFeature, PrepareResult, FilterContext } from './feature'
 import type { RenderClipJob, RenderBatchOptions } from '../types'
 
@@ -47,8 +48,34 @@ class AutoZoomFeature implements RenderFeature {
     this.clipZoomSettings.set(job.clipId, globalSettings)
 
     const clipDuration = job.endTime - job.startTime
+
+    // For reactive mode, ensure emphasis keyframes are available on the job.
+    // Captions feature populates them during its own prepare() (which runs
+    // before this feature). If captions were disabled (or produced no words),
+    // compute them here as a fallback so reactive zoom still works.
+    if (globalSettings.mode === 'reactive' && !job.emphasisKeyframes) {
+      const clipWords = (job.wordTimestamps ?? [])
+        .filter((w) => w.start >= job.startTime && w.end <= job.endTime)
+        .map((w) => ({
+          text: w.text,
+          start: w.start - job.startTime,
+          end: w.end - job.startTime
+        }))
+
+      if (clipWords.length > 0) {
+        const emphasized = analyzeEmphasisHeuristic(clipWords)
+        job.emphasisKeyframes = emphasized
+          .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize')
+          .map((w) => ({ time: w.start, end: w.end, level: w.emphasis as 'emphasis' | 'supersize' }))
+        console.log(
+          `[AutoZoom] Reactive mode — computed ${job.emphasisKeyframes.length} emphasis keyframes ` +
+            `for clip ${job.clipId} (captions were not active)`
+        )
+      }
+    }
+
     console.log(
-      `[AutoZoom] Enabled — intensity: ${globalSettings.intensity}, ` +
+      `[AutoZoom] Enabled — mode: ${globalSettings.mode}, intensity: ${globalSettings.intensity}, ` +
         `interval: ${globalSettings.intervalSeconds}s, clip duration: ${clipDuration.toFixed(1)}s`
     )
 
@@ -65,7 +92,8 @@ class AutoZoomFeature implements RenderFeature {
       0.38,
       context.targetWidth,
       context.targetHeight,
-      job.wordTimestamps
+      job.wordTimestamps,
+      job.emphasisKeyframes
     )
 
     // Clean up the stored settings now that we've consumed them

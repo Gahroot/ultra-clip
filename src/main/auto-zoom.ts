@@ -48,6 +48,19 @@ export interface ZoomKeyframe {
   panY: number   // normalised y of view centre (0–1)
 }
 
+/**
+ * A single emphasis event to drive reactive zoom.
+ * Times are clip-relative (0-based) in seconds.
+ */
+export interface EmphasisKeyframe {
+  /** Start of the emphasised word in seconds (clip-relative) */
+  time: number
+  /** End of the emphasised word in seconds (clip-relative) */
+  end: number
+  /** Whether this is a regular emphasis hit or the supersize (loudest) word */
+  level: 'emphasis' | 'supersize'
+}
+
 // ---------------------------------------------------------------------------
 // Intensity config
 // ---------------------------------------------------------------------------
@@ -66,6 +79,39 @@ const INTENSITY_CONFIG: Record<ZoomIntensity, IntensityConfig> = {
   subtle:  { amplitude: 0.05, panFrac: 0.00 },
   medium:  { amplitude: 0.09, panFrac: 0.03 },
   dynamic: { amplitude: 0.13, panFrac: 0.05 },
+}
+
+// ---------------------------------------------------------------------------
+// Reactive zoom config
+// ---------------------------------------------------------------------------
+
+interface ReactiveConfig {
+  /** Neutral zoom applied when no emphasis event is active */
+  base: number
+  /** Peak zoom for 'emphasis'-level words */
+  emphasis: number
+  /** Peak zoom for 'supersize'-level words */
+  supersize: number
+  /** Linear ramp-in and ramp-out duration in seconds around each word */
+  rampSeconds: number
+}
+
+const REACTIVE_CONFIG: Record<ZoomIntensity, ReactiveConfig> = {
+  subtle:  { base: 1.00, emphasis: 1.06, supersize: 1.10, rampSeconds: 0.15 },
+  medium:  { base: 1.00, emphasis: 1.08, supersize: 1.13, rampSeconds: 0.12 },
+  dynamic: { base: 1.00, emphasis: 1.10, supersize: 1.16, rampSeconds: 0.10 },
+}
+
+/**
+ * Internal segment used to build piecewise-linear reactive zoom expressions.
+ * Zoom interpolates linearly from `zoomStart` to `zoomEnd` over [start, end].
+ * For constant segments `zoomStart === zoomEnd`.
+ */
+interface ReactiveSegment {
+  start: number
+  end: number
+  zoomStart: number
+  zoomEnd: number
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +136,8 @@ export function generateZoomFilter(
   faceYNorm: number = 0.38,
   outW: number = 1080,
   outH: number = 1920,
-  wordTimestamps?: WordTimestamp[]
+  wordTimestamps?: WordTimestamp[],
+  emphasisKeyframes?: EmphasisKeyframe[]
 ): string {
   if (!settings.enabled) return ''
 
@@ -101,7 +148,18 @@ export function generateZoomFilter(
     return generateJumpCutZoomFilter(clipDuration, settings, faceYNorm, outW, outH, wordTimestamps)
   }
 
-  // Reactive mode is not yet implemented
+  // Reactive mode: keyframe-driven zoom tied to word emphasis moments
+  if (mode === 'reactive') {
+    return generateReactiveZoomFilter(
+      clipDuration,
+      settings,
+      faceYNorm,
+      outW,
+      outH,
+      emphasisKeyframes ?? []
+    )
+  }
+
   if (mode !== 'ken-burns') return ''
 
   const { amplitude, panFrac } = INTENSITY_CONFIG[settings.intensity]
@@ -187,6 +245,149 @@ export function generateZoomFilter(
   const cropY = yExpr
 
   return `crop=w=${cropW}:h=${cropH}:x=${cropX}:y=${cropY},scale=${outW}:${outH}`
+}
+
+// ---------------------------------------------------------------------------
+// Reactive Zoom — keyframe-driven zoom tied to word emphasis moments
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a flat timeline of piecewise-linear zoom segments for the full clip
+ * duration. Each emphasis event produces three consecutive segments:
+ *   ramp-in → hold → ramp-out
+ * Gaps between events are filled with a constant base-zoom segment.
+ */
+function buildReactiveSegments(
+  clipDuration: number,
+  emphasisKeyframes: EmphasisKeyframe[],
+  cfg: ReactiveConfig
+): ReactiveSegment[] {
+  const R = cfg.rampSeconds
+  const sorted = [...emphasisKeyframes].sort((a, b) => a.time - b.time)
+  const segs: ReactiveSegment[] = []
+  let cursor = 0
+
+  for (const kf of sorted) {
+    const Z = kf.level === 'supersize' ? cfg.supersize : cfg.emphasis
+    // Clamp ramp window to valid clip range and avoid overlapping with cursor
+    const rampIn  = Math.max(cursor, kf.time - R)
+    const holdEnd = Math.min(clipDuration, kf.end)
+    const rampOut = Math.min(clipDuration, kf.end + R)
+
+    // Skip if the emphasis event falls before the current cursor (overlap)
+    if (rampIn >= rampOut) continue
+
+    // Base segment before this event
+    if (rampIn > cursor) {
+      segs.push({ start: cursor, end: rampIn, zoomStart: cfg.base, zoomEnd: cfg.base })
+    }
+
+    // Ramp in: base → Z
+    if (kf.time > rampIn) {
+      segs.push({ start: rampIn, end: kf.time, zoomStart: cfg.base, zoomEnd: Z })
+    }
+
+    // Hold at peak zoom during the word
+    if (holdEnd > kf.time) {
+      segs.push({ start: kf.time, end: holdEnd, zoomStart: Z, zoomEnd: Z })
+    }
+
+    // Ramp out: Z → base
+    if (rampOut > holdEnd) {
+      segs.push({ start: holdEnd, end: rampOut, zoomStart: Z, zoomEnd: cfg.base })
+    }
+
+    cursor = rampOut
+  }
+
+  // Tail base segment
+  if (cursor < clipDuration) {
+    segs.push({ start: cursor, end: clipDuration, zoomStart: cfg.base, zoomEnd: cfg.base })
+  }
+
+  return segs
+}
+
+/**
+ * Build a piecewise expression string for the reactive zoom filter.
+ *
+ * For each segment the zoom factor is a linear interpolation from zoomStart
+ * to zoomEnd over [start, end] — constant segments (zoomStart === zoomEnd)
+ * simplify to a single numeric literal.
+ *
+ * `exprFn` transforms the per-segment zoom expression string into a crop
+ * parameter expression (cropW, cropH, cropX, or cropY).
+ *
+ * The nested if(between(...)) structure is built back-to-front so the last
+ * segment acts as the fallback branch.
+ */
+function buildReactivePiecewiseExpr(
+  segs: ReactiveSegment[],
+  exprFn: (zExpr: string) => string
+): string {
+  if (segs.length === 0) return exprFn('1')
+
+  const zoomExprFor = (seg: ReactiveSegment): string => {
+    if (Math.abs(seg.zoomStart - seg.zoomEnd) < 0.000001) {
+      return seg.zoomStart.toFixed(6)
+    }
+    const z0  = seg.zoomStart.toFixed(6)
+    const dz  = (seg.zoomEnd - seg.zoomStart).toFixed(6)
+    const dur = Math.max(0.001, seg.end - seg.start).toFixed(4)
+    const s   = seg.start.toFixed(4)
+    return `${z0}+${dz}*(t-${s})/${dur}`
+  }
+
+  // Build from last segment backwards; last segment is the fallback value
+  let expr = exprFn(zoomExprFor(segs[segs.length - 1]))
+  for (let i = segs.length - 2; i >= 0; i--) {
+    const seg = segs[i]
+    const s = seg.start.toFixed(3)
+    const e = seg.end.toFixed(3)
+    expr = `if(between(t,${s},${e}),${exprFn(zoomExprFor(seg))},${expr})`
+  }
+  return expr
+}
+
+/**
+ * Generate a reactive zoom filter that pushes in on emphasis and supersize
+ * words and smoothly returns to neutral zoom between them.
+ *
+ * When no emphasis keyframes are provided the filter returns an empty string
+ * so the pipeline falls back gracefully (no zoom applied).
+ */
+function generateReactiveZoomFilter(
+  clipDuration: number,
+  settings: ZoomSettings,
+  faceYNorm: number,
+  outW: number,
+  outH: number,
+  emphasisKeyframes: EmphasisKeyframe[]
+): string {
+  if (clipDuration <= 0 || emphasisKeyframes.length === 0) return ''
+
+  const cfg = REACTIVE_CONFIG[settings.intensity]
+  const segs = buildReactiveSegments(clipDuration, emphasisKeyframes, cfg)
+  if (segs.length === 0) return ''
+
+  const FY = Math.max(0, Math.min(1, faceYNorm)).toFixed(3)
+
+  // Crop width/height: iw/z and ih/z
+  const cropW = buildReactivePiecewiseExpr(segs, (z) => `iw/(${z})`)
+  const cropH = buildReactivePiecewiseExpr(segs, (z) => `ih/(${z})`)
+
+  // Crop X: horizontally centred (no horizontal drift in reactive mode)
+  const cropX = buildReactivePiecewiseExpr(segs, (z) => `iw/2-(iw/(${z})/2)`)
+
+  // Crop Y: face-tracking, clamped with abs()-based min/max (Windows-safe)
+  const cropY = buildReactivePiecewiseExpr(segs, (z) => {
+    const ideal  = `ih*${FY}-ih/(${z})/2`
+    const hi     = `ih-ih/(${z})`
+    const minVal = `((${ideal})+(${hi})-abs((${ideal})-(${hi})))/2`
+    return `((${minVal})+abs(${minVal}))/2`
+  })
+
+  return `crop=w='${cropW}':h='${cropH}':x='${cropX}':y='${cropY}',scale=${outW}:${outH}`
 }
 
 // ---------------------------------------------------------------------------

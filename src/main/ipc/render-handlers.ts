@@ -2,7 +2,8 @@ import { BrowserWindow, ipcMain } from 'electron'
 import { Ch } from '@shared/ipc-channels'
 import { wrapHandler } from '../ipc-error-handler'
 import { startBatchRender, cancelRender, type RenderBatchOptions } from '../render-pipeline'
-import { generateSoundPlacements } from '../sound-design'
+import { generateSoundPlacements, type EditEvent } from '../sound-design'
+import { analyzeEmphasisHeuristic } from '../word-emphasis'
 import { buildBlurBackgroundFilter, type BlurBackgroundConfig } from '../layouts/blur-background'
 import { buildSplitScreenFilter } from '../layouts/split-screen'
 import type { SplitScreenLayout, VideoSource, SplitScreenConfig } from '../layouts/split-screen'
@@ -45,7 +46,7 @@ export function registerRenderHandlers(): void {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) throw new Error('No BrowserWindow found for render request')
 
-    // If sound design is enabled globally, compute placements for each clip
+    // If sound design is enabled globally, compute emphasis-aware placements for each clip
     if (options.soundDesign?.enabled) {
       for (const job of options.jobs) {
         const soundDesignOv = job.clipOverrides?.enableSoundDesign
@@ -63,13 +64,71 @@ export function registerRenderHandlers(): void {
           start: w.start - job.startTime,
           end: w.end - job.startTime
         }))
+
+        // Run emphasis heuristic to classify words as normal / emphasis / supersize
+        const emphasized = analyzeEmphasisHeuristic(localWords)
+
+        // Derive edit events from B-Roll placements and auto-zoom jump-cut mode
+        const editEvents: EditEvent[] = []
+
+        // B-Roll transition events
+        if (job.brollPlacements && job.brollPlacements.length > 0) {
+          for (const br of job.brollPlacements) {
+            editEvents.push({
+              type: 'broll-transition',
+              time: br.startTime,
+              transition: br.transition
+            })
+          }
+        }
+
+        // Jump-cut zoom events (only when auto-zoom is enabled in jump-cut mode)
+        if (options.autoZoom?.enabled && options.autoZoom.mode === 'jump-cut') {
+          // Derive cut points from word timestamps for jump-cut events
+          const sentenceEnders = /[.!?…]+$/
+          const cuts: number[] = []
+          for (let i = 0; i < localWords.length - 1; i++) {
+            const word = localWords[i]
+            const next = localWords[i + 1]
+            if (
+              sentenceEnders.test(word.text.trim()) &&
+              (next.start - word.end) >= 0.15 &&
+              next.start >= 2.0 &&
+              next.start < clipDuration - 0.5
+            ) {
+              const lastCut = cuts.length > 0 ? cuts[cuts.length - 1] : 0
+              if (next.start - lastCut >= 2.0) {
+                cuts.push(next.start)
+              }
+            }
+          }
+          for (const cutTime of cuts) {
+            editEvents.push({
+              type: 'jump-cut',
+              time: cutTime
+            })
+          }
+        }
+
         job.soundPlacements = generateSoundPlacements(
           clipDuration,
           localWords,
-          options.soundDesign
+          options.soundDesign,
+          emphasized,
+          editEvents.length > 0 ? editEvents : undefined
         )
+
+        const counts = {
+          music: job.soundPlacements.filter(p => p.type === 'music').length,
+          sfx: job.soundPlacements.filter(p => p.type === 'sfx').length,
+          emphasis: emphasized.filter(w => w.emphasis === 'emphasis').length,
+          supersize: emphasized.filter(w => w.emphasis === 'supersize').length,
+          editEvents: editEvents.length,
+        }
         console.log(
-          `[SoundDesign] Clip ${job.clipId}: ${job.soundPlacements.length} sound placement(s)`
+          `[SoundDesign] Clip ${job.clipId}: ${job.soundPlacements.length} placement(s) ` +
+          `(${counts.music} music, ${counts.sfx} sfx) — ` +
+          `${counts.emphasis} emphasis, ${counts.supersize} supersize, ${counts.editEvents} edit events`
         )
       }
     }
