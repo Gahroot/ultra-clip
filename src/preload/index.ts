@@ -1,598 +1,200 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import { Ch, IpcSendChannelMap, SendChannel } from '@shared/ipc-channels'
+
+// ---------------------------------------------------------------------------
+// Factory helpers — eliminate boilerplate for IPC wrappers
+// ---------------------------------------------------------------------------
+
+/** Create an invoke wrapper that forwards all arguments to ipcRenderer.invoke. */
+function invoke<T = unknown>(channel: string) {
+  return (...args: unknown[]): Promise<T> => ipcRenderer.invoke(channel, ...args)
+}
+
+/** Create a listener wrapper that subscribes to a send channel and returns an unsubscribe function. */
+function listen<C extends SendChannel>(channel: C) {
+  return (callback: (data: IpcSendChannelMap[C]) => void): (() => void) => {
+    const handler = (_: IpcRendererEvent, data: IpcSendChannelMap[C]) => callback(data)
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shorthand aliases
+// ---------------------------------------------------------------------------
+
+const I = Ch.Invoke
+const S = Ch.Send
+
+// ---------------------------------------------------------------------------
+// API object — shape must match the Api interface in index.d.ts
+// ---------------------------------------------------------------------------
 
 const api = {
   // File dialogs
-  openFiles: () => ipcRenderer.invoke('dialog:openFiles'),
-  openDirectory: () => ipcRenderer.invoke('dialog:openDirectory'),
+  openFiles: invoke(I.DIALOG_OPEN_FILES),
+  openDirectory: invoke(I.DIALOG_OPEN_DIRECTORY),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
 
   // FFmpeg
-  getMetadata: (filePath: string) => ipcRenderer.invoke('ffmpeg:getMetadata', filePath),
-  extractAudio: (videoPath: string) => ipcRenderer.invoke('ffmpeg:extractAudio', videoPath),
-  getThumbnail: (videoPath: string, timeSec?: number) => ipcRenderer.invoke('ffmpeg:thumbnail', videoPath, timeSec),
+  getMetadata: invoke(I.FFMPEG_GET_METADATA),
+  extractAudio: invoke(I.FFMPEG_EXTRACT_AUDIO),
+  getThumbnail: invoke(I.FFMPEG_THUMBNAIL),
   getWaveform: (videoPath: string, startTime: number, endTime: number, numPoints?: number) =>
-    ipcRenderer.invoke('ffmpeg:getWaveform', videoPath, startTime, endTime, numPoints ?? 500),
+    ipcRenderer.invoke(I.FFMPEG_GET_WAVEFORM, videoPath, startTime, endTime, numPoints ?? 500),
+  splitSegments: invoke(I.FFMPEG_SPLIT_SEGMENTS),
 
   // YouTube
-  downloadYouTube: (url: string) => ipcRenderer.invoke('youtube:download', url),
-  onYouTubeProgress: (callback: (data: { percent: number }) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { percent: number }) => callback(data)
-    ipcRenderer.on('youtube:progress', handler)
-    return () => ipcRenderer.removeListener('youtube:progress', handler)
-  },
+  downloadYouTube: invoke(I.YOUTUBE_DOWNLOAD),
+  onYouTubeProgress: listen(S.YOUTUBE_PROGRESS),
 
   // Transcription
-  transcribeVideo: (videoPath: string) => ipcRenderer.invoke('transcribe:video', videoPath),
-  formatTranscriptForAI: (result: unknown) =>
-    ipcRenderer.invoke('transcribe:formatForAI', result),
-  onTranscribeProgress: (callback: (data: { stage: string; message: string }) => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: { stage: string; message: string }
-    ) => callback(data)
-    ipcRenderer.on('transcribe:progress', handler)
-    return () => ipcRenderer.removeListener('transcribe:progress', handler)
-  },
+  transcribeVideo: invoke(I.TRANSCRIBE_VIDEO),
+  formatTranscriptForAI: invoke(I.TRANSCRIBE_FORMAT_FOR_AI),
+  onTranscribeProgress: listen(S.TRANSCRIBE_PROGRESS),
 
-  // AI scoring
-  scoreTranscript: (apiKey: string, transcript: string, duration: number, targetDuration?: string) =>
-    ipcRenderer.invoke('ai:scoreTranscript', apiKey, transcript, duration, targetDuration),
-  onScoringProgress: (callback: (data: { stage: string; message: string }) => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: { stage: string; message: string }
-    ) => callback(data)
-    ipcRenderer.on('ai:scoringProgress', handler)
-    return () => ipcRenderer.removeListener('ai:scoringProgress', handler)
-  },
-  generateHookText: (apiKey: string, transcript: string, videoSummary?: string, keyTopics?: string[]) =>
-    ipcRenderer.invoke('ai:generateHookText', apiKey, transcript, videoSummary, keyTopics),
-  rescoreSingleClip: (apiKey: string, clipText: string, clipDuration: number) =>
-    ipcRenderer.invoke('ai:rescoreSingleClip', apiKey, clipText, clipDuration),
-  generateRehookText: (apiKey: string, transcript: string, clipStart: number, clipEnd: number, videoSummary?: string, keyTopics?: string[]) =>
-    ipcRenderer.invoke('ai:generateRehookText', apiKey, transcript, clipStart, clipEnd, videoSummary, keyTopics),
-  validateGeminiKey: (apiKey: string) =>
-    ipcRenderer.invoke('ai:validateGeminiKey', apiKey),
-  validatePexelsKey: (apiKey: string) =>
-    ipcRenderer.invoke('ai:validatePexelsKey', apiKey),
+  // AI scoring & generation
+  scoreTranscript: invoke(I.AI_SCORE_TRANSCRIPT),
+  onScoringProgress: listen(S.AI_SCORING_PROGRESS),
+  generateHookText: invoke(I.AI_GENERATE_HOOK_TEXT),
+  rescoreSingleClip: invoke(I.AI_RESCORE_SINGLE_CLIP),
+  generateRehookText: invoke(I.AI_GENERATE_REHOOK_TEXT),
+  validateGeminiKey: invoke(I.AI_VALIDATE_GEMINI_KEY),
+  validatePexelsKey: invoke(I.AI_VALIDATE_PEXELS_KEY),
 
   // Face detection
-  detectFaceCrops: (videoPath: string, segments: { start: number; end: number }[]) =>
-    ipcRenderer.invoke('face:detectCrops', videoPath, segments),
-  onFaceDetectionProgress: (callback: (data: { segment: number; total: number }) => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: { segment: number; total: number }
-    ) => callback(data)
-    ipcRenderer.on('face:progress', handler)
-    return () => ipcRenderer.removeListener('face:progress', handler)
-  },
+  detectFaceCrops: invoke(I.FACE_DETECT_CROPS),
+  onFaceDetectionProgress: listen(S.FACE_PROGRESS),
 
   // Captions
-  generateCaptions: (
-    words: { text: string; start: number; end: number }[],
-    style: {
-      fontName: string
-      fontSize: number
-      primaryColor: string
-      highlightColor: string
-      outlineColor: string
-      backColor: string
-      outline: number
-      shadow: number
-      borderStyle: number
-      wordsPerLine: number
-      animation: string
-    },
-    outputPath?: string
-  ) => ipcRenderer.invoke('captions:generate', words, style, outputPath),
+  generateCaptions: invoke(I.CAPTIONS_GENERATE),
 
-  // Brand Kit — file picker + asset copy
-  selectBrandLogo: () => ipcRenderer.invoke('brandkit:selectLogo'),
-  selectIntroBumper: () => ipcRenderer.invoke('brandkit:selectIntroBumper'),
-  selectOutroBumper: () => ipcRenderer.invoke('brandkit:selectOutroBumper'),
-  // Brand Kit — copy from a given path (drag-and-drop)
-  copyBrandLogo: (filePath: string) => ipcRenderer.invoke('brandkit:copyLogo', filePath),
-  copyBrandBumper: (filePath: string) => ipcRenderer.invoke('brandkit:copyBumper', filePath),
+  // Brand Kit
+  selectBrandLogo: invoke(I.BRANDKIT_SELECT_LOGO),
+  selectIntroBumper: invoke(I.BRANDKIT_SELECT_INTRO_BUMPER),
+  selectOutroBumper: invoke(I.BRANDKIT_SELECT_OUTRO_BUMPER),
+  copyBrandLogo: invoke(I.BRANDKIT_COPY_LOGO),
+  copyBrandBumper: invoke(I.BRANDKIT_COPY_BUMPER),
 
   // Render pipeline
-  startBatchRender: (options: {
-    jobs: {
-      clipId: string
-      sourceVideoPath: string
-      startTime: number
-      endTime: number
-      cropRegion?: { x: number; y: number; width: number; height: number }
-      assFilePath?: string
-      outputFileName?: string
-      wordTimestamps?: { text: string; start: number; end: number }[]
-      hookTitleText?: string
-      /** Pre-generated re-hook text (optional; main process picks a default if omitted). */
-      rehookText?: string
-    }[]
-    outputDirectory: string
-    soundDesign?: {
-      enabled: boolean
-      backgroundMusicTrack: string
-      sfxVolume: number
-      musicVolume: number
-    }
-    autoZoom?: {
-      enabled: boolean
-      intensity: 'subtle' | 'medium' | 'dynamic'
-      intervalSeconds: number
-    }
-    brandKit?: {
-      enabled: boolean
-      logoPath: string | null
-      logoPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
-      logoScale: number
-      logoOpacity: number
-      introBumperPath: string | null
-      outroBumperPath: string | null
-    }
-    hookTitleOverlay?: {
-      enabled: boolean
-      style: 'centered-bold' | 'top-bar' | 'slide-in'
-      displayDuration: number
-      fadeIn: number
-      fadeOut: number
-      fontSize: number
-      textColor: string
-      outlineColor: string
-      outlineWidth: number
-    }
-    rehookOverlay?: {
-      enabled: boolean
-      style: 'bar' | 'text-only' | 'slide-up'
-      displayDuration: number
-      fadeIn: number
-      fadeOut: number
-      fontSize: number
-      textColor: string
-      outlineColor: string
-      outlineWidth: number
-      positionFraction: number
-    }
-    templateLayout?: {
-      titleText: { x: number; y: number }
-      subtitles: { x: number; y: number }
-      rehookText: { x: number; y: number }
-    }
-  }) => ipcRenderer.invoke('render:startBatch', options),
-
-  cancelRender: () => ipcRenderer.invoke('render:cancel'),
-
-  onRenderClipStart: (
-    callback: (data: { clipId: string; index: number; total: number; encoder: string; encoderIsHardware: boolean }) => void
-  ) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: { clipId: string; index: number; total: number; encoder: string; encoderIsHardware: boolean }
-    ) => callback(data)
-    ipcRenderer.on('render:clipStart', handler)
-    return () => ipcRenderer.removeListener('render:clipStart', handler)
-  },
-
-  onRenderClipProgress: (callback: (data: { clipId: string; percent: number }) => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: { clipId: string; percent: number }
-    ) => callback(data)
-    ipcRenderer.on('render:clipProgress', handler)
-    return () => ipcRenderer.removeListener('render:clipProgress', handler)
-  },
-
-  onRenderClipDone: (
-    callback: (data: { clipId: string; outputPath: string }) => void
-  ) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: { clipId: string; outputPath: string }
-    ) => callback(data)
-    ipcRenderer.on('render:clipDone', handler)
-    return () => ipcRenderer.removeListener('render:clipDone', handler)
-  },
-
-  onRenderClipError: (callback: (data: { clipId: string; error: string }) => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: { clipId: string; error: string }
-    ) => callback(data)
-    ipcRenderer.on('render:clipError', handler)
-    return () => ipcRenderer.removeListener('render:clipError', handler)
-  },
-
-  onRenderBatchDone: (
-    callback: (data: { completed: number; failed: number; total: number }) => void
-  ) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: { completed: number; failed: number; total: number }
-    ) => callback(data)
-    ipcRenderer.on('render:batchDone', handler)
-    return () => ipcRenderer.removeListener('render:batchDone', handler)
-  },
-
-  onRenderCancelled: (
-    callback: (data: { completed: number; failed: number; total: number }) => void
-  ) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: { completed: number; failed: number; total: number }
-    ) => callback(data)
-    ipcRenderer.on('render:cancelled', handler)
-    return () => ipcRenderer.removeListener('render:cancelled', handler)
-  },
+  startBatchRender: invoke(I.RENDER_START_BATCH),
+  cancelRender: invoke(I.RENDER_CANCEL),
+  onRenderClipStart: listen(S.RENDER_CLIP_START),
+  onRenderClipProgress: listen(S.RENDER_CLIP_PROGRESS),
+  onRenderClipDone: listen(S.RENDER_CLIP_DONE),
+  onRenderClipError: listen(S.RENDER_CLIP_ERROR),
+  onRenderBatchDone: listen(S.RENDER_BATCH_DONE),
+  onRenderCancelled: listen(S.RENDER_CANCELLED),
+  renderPreview: invoke(I.RENDER_PREVIEW),
+  cleanupPreview: invoke(I.RENDER_CLEANUP_PREVIEW),
 
   // Safe Zones
-  getSafeZonePlacement: (
-    platform: 'tiktok' | 'reels' | 'shorts' | 'universal',
-    element: 'caption' | 'hook_text' | 'upper_third' | 'middle' | 'lower_third' | 'progress_bar' | 'logo' | 'comment_overlay' | 'full_frame'
-  ) => ipcRenderer.invoke('safezones:getPlacement', platform, element),
+  getSafeZonePlacement: invoke(I.SAFEZONES_GET_PLACEMENT),
+  getSafeZoneRect: invoke(I.SAFEZONES_GET_SAFE_ZONE),
+  getSafeZoneDeadZones: invoke(I.SAFEZONES_GET_DEAD_ZONES),
+  clampToSafeZone: invoke(I.SAFEZONES_CLAMP),
+  isInsideSafeZone: invoke(I.SAFEZONES_IS_INSIDE),
+  safeZoneToAssMargins: invoke(I.SAFEZONES_TO_ASS_MARGINS),
+  getAllPlatformSafeZones: invoke(I.SAFEZONES_GET_ALL_PLATFORMS),
 
-  getSafeZoneRect: (
-    platform: 'tiktok' | 'reels' | 'shorts' | 'universal'
-  ) => ipcRenderer.invoke('safezones:getSafeZone', platform),
-
-  getSafeZoneDeadZones: (
-    platform: 'tiktok' | 'reels' | 'shorts' | 'universal'
-  ) => ipcRenderer.invoke('safezones:getDeadZones', platform),
-
-  clampToSafeZone: (
-    rect: { x: number; y: number; width: number; height: number },
-    platform: 'tiktok' | 'reels' | 'shorts' | 'universal'
-  ) => ipcRenderer.invoke('safezones:clamp', rect, platform),
-
-  isInsideSafeZone: (
-    rect: { x: number; y: number; width: number; height: number },
-    platform: 'tiktok' | 'reels' | 'shorts' | 'universal'
-  ) => ipcRenderer.invoke('safezones:isInside', rect, platform),
-
-  safeZoneToAssMargins: (
-    rect: { x: number; y: number; width: number; height: number }
-  ) => ipcRenderer.invoke('safezones:toAssMargins', rect),
-
-  getAllPlatformSafeZones: () => ipcRenderer.invoke('safezones:getAllPlatforms'),
-
-  // Layouts — blur background fill
-  buildBlurBackgroundFilter: (
-    inputWidth: number,
-    inputHeight: number,
-    outputWidth: number,
-    outputHeight: number,
-    config: {
-      blurIntensity: 'light' | 'medium' | 'heavy'
-      darken: number
-      vignette: boolean
-      borderShadow: boolean
-    }
-  ) =>
-    ipcRenderer.invoke(
-      'layout:buildBlurBackground',
-      inputWidth,
-      inputHeight,
-      outputWidth,
-      outputHeight,
-      config
-    ),
-
-  // Script cue segment splitting
-  splitSegments: (
-    inputPath: string,
-    segments: { label: string; startTime: number; endTime: number }[],
-    outputDir: string
-  ) => ipcRenderer.invoke('ffmpeg:splitSegments', inputPath, segments, outputDir),
-
-  // Project save / load / recent
-  saveProject: (json: string) => ipcRenderer.invoke('project:save', json),
-  loadProject: () => ipcRenderer.invoke('project:load'),
-  loadProjectFromPath: (filePath: string) => ipcRenderer.invoke('project:loadFromPath', filePath),
-  getRecentProjects: () => ipcRenderer.invoke('project:getRecent'),
-  addRecentProject: (entry: {
-    path: string
-    name: string
-    lastOpened: number
-    clipCount: number
-    sourceCount: number
-  }) => ipcRenderer.invoke('project:addRecent', entry),
-  removeRecentProject: (path: string) => ipcRenderer.invoke('project:removeRecent', path),
-  clearRecentProjects: () => ipcRenderer.invoke('project:clearRecent'),
-
-  // System
-  getDiskSpace: (dirPath: string) => ipcRenderer.invoke('system:getDiskSpace', dirPath),
-  getEncoder: () => ipcRenderer.invoke('system:getEncoder'),
-  getAvailableFonts: () => ipcRenderer.invoke('system:getAvailableFonts'),
-  sendNotification: (opts: { title: string; body: string; silent?: boolean }) =>
-    ipcRenderer.invoke('system:notify', opts),
-  getTempSize: () => ipcRenderer.invoke('system:getTempSize'),
-  cleanupTemp: () => ipcRenderer.invoke('system:cleanupTemp'),
-  getCacheSize: () => ipcRenderer.invoke('system:getCacheSize'),
-  setAutoCleanup: (enabled: boolean) => ipcRenderer.invoke('system:setAutoCleanup', enabled),
-
-  // Shell
-  openPath: (path: string) => ipcRenderer.invoke('shell:openPath', path),
-  showItemInFolder: (path: string) => ipcRenderer.invoke('shell:showItemInFolder', path),
+  // Layouts
+  buildBlurBackgroundFilter: invoke(I.LAYOUT_BUILD_BLUR_BACKGROUND),
+  buildSplitScreenFilter: invoke(I.LAYOUT_BUILD_SPLIT_SCREEN),
 
   // Curiosity Gap Detector
-  detectCuriosityGaps: (
-    apiKey: string,
-    transcript: unknown,
-    formattedTranscript: string,
-    videoDuration: number
-  ) => ipcRenderer.invoke('ai:detectCuriosityGaps', apiKey, transcript, formattedTranscript, videoDuration),
-
-  optimizeClipBoundaries: (
-    gap: unknown,
-    originalStart: number,
-    originalEnd: number,
-    transcript: unknown
-  ) => ipcRenderer.invoke('ai:optimizeClipBoundaries', gap, originalStart, originalEnd, transcript),
-
-  optimizeClipEndpoints: (
-    mode: string,
-    clipStart: number,
-    clipEnd: number,
-    transcript: unknown,
-    gap?: unknown
-  ) => ipcRenderer.invoke('ai:optimizeClipEndpoints', mode, clipStart, clipEnd, transcript, gap),
-
-  rankClipsByCuriosity: (
-    clips: unknown[],
-    gaps: unknown[]
-  ) => ipcRenderer.invoke('ai:rankClipsByCuriosity', clips, gaps),
+  detectCuriosityGaps: invoke(I.AI_DETECT_CURIOSITY_GAPS),
+  optimizeClipBoundaries: invoke(I.AI_OPTIMIZE_CLIP_BOUNDARIES),
+  optimizeClipEndpoints: invoke(I.AI_OPTIMIZE_CLIP_ENDPOINTS),
+  rankClipsByCuriosity: invoke(I.AI_RANK_CLIPS_BY_CURIOSITY),
 
   // Loop Optimizer
-  analyzeLoopPotential: (
-    apiKey: string,
-    transcript: unknown,
-    clipStart: number,
-    clipEnd: number
-  ) => ipcRenderer.invoke('loop:analyzeLoopPotential', apiKey, transcript, clipStart, clipEnd),
-
-  optimizeForLoop: (
-    clipStart: number,
-    clipEnd: number,
-    transcript: unknown,
-    analysis: unknown
-  ) => ipcRenderer.invoke('loop:optimizeForLoop', clipStart, clipEnd, transcript, analysis),
-
-  buildLoopCrossfadeFilter: (clipDuration: number, crossfadeDuration: number) =>
-    ipcRenderer.invoke('loop:buildCrossfadeFilter', clipDuration, crossfadeDuration),
-
-  scoreLoopQuality: (analysis: unknown) =>
-    ipcRenderer.invoke('loop:scoreLoopQuality', analysis),
+  analyzeLoopPotential: invoke(I.LOOP_ANALYZE_LOOP_POTENTIAL),
+  optimizeForLoop: invoke(I.LOOP_OPTIMIZE_FOR_LOOP),
+  buildLoopCrossfadeFilter: invoke(I.LOOP_BUILD_CROSSFADE_FILTER),
+  scoreLoopQuality: invoke(I.LOOP_SCORE_LOOP_QUALITY),
 
   // Clip Variant Generator
-  generateClipVariants: (
-    apiKey: string,
-    clip: {
-      startTime: number
-      endTime: number
-      score: number
-      text?: string
-      hookText?: string
-      reasoning?: string
-      curiosityScore?: number
-      combinedScore?: number
-    },
-    transcript: unknown,
-    capabilities: { hookTitle: boolean; rehook: boolean; progressBar: boolean }
-  ) => ipcRenderer.invoke('variants:generate', apiKey, clip, transcript, capabilities),
-
-  buildVariantRenderConfigs: (
-    variants: unknown[],
-    baseClip: {
-      startTime: number
-      endTime: number
-      score: number
-      text?: string
-      hookText?: string
-      reasoning?: string
-    },
-    baseName: string
-  ) => ipcRenderer.invoke('variants:buildRenderConfigs', variants, baseClip, baseName),
-
-  generateVariantLabels: (variants: unknown[]) =>
-    ipcRenderer.invoke('variants:generateLabels', variants),
-
-  // Split-screen layout filter builder
-  buildSplitScreenFilter: (
-    layout: { type: 'top-bottom' | 'pip-corner' | 'side-by-side' | 'reaction' },
-    mainSource: { path: string; sourceWidth: number; sourceHeight: number; crop?: { x: number; y: number; width: number; height: number } },
-    secondarySource: { path: string; sourceWidth: number; sourceHeight: number; crop?: { x: number; y: number; width: number; height: number } } | null,
-    config: { ratio: number; divider?: { color: string; thickness: number }; pipPosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; pipSize?: number; pipCornerRadius?: number }
-  ) => ipcRenderer.invoke('layout:buildSplitScreen', layout, mainSource, secondarySource, config),
+  generateClipVariants: invoke(I.VARIANTS_GENERATE),
+  buildVariantRenderConfigs: invoke(I.VARIANTS_BUILD_RENDER_CONFIGS),
+  generateVariantLabels: invoke(I.VARIANTS_GENERATE_LABELS),
 
   // Story Arc
-  detectStoryArcs: (
-    apiKey: string,
-    transcript: unknown,
-    clips: unknown[]
-  ) => ipcRenderer.invoke('storyarc:detectStoryArcs', apiKey, transcript, clips),
-
-  generateSeriesMetadata: (arc: unknown) =>
-    ipcRenderer.invoke('storyarc:generateSeriesMetadata', arc),
-
-  buildPartNumberFilter: (
-    partNumber: number,
-    totalParts: number,
-    seriesTitle: string,
-    config: unknown
-  ) => ipcRenderer.invoke('storyarc:buildPartNumberFilter', partNumber, totalParts, seriesTitle, config),
-
-  buildEndCardFilter: (
-    nextPartTeaser: string,
-    clipDuration: number,
-    config: unknown
-  ) => ipcRenderer.invoke('storyarc:buildEndCardFilter', nextPartTeaser, clipDuration, config),
+  detectStoryArcs: invoke(I.STORYARC_DETECT),
+  generateSeriesMetadata: invoke(I.STORYARC_GENERATE_SERIES_METADATA),
+  buildPartNumberFilter: invoke(I.STORYARC_BUILD_PART_NUMBER_FILTER),
+  buildEndCardFilter: invoke(I.STORYARC_BUILD_END_CARD_FILTER),
 
   // Description Generator
-  generateClipDescription: (
-    apiKey: string,
-    transcript: string,
-    clipContext?: string,
-    hookTitle?: string
-  ) => ipcRenderer.invoke('ai:generateClipDescription', apiKey, transcript, clipContext, hookTitle),
+  generateClipDescription: invoke(I.AI_GENERATE_CLIP_DESCRIPTION),
+  generateBatchDescriptions: invoke(I.AI_GENERATE_BATCH_DESCRIPTIONS),
 
-  generateBatchDescriptions: (
-    apiKey: string,
-    clips: {
-      transcript: string
-      hookText?: string
-      reasoning?: string
-    }[]
-  ) => ipcRenderer.invoke('ai:generateBatchDescriptions', apiKey, clips),
+  // Word Emphasis
+  analyzeWordEmphasis: invoke(I.AI_ANALYZE_WORD_EMPHASIS),
 
-  // B-Roll — generate placement data from transcript + keywords for a clip
-  generateBRollPlacements: (
-    geminiApiKey: string,
-    pexelsApiKey: string,
-    transcriptText: string,
-    wordTimestamps: { text: string; start: number; end: number }[],
-    clipStart: number,
-    clipEnd: number,
-    settings: {
-      intervalSeconds: number
-      clipDuration: number
-    }
-  ) => ipcRenderer.invoke(
-    'broll:generatePlacements',
-    geminiApiKey,
-    pexelsApiKey,
-    transcriptText,
-    wordTimestamps,
-    clipStart,
-    clipEnd,
-    settings
-  ),
+  // B-Roll
+  generateBRollPlacements: invoke(I.BROLL_GENERATE_PLACEMENTS),
 
   // Emoji Burst / Reaction Overlay
-  identifyEmojiMoments: (
-    apiKey: string,
-    transcript: unknown,
-    clipStart: number,
-    clipEnd: number,
-    config: unknown
-  ) => ipcRenderer.invoke('overlay:identifyEmojiMoments', apiKey, transcript, clipStart, clipEnd, config),
-
-  buildEmojiBurstFilters: (
-    moments: unknown[],
-    config: unknown
-  ) => ipcRenderer.invoke('overlay:buildEmojiBurstFilters', moments, config),
+  identifyEmojiMoments: invoke(I.OVERLAY_IDENTIFY_EMOJI_MOMENTS),
+  buildEmojiBurstFilters: invoke(I.OVERLAY_BUILD_EMOJI_BURST_FILTERS),
 
   // Fake Comment Overlay
-  generateFakeComment: (apiKey: string, transcript: string, clipContext?: string) =>
-    ipcRenderer.invoke('overlay:generateFakeComment', apiKey, transcript, clipContext),
-
-  buildFakeCommentFilter: (
-    comment: {
-      username: string
-      text: string
-      emoji?: string
-      profileColor: string
-      likeCount: string
-    },
-    config: {
-      enabled: boolean
-      style: 'tiktok' | 'youtube' | 'reels'
-      position: 'lower-third' | 'middle-left'
-      appearTime: number
-      displayDuration: number
-      fadeIn: number
-      fadeOut: number
-    }
-  ) => ipcRenderer.invoke('overlay:buildFakeCommentFilter', comment, config),
+  generateFakeComment: invoke(I.OVERLAY_GENERATE_FAKE_COMMENT),
+  buildFakeCommentFilter: invoke(I.OVERLAY_BUILD_FAKE_COMMENT_FILTER),
 
   // Clip Stitcher
-  generateStitchedClips: (
-    apiKey: string,
-    formattedTranscript: string,
-    videoDuration: number,
-    wordTimestamps: { text: string; start: number; end: number }[]
-  ) => ipcRenderer.invoke('stitch:generateCompositeClips', apiKey, formattedTranscript, videoDuration, wordTimestamps),
+  generateStitchedClips: invoke(I.STITCH_GENERATE_COMPOSITE_CLIPS),
+  onStitchingProgress: listen(S.STITCH_PROGRESS),
 
-  onStitchingProgress: (callback: (data: { stage: string; message: string }) => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: { stage: string; message: string }
-    ) => callback(data)
-    ipcRenderer.on('stitch:progress', handler)
-    return () => ipcRenderer.removeListener('stitch:progress', handler)
-  },
+  // Export
+  generateManifest: invoke(I.EXPORT_GENERATE_MANIFEST),
+  exportDescriptions: invoke(I.EXPORT_DESCRIPTIONS),
 
-  // Export manifest
-  generateManifest: (
-    outputDirectory: string,
-    jobs: unknown[],
-    clipMeta: unknown[],
-    sourceMeta: { name: string; path: string; duration: number }
-  ) => ipcRenderer.invoke('export:generateManifest', outputDirectory, jobs, clipMeta, sourceMeta),
+  // Project save / load / recent
+  saveProject: invoke(I.PROJECT_SAVE),
+  loadProject: invoke(I.PROJECT_LOAD),
+  loadProjectFromPath: invoke(I.PROJECT_LOAD_FROM_PATH),
+  autoSaveProject: invoke(I.PROJECT_AUTO_SAVE),
+  loadRecovery: invoke(I.PROJECT_LOAD_RECOVERY),
+  clearRecovery: invoke(I.PROJECT_CLEAR_RECOVERY),
+  getRecentProjects: invoke(I.PROJECT_GET_RECENT),
+  addRecentProject: invoke(I.PROJECT_ADD_RECENT),
+  removeRecentProject: invoke(I.PROJECT_REMOVE_RECENT),
+  clearRecentProjects: invoke(I.PROJECT_CLEAR_RECENT),
 
-  // Export descriptions
-  exportDescriptions: (
-    clips: Array<{
-      clipName: string
-      score: number
-      duration: number
-      hookText: string
-      platforms: Array<{ platform: string; text: string; hashtags: string[] }>
-      shortDescription: string
-      hashtag: string
-    }>,
-    outputDirectory: string,
-    format: 'csv' | 'json' | 'txt'
-  ) => ipcRenderer.invoke('export:descriptions', clips, outputDirectory, format),
+  // System
+  getDiskSpace: invoke(I.SYSTEM_GET_DISK_SPACE),
+  getEncoder: invoke(I.SYSTEM_GET_ENCODER),
+  getAvailableFonts: invoke(I.SYSTEM_GET_AVAILABLE_FONTS),
+  sendNotification: invoke(I.SYSTEM_NOTIFY),
+  getTempSize: invoke(I.SYSTEM_GET_TEMP_SIZE),
+  cleanupTemp: invoke(I.SYSTEM_CLEANUP_TEMP),
+  getCacheSize: invoke(I.SYSTEM_GET_CACHE_SIZE),
+  setAutoCleanup: invoke(I.SYSTEM_SET_AUTO_CLEANUP),
+  getLogPath: invoke(I.SYSTEM_GET_LOG_PATH),
+  getLogSize: invoke(I.SYSTEM_GET_LOG_SIZE),
+  exportLogs: invoke(I.SYSTEM_EXPORT_LOGS),
+  openLogFolder: invoke(I.SYSTEM_OPEN_LOG_FOLDER),
+  getResourceUsage: invoke(I.SYSTEM_GET_RESOURCE_USAGE),
+
+  // Shell
+  openPath: invoke(I.SHELL_OPEN_PATH),
+  showItemInFolder: invoke(I.SHELL_SHOW_ITEM_IN_FOLDER),
 
   // Python setup
-  getPythonStatus: () => ipcRenderer.invoke('python:getStatus'),
-  startPythonSetup: () => ipcRenderer.invoke('python:startSetup'),
-  onPythonSetupProgress: (callback: (data: { stage: string; message: string; percent: number }) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { stage: string; message: string; percent: number }) => callback(data)
-    ipcRenderer.on('python:setupProgress', handler)
-    return () => ipcRenderer.removeListener('python:setupProgress', handler)
-  },
-  onPythonSetupDone: (callback: (data: { success: boolean; error?: string }) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { success: boolean; error?: string }) => callback(data)
-    ipcRenderer.on('python:setupDone', handler)
-    return () => ipcRenderer.removeListener('python:setupDone', handler)
-  },
+  getPythonStatus: invoke(I.PYTHON_GET_STATUS),
+  startPythonSetup: invoke(I.PYTHON_START_SETUP),
+  onPythonSetupProgress: listen(S.PYTHON_SETUP_PROGRESS),
+  onPythonSetupDone: listen(S.PYTHON_SETUP_DONE),
 
-  // System — session log
-  getLogPath: () => ipcRenderer.invoke('system:getLogPath'),
-  getLogSize: () => ipcRenderer.invoke('system:getLogSize'),
-  exportLogs: (rendererErrors: Array<{ timestamp: number; source: string; message: string; details?: string }>) =>
-    ipcRenderer.invoke('system:exportLogs', rendererErrors),
-  openLogFolder: () => ipcRenderer.invoke('system:openLogFolder'),
-
-  // System — resource usage (CPU/RAM/GPU)
-  getResourceUsage: () => ipcRenderer.invoke('system:getResourceUsage'),
-
-  // AI Token Usage — emitted after every successful Gemini API call
-  onAiTokenUsage: (callback: (data: {
-    source: string
-    promptTokens: number
-    completionTokens: number
-    totalTokens: number
-    model: string
-    timestamp: number
-  }) => void) => {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      data: {
-        source: string
-        promptTokens: number
-        completionTokens: number
-        totalTokens: number
-        model: string
-        timestamp: number
-      }
-    ) => callback(data)
-    ipcRenderer.on('ai:tokenUsage', handler)
-    return () => ipcRenderer.removeListener('ai:tokenUsage', handler)
-  }
+  // AI Token Usage
+  onAiTokenUsage: listen(S.AI_TOKEN_USAGE),
 }
+
+// ---------------------------------------------------------------------------
+// Expose to renderer
+// ---------------------------------------------------------------------------
 
 if (process.contextIsolated) {
   try {

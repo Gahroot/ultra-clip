@@ -210,6 +210,30 @@ interface RenderBatchOptions {
     /** @deprecated Always mirrors titleText — do not set independently */
     rehookText: { x: number; y: number }
   }
+  /** Whether captions are enabled (needed to know whether to re-sync captions) */
+  captionsEnabled?: boolean
+  /** Caption style for re-generating captions after filler removal */
+  captionStyle?: CaptionStyleInput
+  /** Filler & silence removal settings */
+  fillerRemoval?: {
+    enabled: boolean
+    removeFillerWords: boolean
+    trimSilences: boolean
+    removeRepeats: boolean
+    silenceThreshold: number
+    silenceTargetGap: number
+    fillerWords: string[]
+  }
+  /** Source video metadata for auto-manifest generation */
+  sourceMeta?: {
+    name: string
+    path: string
+    duration: number
+  }
+  /** Output aspect ratio for rendered clips */
+  outputAspectRatio?: '9:16' | '1:1' | '4:5' | '16:9'
+  /** Filename template for rendered clips */
+  filenameTemplate?: string
 }
 
 interface RenderClipStartEvent {
@@ -427,6 +451,22 @@ interface AssMargins {
   MarginL: number
   MarginR: number
   MarginV: number
+}
+
+// ---------------------------------------------------------------------------
+// Word Emphasis types
+// ---------------------------------------------------------------------------
+
+interface EmphasizedWord {
+  text: string
+  start: number
+  end: number
+  emphasis: 'normal' | 'emphasis' | 'supersize'
+}
+
+interface WordEmphasisResult {
+  words: EmphasizedWord[]
+  usedAI: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -717,6 +757,9 @@ interface Api {
   saveProject: (json: string) => Promise<string | null>
   loadProject: () => Promise<string | null>
   loadProjectFromPath: (filePath: string) => Promise<string | null>
+  autoSaveProject: (json: string) => Promise<string>
+  loadRecovery: () => Promise<string | null>
+  clearRecovery: () => Promise<void>
   getRecentProjects: () => Promise<RecentProjectEntry[]>
   addRecentProject: (entry: RecentProjectEntry) => Promise<void>
   removeRecentProject: (path: string) => Promise<void>
@@ -828,6 +871,8 @@ interface Api {
     baseName: string
   ) => Promise<VariantRenderConfig[]>
   generateVariantLabels: (variants: ClipVariant[]) => Promise<VariantLabel[]>
+  // Word Emphasis
+  analyzeWordEmphasis: (words: WordTimestamp[], apiKey?: string) => Promise<WordEmphasisResult>
   // B-Roll
   generateBRollPlacements: (
     geminiApiKey: string,
@@ -900,6 +945,27 @@ interface Api {
     ram: { usedBytes: number; totalBytes: number; appBytes: number }
     gpu: { percent: number; usedMB: number; totalMB: number; name: string } | null
   }>
+  // Render — fast low-quality preview with all overlays applied (540×960, ultrafast)
+  renderPreview: (config: {
+    sourceVideoPath: string
+    startTime: number
+    endTime: number
+    cropRegion?: { x: number; y: number; width: number; height: number }
+    wordTimestamps?: WordTimestamp[]
+    hookTitleText?: string
+    captionsEnabled?: boolean
+    captionStyle?: CaptionStyleInput
+    hookTitleOverlay?: HookTitleOverlaySettings
+    progressBarOverlay?: ProgressBarOverlaySettings
+    autoZoom?: AutoZoomSettings
+    brandKit?: {
+      logoPath: string | null
+      logoPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+      logoScale: number
+      logoOpacity: number
+    }
+  }) => Promise<{ previewPath: string }>
+  cleanupPreview: (previewPath: string) => Promise<void>
   // AI Token Usage
   onAiTokenUsage: (callback: (data: {
     source: string
