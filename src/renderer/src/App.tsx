@@ -45,6 +45,7 @@ import { WhatsNew, APP_VERSION } from './components/WhatsNew'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useTheme } from './hooks/useTheme'
 import { useAutosave } from './hooks/useAutosave'
+import { useFontLoader } from './hooks/useFontLoader'
 import { useStore } from './store'
 import {
   saveProject,
@@ -96,6 +97,7 @@ function App() {
   const [recoveryData, setRecoveryData] = useState<RecoveryData | null>(null)
 
   useTheme()
+  useFontLoader()
   const { justSaved } = useAutosave()
 
   // Check for recovery file on startup

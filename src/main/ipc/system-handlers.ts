@@ -9,6 +9,7 @@ import { wrapHandler } from '../ipc-error-handler'
 import { getEncoder } from '../ffmpeg'
 import { getLogPath, getLogSize, getLogDir, log } from '../logger'
 import { getEditPlanCacheSize } from '../ai/edit-plan-cache'
+import { buildRendererFontManifest } from '../font-registry'
 
 let autoCleanupOnExit = false
 
@@ -131,26 +132,24 @@ export function registerSystemHandlers(): void {
     return { encoder, isHardware }
   })
 
-  // System — enumerate available fonts
+  // System — enumerate available fonts (bundled via font registry + system fallbacks)
   ipcMain.handle(Ch.Invoke.SYSTEM_GET_AVAILABLE_FONTS, async () => {
-    type FontEntry = { name: string; path: string; source: 'bundled' | 'system' }
+    type FontEntry = { name: string; path: string; source: 'bundled' | 'system'; category?: string; weight?: string }
     const fonts: FontEntry[] = []
 
-    const resourcesPath = app.isPackaged
-      ? join(process.resourcesPath, 'fonts')
-      : join(__dirname, '../../resources/fonts')
-
-    if (existsSync(resourcesPath)) {
-      try {
-        const entries = await readdir(resourcesPath)
-        for (const file of entries) {
-          if (!/\.(ttf|otf)$/i.test(file)) continue
-          const name = file.replace(/\.(ttf|otf)$/i, '').replace(/[-_]/g, ' ')
-          fonts.push({ name, path: join(resourcesPath, file), source: 'bundled' })
-        }
-      } catch { /* Ignore readdir errors */ }
+    // Bundled fonts from the font registry (proper family names + metadata)
+    const manifest = buildRendererFontManifest()
+    for (const entry of manifest) {
+      fonts.push({
+        name: entry.family,
+        path: entry.path,
+        source: 'bundled',
+        category: entry.category,
+        weight: entry.weight
+      })
     }
 
+    // System font fallbacks for machines without bundled fonts
     const SYSTEM_FONT_CANDIDATES: Array<{ name: string; path: string }> = [
       { name: 'Liberation Sans Bold', path: '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf' },
       { name: 'Liberation Sans', path: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf' },
@@ -181,6 +180,17 @@ export function registerSystemHandlers(): void {
     }
 
     return fonts
+  })
+
+  // System — get font file data as base64 for renderer FontFace loading
+  ipcMain.handle(Ch.Invoke.SYSTEM_GET_FONT_DATA, async (_event, fontPath: string) => {
+    try {
+      if (!existsSync(fontPath)) return null
+      const data = readFileSync(fontPath)
+      return data.toString('base64')
+    } catch {
+      return null
+    }
   })
 
   // Shell — open a path in OS file manager

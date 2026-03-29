@@ -16,6 +16,7 @@ import type { HookTitleConfig } from '../hook-title'
 import type { RehookConfig, OverlayVisualSettings } from '../overlays/rehook'
 import { toFFmpegPath, formatASSTimestamp, cssHexToASS, buildASSFilter } from './helpers'
 import { generateCaptions } from '../captions'
+import { resolveFontsDir } from '../font-registry'
 import { buildProgressBarFilter } from '../overlays/progress-bar'
 import { applyFilterComplexPass } from './overlay-runner'
 
@@ -245,6 +246,7 @@ export async function renderStitchedClip(
   const tempDir = tmpdir()
   const tempFiles: string[] = []
   const { encoder, presetFlag } = getEncoder()
+  const fontsDir = resolveFontsDir()
 
   // Get source video metadata for crop/scale
   const meta = await getVideoMetadata(job.sourceVideoPath)
@@ -306,7 +308,7 @@ export async function renderStitchedClip(
       if (seg.overlayText && !hookTitleWillHandle) {
         const segAssPath = generateSegmentOverlayASSFile(seg.overlayText, seg.role)
         tempFiles.push(segAssPath)
-        filterChain.push(buildASSFilter(segAssPath))
+        filterChain.push(buildASSFilter(segAssPath, fontsDir))
       }
 
       // ── Per-segment captions ──────────────────────────────────────────
@@ -326,7 +328,7 @@ export async function renderStitchedClip(
               : undefined
             const captionAssPath = await generateCaptions(localWords, job.captionStyle, undefined, 1080, 1920, marginVOverride)
             tempFiles.push(captionAssPath)
-            filterChain.push(buildASSFilter(captionAssPath))
+            filterChain.push(buildASSFilter(captionAssPath, fontsDir))
           } catch (err) {
             console.warn(`[StitchedRender] Failed to generate captions for segment ${i}:`, err)
           }
@@ -341,7 +343,7 @@ export async function renderStitchedClip(
           job.templateLayout
         )
         tempFiles.push(hookAssPath)
-        filterChain.push(buildASSFilter(hookAssPath))
+        filterChain.push(buildASSFilter(hookAssPath, fontsDir))
       }
 
       // ── Rehook on the appropriate segment ─────────────────────────────
@@ -358,7 +360,7 @@ export async function renderStitchedClip(
             job.templateLayout
           )
           tempFiles.push(rehookAssPath)
-          filterChain.push(buildASSFilter(rehookAssPath))
+          filterChain.push(buildASSFilter(rehookAssPath, fontsDir))
         }
       }
 
