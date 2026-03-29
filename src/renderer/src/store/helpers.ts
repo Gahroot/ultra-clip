@@ -786,6 +786,210 @@ export const CAPTION_PRESETS: Record<string, CaptionStyle> = {
     animation: 'captions-ai',
     emphasisColor: '#FBBF24',
     supersizeColor: '#F59E0B'
+  },
+
+  // -----------------------------------------------------------------------
+  // Street & High-Impact — bold decorative fonts, heavy outlines, max energy
+  // -----------------------------------------------------------------------
+
+  /** Thuban — Bangers all-caps with punchy colored word boxes. Street poster energy. */
+  'thuban': {
+    id: 'thuban',
+    label: 'Thuban Boxed',
+    fontName: 'Bangers',
+    fontFile: 'Bangers-Regular.ttf',
+    fontSize: 0.08,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FF2D55',
+    outlineColor: '#000000',
+    backColor: '#E6FF2D55',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 3,
+    wordsPerLine: 2,
+    animation: 'word-box',
+    emphasisColor: '#FFE600',
+    supersizeColor: '#00FF88'
+  },
+
+  /** Izar — High-contrast white-on-black with snappy word pop. Bold and clean. */
+  'izar': {
+    id: 'izar',
+    label: 'Izar Snap',
+    fontName: 'Anton',
+    fontFile: 'Anton-Regular.ttf',
+    fontSize: 0.085,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#000000',
+    backColor: '#FF000000',
+    outline: 0,
+    shadow: 0,
+    borderStyle: 3,
+    wordsPerLine: 2,
+    animation: 'word-pop',
+    emphasisColor: '#FF3B30',
+    supersizeColor: '#FFE600'
+  },
+
+  /** Zaniah — Press Start 2P pixel font with retro game aesthetic. 8-bit energy. */
+  'zaniah': {
+    id: 'zaniah',
+    label: 'Zaniah Pixel',
+    fontName: 'Press Start 2P',
+    fontFile: 'PressStart2P-Regular.ttf',
+    fontSize: 0.04,
+    primaryColor: '#00FF41',
+    highlightColor: '#FFE600',
+    outlineColor: '#000000',
+    backColor: '#CC111111',
+    outline: 2,
+    shadow: 3,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'typewriter',
+    emphasisColor: '#FF2D55',
+    supersizeColor: '#00CFFF'
+  },
+
+  /** Hadar — Massive outline with bright contrasting fill. Pure impact. */
+  'hadar': {
+    id: 'hadar',
+    label: 'Hadar Impact',
+    fontName: 'Bangers',
+    fontFile: 'Bangers-Regular.ttf',
+    fontSize: 0.09,
+    primaryColor: '#FFE600',
+    highlightColor: '#FF2D55',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 6,
+    shadow: 4,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'impact-two',
+    emphasisColor: '#FF2D55',
+    supersizeColor: '#FFFFFF'
+  },
+
+  /** Sabik — Graffiti-style with Permanent Marker, tilted energy and colored shadow. Raw. */
+  'sabik': {
+    id: 'sabik',
+    label: 'Sabik Graffiti',
+    fontName: 'Permanent Marker',
+    fontFile: 'PermanentMarker-Regular.ttf',
+    fontSize: 0.075,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FF6B00',
+    outlineColor: '#4A0080',
+    backColor: '#00000000',
+    outline: 4,
+    shadow: 5,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'elastic-bounce',
+    emphasisColor: '#FF6B00',
+    supersizeColor: '#00FF88'
+  },
+
+  /** Kochab — Stencil feel with Oswald, wide letter spacing, slide reveal. Military edge. */
+  'kochab': {
+    id: 'kochab',
+    label: 'Kochab Stencil',
+    fontName: 'Oswald',
+    fontFile: 'Oswald.ttf',
+    fontSize: 0.07,
+    primaryColor: '#E5E5E5',
+    highlightColor: '#FF3B30',
+    outlineColor: '#1A1A1A',
+    backColor: '#CC1A1A1A',
+    outline: 1,
+    shadow: 0,
+    borderStyle: 3,
+    wordsPerLine: 3,
+    animation: 'cascade',
+    emphasisColor: '#FF3B30',
+    supersizeColor: '#FFE600'
+  },
+
+  /** Rasalhague — Bold condensed with alternating black/white word boxes. Graphic rhythm. */
+  'rasalhague': {
+    id: 'rasalhague',
+    label: 'Rasalhague Bars',
+    fontName: 'Bebas Neue',
+    fontFile: 'BebasNeue-Regular.ttf',
+    fontSize: 0.08,
+    primaryColor: '#000000',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#000000',
+    backColor: '#FFFFFFFF',
+    outline: 0,
+    shadow: 0,
+    borderStyle: 3,
+    wordsPerLine: 2,
+    animation: 'word-box',
+    emphasisColor: '#FF2D55',
+    supersizeColor: '#FFE600'
+  },
+
+  /** Lesath — Maximum outline thickness with hot glow. Neon sign on steroids. */
+  'lesath': {
+    id: 'lesath',
+    label: 'Lesath Mega',
+    fontName: 'Bangers',
+    fontFile: 'Bangers-Regular.ttf',
+    fontSize: 0.085,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FF2D55',
+    outlineColor: '#FF2D55',
+    backColor: '#00000000',
+    outline: 7,
+    shadow: 6,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'glow',
+    emphasisColor: '#00CFFF',
+    supersizeColor: '#FFE600'
+  },
+
+  /** Dschubba — Street-style mixed color emphasis with Bangers. Every word pops different. */
+  'dschubba': {
+    id: 'dschubba',
+    label: 'Dschubba Street',
+    fontName: 'Bangers',
+    fontFile: 'Bangers-Regular.ttf',
+    fontSize: 0.08,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#00FF88',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 5,
+    shadow: 3,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'captions-ai',
+    emphasisColor: '#FF6B00',
+    supersizeColor: '#FF2D55'
+  },
+
+  /** Grumium — Brutalist all-caps monospace with hard edges. No curves, no mercy. */
+  'grumium': {
+    id: 'grumium',
+    label: 'Grumium Brutalist',
+    fontName: 'JetBrains Mono',
+    fontFile: 'JetBrainsMono.ttf',
+    fontSize: 0.055,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FF3B30',
+    outlineColor: '#FFFFFF',
+    backColor: '#FF000000',
+    outline: 1,
+    shadow: 0,
+    borderStyle: 3,
+    wordsPerLine: 3,
+    animation: 'fade-in',
+    emphasisColor: '#FF3B30',
+    supersizeColor: '#FFE600'
   }
 }
 
