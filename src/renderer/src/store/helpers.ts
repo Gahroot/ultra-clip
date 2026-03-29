@@ -155,6 +155,24 @@ export const CAPTION_PRESETS: Record<string, CaptionStyle> = {
     animation: 'karaoke-fill',
     emphasisColor: '#FFFF00',
     supersizeColor: '#FF4444'
+  },
+  'impact-two': {
+    id: 'impact-two',
+    label: 'Impact II',
+    fontName: 'Montserrat',
+    fontFile: 'Montserrat-Bold.ttf',
+    fontSize: 0.065,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#00FF00',
+    outlineColor: '#000000',
+    backColor: '#80000000',
+    outline: 4,
+    shadow: 2,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'impact-two',
+    emphasisColor: '#00FF00',
+    supersizeColor: '#FFFFFF'
   }
 }
 

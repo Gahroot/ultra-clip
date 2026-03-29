@@ -565,6 +565,118 @@ function buildTypewriterLines(
 }
 
 /**
+ * Impact Two — two-line layout inspired by captions.ai "Impact II" / "Velocity".
+ *
+ * For each word group, one KEY word is pulled out and rendered absolutely MASSIVE
+ * on its own line below. The remaining context words sit above it, small and
+ * unassuming. The visual hierarchy is extreme and unmistakable.
+ *
+ * Layout (bottom-center aligned):
+ *   Line 1:  {\fs<small>} context words          (e.g. 40% of base)
+ *   Line 2:  {\fs<huge>}  KEY WORD               (e.g. 280% of base)
+ *
+ * KEY word selection priority:
+ *   1. The first supersize-emphasis word in the group
+ *   2. The first emphasis word in the group
+ *   3. The last word in the group (natural sentence stress)
+ *
+ * Animation: context words fade in gently, then the key word SLAMS in with an
+ * elastic overshoot (scale 140% → settle to 100%) and uses the supersizeColor.
+ */
+function buildImpactTwoLines(
+  group: WordGroup,
+  style: CaptionStyleInput,
+  baseFontSize: number
+): string[] {
+  const primaryASS = hexToASS(style.primaryColor)
+  const supersizeASS = hexToASS(style.supersizeColor ?? '#FFD700')
+  const emphasisASS = hexToASS(style.emphasisColor ?? style.highlightColor)
+  const outlineASS = hexToASS(style.outlineColor)
+
+  const start = formatASSTime(group.start)
+  const end = formatASSTime(group.end)
+
+  // --- Pick the KEY word ---
+  // Priority: first supersize > first emphasis > last word
+  let keyIdx = -1
+  for (let i = 0; i < group.words.length; i++) {
+    if (group.words[i].emphasis === 'supersize') { keyIdx = i; break }
+  }
+  if (keyIdx === -1) {
+    for (let i = 0; i < group.words.length; i++) {
+      if (group.words[i].emphasis === 'emphasis') { keyIdx = i; break }
+    }
+  }
+  if (keyIdx === -1) keyIdx = group.words.length - 1
+
+  const keyWord = group.words[keyIdx]
+  const contextWords = group.words.filter((_, i) => i !== keyIdx)
+
+  // Font sizes: context = 40% of base, key = 280% of base
+  const contextSize = Math.round(baseFontSize * 0.40)
+  const keySize = Math.round(baseFontSize * 2.80)
+
+  // If there's only one word, just render it huge (no context line)
+  if (group.words.length === 1) {
+    const w = group.words[0]
+    const wordStartCs = Math.round((w.start - group.start) * 100)
+    const wordDurCs = Math.round((w.end - w.start) * 100)
+    const slamDur = Math.min(10, wordDurCs)
+    const settleDur = Math.min(8, wordDurCs)
+
+    const line =
+      `Dialogue: 0,${start},${end},Default,,0,0,0,,` +
+      `{\\fs${keySize}\\b1\\1c${supersizeASS}\\bord${Math.round(style.outline * 1.8)}` +
+      `\\alpha&HFF&\\fscx140\\fscy140` +
+      `\\t(${wordStartCs},${wordStartCs + slamDur},\\alpha&H00&)` +
+      `\\t(${wordStartCs + slamDur},${wordStartCs + slamDur + settleDur},0.4,\\fscx100\\fscy100)}` +
+      `${w.text.toUpperCase()}`
+
+    return [line]
+  }
+
+  // --- Build the two-line dialogue ---
+  // Line 1: small context words with gentle fade-in
+  // Line 2: \N + massive KEY word with elastic slam
+
+  const contextParts = contextWords.map((w) => {
+    const wordStartCs = Math.round((w.start - group.start) * 100)
+    const fadeDur = Math.min(12, Math.round((w.end - w.start) * 100))
+    const level = w.emphasis ?? 'normal'
+    // Context words that happen to be emphasis get a subtle color hint
+    const colorTag = level === 'emphasis' ? `\\1c${emphasisASS}` : `\\1c${primaryASS}`
+
+    return (
+      `{\\fs${contextSize}${colorTag}\\bord${Math.max(1, Math.round(style.outline * 0.5))}` +
+      `\\alpha&HFF&\\t(${wordStartCs},${wordStartCs + fadeDur},\\alpha&H00&)}` +
+      `${w.text}`
+    )
+  })
+
+  // KEY word timing + animation
+  const keyStartCs = Math.round((keyWord.start - group.start) * 100)
+  const keyDurCs = Math.round((keyWord.end - keyWord.start) * 100)
+  const slamDur = Math.min(10, keyDurCs)   // 100ms slam-in
+  const settleDur = Math.min(8, keyDurCs)  // 80ms settle
+
+  const keyPart =
+    `{\\fs${keySize}\\b1\\1c${supersizeASS}\\3c${outlineASS}` +
+    `\\bord${Math.round(style.outline * 1.8)}` +
+    `\\alpha&HFF&\\fscx140\\fscy140` +
+    // Slam in: invisible → visible at 140% overshoot
+    `\\t(${keyStartCs},${keyStartCs + slamDur},\\alpha&H00&)` +
+    // Settle: 140% → 100% with deceleration
+    `\\t(${keyStartCs + slamDur},${keyStartCs + slamDur + settleDur},0.4,\\fscx100\\fscy100)}` +
+    `${keyWord.text.toUpperCase()}`
+
+  const line =
+    `Dialogue: 0,${start},${end},Default,,0,0,0,,` +
+    `${contextParts.join(' ')}\\N${keyPart}`
+
+  return [line]
+}
+
+/**
  * Captions.AI — the signature animation style.
  *
  * The contrast between word types is what defines this look:
@@ -720,6 +832,9 @@ function buildASSDocument(
         break
       case 'typewriter':
         dialogueLines.push(...buildTypewriterLines(group, style, fontSize))
+        break
+      case 'impact-two':
+        dialogueLines.push(...buildImpactTwoLines(group, style, fontSize))
         break
     }
   }

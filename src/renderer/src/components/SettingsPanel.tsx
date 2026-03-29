@@ -69,7 +69,8 @@ const ANIMATION_OPTIONS: { value: CaptionAnimation; label: string }[] = [
   { value: 'glow', label: 'Glow' },
   { value: 'word-box', label: 'Clarity Boxes' },
   { value: 'elastic-bounce', label: 'Elastic Bounce' },
-  { value: 'typewriter', label: 'Typewriter' }
+  { value: 'typewriter', label: 'Typewriter' },
+  { value: 'impact-two', label: 'Impact II' }
 ]
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
