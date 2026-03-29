@@ -14,7 +14,7 @@
 // Types
 // ---------------------------------------------------------------------------
 
-import type { ZoomIntensity, ZoomMode } from '@shared/types'
+import type { ZoomIntensity, ZoomMode, WordTimestamp } from '@shared/types'
 export type { ZoomIntensity, ZoomMode }
 
 export interface ZoomSettings {
@@ -89,14 +89,19 @@ export function generateZoomFilter(
   settings: ZoomSettings,
   faceYNorm: number = 0.38,
   outW: number = 1080,
-  outH: number = 1920
+  outH: number = 1920,
+  wordTimestamps?: WordTimestamp[]
 ): string {
   if (!settings.enabled) return ''
 
-  // Only ken-burns is implemented in this function. Reactive and jump-cut
-  // modes require emphasis keyframe data and are handled by dedicated
-  // generators (generateReactiveZoomFilter / generateJumpCutZoomFilter).
   const mode = settings.mode ?? 'ken-burns'
+
+  // Jump-cut mode: hard step-function zoom changes simulating multi-cam editing
+  if (mode === 'jump-cut') {
+    return generateJumpCutZoomFilter(clipDuration, settings, faceYNorm, outW, outH, wordTimestamps)
+  }
+
+  // Reactive mode is not yet implemented
   if (mode !== 'ken-burns') return ''
 
   const { amplitude, panFrac } = INTENSITY_CONFIG[settings.intensity]
@@ -184,6 +189,279 @@ export function generateZoomFilter(
   return `crop=w=${cropW}:h=${cropH}:x=${cropX}:y=${cropY},scale=${outW}:${outH}`
 }
 
+// ---------------------------------------------------------------------------
+// Jump-Cut Multi-Cam Simulation
+// ---------------------------------------------------------------------------
+
+/**
+ * Zoom range per intensity level for jump-cut mode.
+ * Each "cut" alternates between 1.0 (wide) and a random zoom in [min, max].
+ */
+const JUMP_CUT_ZOOM_RANGE: Record<ZoomIntensity, { min: number; max: number }> = {
+  subtle:  { min: 1.06, max: 1.10 },
+  medium:  { min: 1.08, max: 1.13 },
+  dynamic: { min: 1.10, max: 1.15 },
+}
+
+/**
+ * Maximum horizontal crop shift in pixels (±) at each cut point.
+ * Applied to the 1080-wide canvas to enhance the multi-cam illusion.
+ */
+const JUMP_CUT_MAX_PAN_PX = 20
+
+/** Simple seeded PRNG (mulberry32) for deterministic per-clip randomness. */
+function mulberry32(seed: number): () => number {
+  return () => {
+    seed |= 0
+    seed = (seed + 0x6d2b79f5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** Derive a deterministic seed from clip duration so same clip = same cuts. */
+function clipSeed(duration: number): number {
+  return Math.round(duration * 1000) ^ 0xdeadbeef
+}
+
+/**
+ * Segment definition for one "shot" in the simulated multi-cam edit.
+ */
+interface JumpCutSegment {
+  /** Start time in seconds (0-based, relative to clip start) */
+  start: number
+  /** End time in seconds */
+  end: number
+  /** Zoom factor for this segment (1.0 = wide, >1.0 = punched in) */
+  zoom: number
+  /** Horizontal crop offset in pixels from centre (can be negative) */
+  panOffsetPx: number
+}
+
+/**
+ * Compute cut points aligned to sentence boundaries when word timestamps are
+ * available. A "sentence boundary" is detected after words ending in sentence-
+ * ending punctuation (. ! ? …) with a pause ≥ 150ms before the next word.
+ *
+ * Falls back to randomised 3–5 second intervals when no word data is available.
+ */
+function computeJumpCutPoints(
+  clipDuration: number,
+  intervalSeconds: number,
+  rng: () => number,
+  wordTimestamps?: WordTimestamp[]
+): number[] {
+  const cuts: number[] = [0]
+
+  if (wordTimestamps && wordTimestamps.length > 0) {
+    // Find sentence boundaries from word timestamps
+    const sentenceEnders = /[.!?…]+$/
+    for (let i = 0; i < wordTimestamps.length - 1; i++) {
+      const word = wordTimestamps[i]
+      const next = wordTimestamps[i + 1]
+      if (sentenceEnders.test(word.text.trim()) && (next.start - word.end) >= 0.15) {
+        // Use the start of the next word as the cut point (clean transition)
+        const cutTime = next.start
+        const lastCut = cuts[cuts.length - 1]
+        // Enforce minimum 2s between cuts, maximum 6s
+        if (cutTime - lastCut >= 2.0 && cutTime < clipDuration - 0.5) {
+          // If gap since last cut > 6s, we should have cut earlier —
+          // but sentence-aligned cuts are better so we allow up to 8s
+          if (cutTime - lastCut <= 8.0) {
+            cuts.push(cutTime)
+          }
+        }
+      }
+    }
+
+    // If sentence detection produced too few cuts (< 2 cuts for a long clip),
+    // fill gaps > 5s with randomised cuts
+    const minCuts = Math.max(2, Math.floor(clipDuration / 5))
+    if (cuts.length < minCuts) {
+      // Find gaps > 5s and insert random cuts
+      const filled: number[] = [0]
+      for (let i = 1; i < cuts.length; i++) {
+        const gap = cuts[i] - filled[filled.length - 1]
+        if (gap > 5.5) {
+          // Insert one or more random cuts in this gap
+          const nInsert = Math.floor(gap / (3 + rng() * 2))
+          const segLen = gap / (nInsert + 1)
+          for (let j = 1; j <= nInsert; j++) {
+            filled.push(filled[filled.length - 1] + segLen)
+          }
+        }
+        filled.push(cuts[i])
+      }
+      // Fill the tail gap
+      const tailGap = clipDuration - filled[filled.length - 1]
+      if (tailGap > 5.5) {
+        const nInsert = Math.floor(tailGap / (3 + rng() * 2))
+        const segLen = tailGap / (nInsert + 1)
+        for (let j = 1; j <= nInsert; j++) {
+          filled.push(filled[filled.length - 1] + segLen)
+        }
+      }
+      return filled
+    }
+  } else {
+    // No word timestamps — randomised 3–5 second intervals
+    let t = 0
+    while (t < clipDuration - 1.5) {
+      const interval = 3 + rng() * 2 // 3–5 seconds
+      t += interval
+      if (t < clipDuration - 0.5) {
+        cuts.push(t)
+      }
+    }
+  }
+
+  return cuts
+}
+
+/**
+ * Build the segment list for jump-cut multi-cam simulation.
+ * Alternates between 1.0 (wide shot) and a random zoomed level.
+ * Each segment also gets a slight horizontal pan offset.
+ */
+function buildJumpCutSegments(
+  clipDuration: number,
+  settings: ZoomSettings,
+  wordTimestamps?: WordTimestamp[]
+): JumpCutSegment[] {
+  const rng = mulberry32(clipSeed(clipDuration))
+  const { min: zoomMin, max: zoomMax } = JUMP_CUT_ZOOM_RANGE[settings.intensity]
+
+  const cutPoints = computeJumpCutPoints(
+    clipDuration,
+    settings.intervalSeconds,
+    rng,
+    wordTimestamps
+  )
+
+  const segments: JumpCutSegment[] = []
+  for (let i = 0; i < cutPoints.length; i++) {
+    const start = cutPoints[i]
+    const end = i + 1 < cutPoints.length ? cutPoints[i + 1] : clipDuration
+
+    // Alternate: even segments = wide (1.0), odd = punched in
+    const isZoomed = i % 2 === 1
+    const zoom = isZoomed ? zoomMin + rng() * (zoomMax - zoomMin) : 1.0
+
+    // Random horizontal shift (only for zoomed segments to enhance the illusion)
+    const panOffsetPx = isZoomed
+      ? Math.round((rng() * 2 - 1) * JUMP_CUT_MAX_PAN_PX)
+      : 0
+
+    segments.push({ start, end, zoom, panOffsetPx })
+  }
+
+  return segments
+}
+
+/**
+ * Generate an FFmpeg crop+scale filter with piecewise step-function zoom
+ * that simulates multi-camera editing. Each segment has a constant zoom
+ * level with zero easing — the viewer's brain reads each transition as
+ * a camera cut, resetting attention.
+ *
+ * The expression uses nested `if(between(t,start,end), value, ...)` to
+ * build a step function evaluated per-frame by FFmpeg's expression engine.
+ * Since crop is a native filter, this is fast even with many segments.
+ */
+function generateJumpCutZoomFilter(
+  clipDuration: number,
+  settings: ZoomSettings,
+  faceYNorm: number,
+  outW: number,
+  outH: number,
+  wordTimestamps?: WordTimestamp[]
+): string {
+  if (clipDuration <= 0) return ''
+
+  const segments = buildJumpCutSegments(clipDuration, settings, wordTimestamps)
+  if (segments.length === 0) return ''
+
+  const FY = Math.max(0, Math.min(1, faceYNorm)).toFixed(3)
+
+  // ── Build piecewise zoom expression ────────────────────────────────────
+  // Nested if(between(t, start, end), zoomValue, nextBranch)
+  // The last segment is the fallback (no between check needed).
+  const zExpr = buildStepExpr(
+    segments,
+    (seg) => seg.zoom.toFixed(4)
+  )
+
+  // ── Build piecewise X-offset expression ────────────────────────────────
+  // Centre + per-segment horizontal shift. The offset is in pixels on the
+  // input canvas (1080 wide), so we add it directly to the centre formula.
+  const xExpr = buildStepExpr(
+    segments,
+    (seg) => {
+      const centre = `iw/2-(iw/(${seg.zoom.toFixed(4)})/2)`
+      if (seg.panOffsetPx === 0) return centre
+      return `${centre}+${seg.panOffsetPx}`
+    }
+  )
+
+  // ── Y expression (same clamped face-tracking as ken-burns) ─────────────
+  // Since jump-cut zoom is constant per segment, we can simplify slightly,
+  // but we still need the step function for the zoom value in y calculations.
+  // We use the same abs()-based clamp to avoid commas (Windows compat).
+  const yExpr = buildStepExpr(
+    segments,
+    (seg) => {
+      const z = seg.zoom.toFixed(4)
+      const ideal = `ih*${FY}-ih/(${z})/2`
+      const hi = `ih-ih/(${z})`
+      const minVal = `((${ideal})+(${hi})-abs((${ideal})-(${hi})))/2`
+      return `((${minVal})+abs(${minVal}))/2`
+    }
+  )
+
+  // Crop dimensions also need the step function zoom
+  const cropW = buildStepExpr(segments, (seg) => `iw/${seg.zoom.toFixed(4)}`)
+  const cropH = buildStepExpr(segments, (seg) => `ih/${seg.zoom.toFixed(4)}`)
+
+  // Wrap each expression in single quotes so FFmpeg's option parser doesn't
+  // interpret commas inside between()/if() as filter chain separators.
+  // The expression evaluator receives the unquoted string and handles commas
+  // as function argument delimiters correctly.
+  return `crop=w='${cropW}':h='${cropH}':x='${xExpr}':y='${yExpr}',scale=${outW}:${outH}`
+}
+
+/**
+ * Build a nested if(between(t,...), val, ...) step-function expression.
+ *
+ * For N segments the expression is:
+ *   if(between(t,s0,e0), v0, if(between(t,s1,e1), v1, ... vN))
+ *
+ * The last segment's value is the fallback (covers end-of-clip rounding).
+ *
+ * Commas inside FFmpeg expression function calls (between, if, etc.) are
+ * parsed by the expression evaluator, NOT the option-value parser. The
+ * '\,' escaping issue only applies to the filter-chain boundary between
+ * filters (e.g. `crop=...\,scale=...`). Inside a single filter's option
+ * value, expression commas are safe on all platforms including Windows.
+ */
+function buildStepExpr(
+  segments: JumpCutSegment[],
+  valueFn: (seg: JumpCutSegment) => string
+): string {
+  if (segments.length === 1) return valueFn(segments[0])
+
+  // Build from the last segment backwards — last segment is the fallback
+  let expr = valueFn(segments[segments.length - 1])
+  for (let i = segments.length - 2; i >= 0; i--) {
+    const seg = segments[i]
+    const s = seg.start.toFixed(3)
+    const e = seg.end.toFixed(3)
+    const v = valueFn(seg)
+    expr = `if(between(t,${s},${e}),${v},${expr})`
+  }
+  return expr
+}
+
 /**
  * Derive a set of representative ZoomKeyframes for a given clip duration and
  * settings.  These are not used by FFmpeg directly (the filter uses continuous
@@ -196,8 +474,20 @@ export function getZoomKeyframes(
 ): ZoomKeyframe[] {
   if (!settings.enabled || clipDuration <= 0) return []
 
-  // Only ken-burns generates preview keyframes from this function.
   const mode = settings.mode ?? 'ken-burns'
+
+  // Jump-cut mode: one keyframe per segment (step function, no interpolation)
+  if (mode === 'jump-cut') {
+    const segments = buildJumpCutSegments(clipDuration, settings)
+    return segments.map((seg) => ({
+      time: seg.start,
+      zoom: seg.zoom,
+      panX: 0.5 + seg.panOffsetPx / 1080,
+      panY: Math.max(0, Math.min(1, faceYNorm - 0.5 / seg.zoom)),
+    }))
+  }
+
+  // Only ken-burns generates continuous preview keyframes
   if (mode !== 'ken-burns') return []
 
   const { amplitude, panFrac } = INTENSITY_CONFIG[settings.intensity]

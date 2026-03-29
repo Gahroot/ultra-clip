@@ -64,7 +64,8 @@ class AutoZoomFeature implements RenderFeature {
       settings,
       0.38,
       context.targetWidth,
-      context.targetHeight
+      context.targetHeight,
+      job.wordTimestamps
     )
 
     // Clean up the stored settings now that we've consumed them
