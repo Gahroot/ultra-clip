@@ -490,6 +490,29 @@ interface AssMargins {
 }
 
 // ---------------------------------------------------------------------------
+// Description Generator types
+// ---------------------------------------------------------------------------
+
+interface PlatformDescription {
+  platform: 'youtube-shorts' | 'instagram-reels' | 'tiktok'
+  text: string
+  hashtags: string[]
+}
+
+interface ClipDescription {
+  shortDescription: string
+  hashtag: string
+  longDescription?: string
+  platforms: PlatformDescription[]
+}
+
+interface DescriptionClipInput {
+  transcript: string
+  hookText?: string
+  reasoning?: string
+}
+
+// ---------------------------------------------------------------------------
 // Word Emphasis types
 // ---------------------------------------------------------------------------
 
