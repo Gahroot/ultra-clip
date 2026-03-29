@@ -222,6 +222,405 @@ function OverrideRow({ label, overrideKey, globalValue, overrides, onChange }: O
 }
 
 // ---------------------------------------------------------------------------
+// Style tab persistence — remembers last tab across open/close
+// ---------------------------------------------------------------------------
+
+const STYLE_TAB_KEY = 'batchcontent-clip-style-tab'
+type StyleTab = 'premium' | 'basic'
+
+function loadStyleTab(): StyleTab {
+  try {
+    const v = sessionStorage.getItem(STYLE_TAB_KEY)
+    return v === 'basic' ? 'basic' : 'premium'
+  } catch {
+    return 'premium'
+  }
+}
+
+function persistStyleTab(tab: StyleTab): void {
+  try { sessionStorage.setItem(STYLE_TAB_KEY, tab) } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// CATEGORY_META — category visuals for premium style cards
+// ---------------------------------------------------------------------------
+
+const CATEGORY_META: Record<EditStyleCategory, { label: string; gradient: string; ring: string; badge: string }> = {
+  viral:       { label: 'Viral',       gradient: 'linear-gradient(135deg, #F97316 0%, #EF4444 100%)', ring: '#F97316', badge: 'bg-orange-500/20 text-orange-400' },
+  educational: { label: 'Edu',         gradient: 'linear-gradient(135deg, #3B82F6 0%, #4F46E5 100%)', ring: '#3B82F6', badge: 'bg-blue-500/20 text-blue-400' },
+  cinematic:   { label: 'Cinematic',   gradient: 'linear-gradient(135deg, #7C3AED 0%, #1E293B 100%)', ring: '#7C3AED', badge: 'bg-violet-500/20 text-violet-400' },
+  minimal:     { label: 'Minimal',     gradient: 'linear-gradient(135deg, #475569 0%, #1E293B 100%)', ring: '#64748B', badge: 'bg-slate-500/20 text-slate-400' },
+  branded:     { label: 'Branded',     gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)', ring: '#F59E0B', badge: 'bg-amber-500/20 text-amber-400' },
+  custom:      { label: 'Custom',      gradient: 'linear-gradient(135deg, #6B7280 0%, #374151 100%)', ring: '#6B7280', badge: 'bg-gray-500/20 text-gray-400' },
+}
+
+// ---------------------------------------------------------------------------
+// CaptionStyleMiniThumb — compact thumbnail for basic caption styles
+// ---------------------------------------------------------------------------
+
+const MINI_W = 68
+const MINI_H = 54
+const MINI_PREVIEW_H = MINI_H - 16
+const MINI_SCALE = MINI_W / 1080
+
+function CaptionStyleMiniThumb({
+  style,
+  isSelected,
+  onClick
+}: {
+  style: CaptionStyle
+  isSelected: boolean
+  onClick: () => void
+}) {
+  const scaledFontSize = Math.max(5, Math.round(style.fontSize * 1920 * MINI_SCALE))
+  const isWordBox = style.animation === 'word-box'
+  const hasBox = style.borderStyle === 3 && !isWordBox
+  const outlineWidth = Math.max(1, Math.round(style.outline * MINI_SCALE))
+
+  const baseTextStyle: React.CSSProperties = {
+    fontFamily: `"${style.fontName}", sans-serif`,
+    fontSize: `${scaledFontSize}px`,
+    fontWeight: 700,
+    lineHeight: 1.2,
+    textAlign: 'center',
+    WebkitTextStroke: hasBox ? undefined : `${outlineWidth}px ${style.outlineColor}`,
+    textShadow: hasBox ? undefined : `1px 1px 1px ${style.outlineColor}`
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex flex-col items-center rounded-md overflow-hidden transition-all cursor-pointer',
+        'hover:ring-2 hover:ring-primary/50 active:scale-95',
+        isSelected ? 'ring-2 ring-primary shadow-md shadow-primary/20' : 'ring-1 ring-border/50'
+      )}
+      style={{ width: MINI_W }}
+      title={style.label}
+    >
+      <div
+        className="flex items-center justify-center w-full"
+        style={{
+          width: MINI_W,
+          height: MINI_PREVIEW_H,
+          background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+        }}
+      >
+        <div
+          className="flex flex-col items-center gap-0"
+          style={hasBox ? { padding: '1px 2px', backgroundColor: style.backColor, borderRadius: '2px' } : {}}
+        >
+          {isWordBox ? (
+            <span style={{
+              fontFamily: `"${style.fontName}", sans-serif`,
+              fontSize: `${scaledFontSize}px`,
+              fontWeight: 700,
+              color: style.primaryColor,
+              backgroundColor: style.outlineColor,
+              borderRadius: '2px',
+              padding: '0px 2px',
+              lineHeight: 1.3,
+            }}>
+              Abc
+            </span>
+          ) : (
+            <span style={{
+              ...baseTextStyle,
+              color: style.highlightColor
+            }}>
+              Abc
+            </span>
+          )}
+        </div>
+      </div>
+      <div
+        className="w-full text-center truncate px-0.5 py-0.5 text-[8px] text-muted-foreground bg-card leading-tight"
+        title={style.label}
+      >
+        {style.label}
+      </div>
+    </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// StylePickerTabs — two-tab style browser in per-clip editor
+// ---------------------------------------------------------------------------
+
+function StylePickerTabs() {
+  const activeStylePresetId = useStore((s) => s.activeStylePresetId)
+  const activeVariantId = useStore((s) => s.activeVariantId)
+  const applyEditStylePreset = useStore((s) => s.applyEditStylePreset)
+  const setCaptionStyle = useStore((s) => s.setCaptionStyle)
+  const settings = useStore((s) => s.settings)
+
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [activeTab, setActiveTab] = useState<StyleTab>(loadStyleTab)
+  const [hoveredPresetId, setHoveredPresetId] = useState<string | null>(null)
+
+  const handleTabChange = useCallback((tab: StyleTab) => {
+    setActiveTab(tab)
+    persistStyleTab(tab)
+  }, [])
+
+  // Active premium preset info
+  const activePreset = BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === activeStylePresetId) ?? null
+  const focusedPreset = BUILT_IN_EDIT_STYLE_PRESETS.find(
+    (p) => p.id === (hoveredPresetId ?? activeStylePresetId)
+  ) ?? null
+  const variants = activePreset?.variants ?? []
+  const hasVariants = variants.length > 0
+
+  // Active caption preset id
+  const activeCaptionId = settings.captionStyle.id
+
+  // Header label
+  const styleLabel = activePreset
+    ? activePreset.name + (activeVariantId ? ` / ${variants.find((v) => v.id === activeVariantId)?.name ?? ''}` : '')
+    : activeCaptionId
+      ? (CAPTION_PRESETS[activeCaptionId]?.label ?? 'Custom')
+      : 'Custom'
+
+  return (
+    <div className="border-t border-border">
+      {/* Section header */}
+      <button
+        onClick={() => setIsExpanded((v) => !v)}
+        className={cn(
+          'flex items-center gap-2 w-full px-5 py-3 text-left hover:bg-muted/30 transition-colors',
+          isExpanded && 'bg-muted/20'
+        )}
+      >
+        <Palette className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        <span className="text-xs font-medium text-muted-foreground flex-1">
+          Styles
+        </span>
+        {/* Active badges — show at a glance what's active */}
+        <div className="flex items-center gap-1">
+          {activePreset && (
+            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 flex items-center gap-0.5">
+              <Crown className="w-2.5 h-2.5" />
+              {activePreset.name}
+            </span>
+          )}
+          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+            {CAPTION_PRESETS[activeCaptionId]?.label ?? 'Custom'}
+          </span>
+        </div>
+        {isExpanded ? (
+          <ChevronUp className="w-3 h-3 text-muted-foreground/60" />
+        ) : (
+          <ChevronDown className="w-3 h-3 text-muted-foreground/60" />
+        )}
+      </button>
+
+      {isExpanded && (
+        <div className="px-4 pb-4 space-y-3 border-t border-border/50 pt-3">
+          {/* Tab bar — visually distinct with icon + subtitle */}
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              onClick={() => handleTabChange('premium')}
+              className={cn(
+                'flex flex-col items-center gap-0.5 py-2 px-2 rounded-lg transition-all text-center',
+                activeTab === 'premium'
+                  ? 'bg-gradient-to-b from-amber-500/15 to-amber-500/5 ring-1 ring-amber-500/30 shadow-sm'
+                  : 'bg-muted/30 hover:bg-muted/50 ring-1 ring-transparent'
+              )}
+            >
+              <div className="flex items-center gap-1.5">
+                <Crown className={cn('w-3.5 h-3.5', activeTab === 'premium' ? 'text-amber-400' : 'text-muted-foreground')} />
+                <span className={cn('text-[11px] font-semibold', activeTab === 'premium' ? 'text-foreground' : 'text-muted-foreground')}>
+                  AI Edit Styles
+                </span>
+              </div>
+              <span className="text-[8px] text-muted-foreground/60 leading-tight">
+                Captions + Zoom + B-Roll + Music
+              </span>
+            </button>
+            <button
+              onClick={() => handleTabChange('basic')}
+              className={cn(
+                'flex flex-col items-center gap-0.5 py-2 px-2 rounded-lg transition-all text-center',
+                activeTab === 'basic'
+                  ? 'bg-gradient-to-b from-primary/15 to-primary/5 ring-1 ring-primary/30 shadow-sm'
+                  : 'bg-muted/30 hover:bg-muted/50 ring-1 ring-transparent'
+              )}
+            >
+              <div className="flex items-center gap-1.5">
+                <Type className={cn('w-3.5 h-3.5', activeTab === 'basic' ? 'text-primary' : 'text-muted-foreground')} />
+                <span className={cn('text-[11px] font-semibold', activeTab === 'basic' ? 'text-foreground' : 'text-muted-foreground')}>
+                  Captions Only
+                </span>
+              </div>
+              <span className="text-[8px] text-muted-foreground/60 leading-tight">
+                60 looks · just word appearance
+              </span>
+            </button>
+          </div>
+
+          {/* ── Premium tab ── */}
+          {activeTab === 'premium' && (
+            <div className="space-y-2">
+              {/* Horizontal scroll strip */}
+              <div className="overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
+                <div className="flex gap-2 min-w-max">
+                  {BUILT_IN_EDIT_STYLE_PRESETS.map((preset) => {
+                    const meta = CATEGORY_META[preset.category]
+                    const isActive = preset.id === activeStylePresetId
+                    return (
+                      <button
+                        key={preset.id}
+                        onClick={() => applyEditStylePreset(preset.id, preset.variants?.[0]?.id ?? null)}
+                        onMouseEnter={() => setHoveredPresetId(preset.id)}
+                        onMouseLeave={() => setHoveredPresetId(null)}
+                        className={cn(
+                          'flex-none flex flex-col items-center rounded-xl overflow-hidden transition-all duration-150 cursor-pointer select-none',
+                          'hover:scale-105 active:scale-95',
+                          isActive ? 'ring-2 shadow-lg' : 'ring-1 ring-border/50 hover:ring-border'
+                        )}
+                        style={{
+                          width: 68,
+                          ringColor: isActive ? meta.ring : undefined,
+                          ...(isActive ? { boxShadow: `0 0 0 2px ${meta.ring}` } : {}),
+                        }}
+                        title={preset.name}
+                      >
+                        <div
+                          className="w-full flex items-center justify-center"
+                          style={{ background: meta.gradient, height: 40 }}
+                        >
+                          <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>{preset.thumbnail}</span>
+                        </div>
+                        <div className="w-full bg-muted/60 px-1 py-0.5 text-center">
+                          <span className="text-[8px] font-semibold text-foreground leading-none block truncate">{preset.name}</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Focused preset description */}
+              {focusedPreset && (
+                <div className="rounded-lg bg-muted/40 border border-border/50 px-3 py-2 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{focusedPreset.thumbnail}</span>
+                    <span className="text-xs font-semibold text-foreground">{focusedPreset.name}</span>
+                    <span className={cn('text-[9px] font-medium px-1.5 py-0.5 rounded-full', CATEGORY_META[focusedPreset.category].badge)}>
+                      {CATEGORY_META[focusedPreset.category].label}
+                    </span>
+                    {activeStylePresetId === focusedPreset.id && !hoveredPresetId && (
+                      <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 ml-auto">Active</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">{focusedPreset.description}</p>
+                  {/* Feature pills */}
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    {focusedPreset.captions.enabled && (
+                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Captions</span>
+                    )}
+                    {focusedPreset.zoom.enabled && (
+                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Zoom</span>
+                    )}
+                    {focusedPreset.broll.enabled && (
+                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">B-Roll</span>
+                    )}
+                    {focusedPreset.sound.enabled && (
+                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Music</span>
+                    )}
+                    {focusedPreset.overlays.hookTitle.enabled && (
+                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Hook Title</span>
+                    )}
+                    {focusedPreset.overlays.progressBar.enabled && (
+                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Progress Bar</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Variant panel */}
+              {hasVariants && activePreset && !hoveredPresetId && (
+                <div className="rounded-lg bg-muted/20 border border-border/40 px-3 py-2 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-foreground">{activePreset.name} Variants</span>
+                    <span className="text-[9px] text-muted-foreground">· {variants.length} looks</span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {variants.map((variant) => {
+                      const isVariantActive = variant.id === activeVariantId ||
+                        (!activeVariantId && variant.id === variants[0]?.id)
+                      const meta = CATEGORY_META[activePreset.category]
+                      return (
+                        <button
+                          key={variant.id}
+                          onClick={() => applyEditStylePreset(activePreset.id, variant.id)}
+                          className={cn(
+                            'flex flex-col items-center rounded-lg overflow-hidden transition-all duration-150 cursor-pointer select-none',
+                            'hover:scale-105 active:scale-95',
+                            isVariantActive ? 'ring-2 shadow-md' : 'ring-1 ring-border/40 hover:ring-border'
+                          )}
+                          style={{
+                            ...(isVariantActive ? { boxShadow: `0 0 0 2px ${meta.ring}` } : {}),
+                          }}
+                          title={`${activePreset.name} ${variant.name}`}
+                        >
+                          <div
+                            className="w-full flex items-center justify-center"
+                            style={{
+                              background: isVariantActive
+                                ? meta.gradient
+                                : 'linear-gradient(135deg, var(--muted) 0%, var(--muted) 100%)',
+                              height: 28,
+                            }}
+                          >
+                            <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>{variant.thumbnail}</span>
+                          </div>
+                          <div className="w-full px-0.5 py-0.5 text-center bg-muted/40">
+                            <span className="text-[7px] font-medium text-foreground leading-none block truncate">{variant.name}</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Basic / Captions Only tab ── */}
+          {activeTab === 'basic' && (
+            <div className="space-y-2">
+              {/* Dense 6-column thumbnail grid */}
+              <div className="grid grid-cols-5 gap-1 max-h-[320px] overflow-y-auto pr-0.5" style={{ scrollbarWidth: 'thin' }}>
+                {Object.values(CAPTION_PRESETS).map((preset) => (
+                  <CaptionStyleMiniThumb
+                    key={preset.id}
+                    style={preset}
+                    isSelected={activeCaptionId === preset.id}
+                    onClick={() => setCaptionStyle(preset)}
+                  />
+                ))}
+              </div>
+
+              {/* Mix-and-match indicator */}
+              {activePreset && (
+                <div className="flex items-center gap-1.5 px-0.5 py-1 rounded-md bg-amber-500/5 border border-amber-500/15">
+                  <Crown className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span className="text-[9px] text-muted-foreground leading-snug">
+                    <span className="font-medium text-amber-400">{activePreset.name}</span> controls your edit vibe.
+                    Picking above overrides <span className="font-medium">only</span> the caption look.
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // ClipPreview dialog
 // ---------------------------------------------------------------------------
 
@@ -718,7 +1117,8 @@ export function ClipPreview({
                 logoScale: settings.brandKit.logoScale,
                 logoOpacity: settings.brandKit.logoOpacity
               }
-            : undefined
+            : undefined,
+        accentColor: clip.overrides?.accentColor
       })
       setPreviewPath(result.previewPath)
       setShowPreview(true)
