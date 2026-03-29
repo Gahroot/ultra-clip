@@ -8,6 +8,7 @@ import type { RenderFeature, PrepareResult, OverlayContext, OverlayPassResult } 
 import type { RenderClipJob, RenderBatchOptions } from '../types'
 import { buildASSFilter } from '../helpers'
 import { generateCaptions } from '../../captions'
+import { analyzeEmphasisHeuristic } from '../../word-emphasis'
 import { ASPECT_RATIO_CONFIGS } from '../../aspect-ratios'
 
 /**
@@ -70,10 +71,17 @@ export function createCaptionsFeature(): RenderFeature {
       }
 
       // Shift to 0-based clip-relative timestamps
-      const localWords = words.map((w) => ({
+      const localWordsBase = words.map((w) => ({
         text: w.text,
         start: w.start - job.startTime,
         end: w.end - job.startTime
+      }))
+
+      // Run heuristic emphasis analysis to tag words as normal/emphasis/supersize
+      const emphasized = analyzeEmphasisHeuristic(localWordsBase)
+      const localWords = localWordsBase.map((w, i) => ({
+        ...w,
+        emphasis: emphasized[i]?.emphasis ?? ('normal' as const)
       }))
 
       // Resolve fonts dir (cached after first call)

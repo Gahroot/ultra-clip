@@ -193,4 +193,152 @@ describe('generateCaptions', () => {
       expect(content).toContain('\\bord4')
     })
   })
+
+  describe('word emphasis styling', () => {
+    function makeEmphasisWords(): WordInput[] {
+      return [
+        { text: 'This', start: 0.0, end: 0.3, emphasis: 'normal' },
+        { text: 'is', start: 0.3, end: 0.5, emphasis: 'normal' },
+        { text: 'INCREDIBLE', start: 0.5, end: 1.0, emphasis: 'emphasis' },
+        { text: 'and', start: 1.0, end: 1.2, emphasis: 'normal' },
+        { text: 'MILLIONS', start: 1.2, end: 1.8, emphasis: 'supersize' },
+        { text: 'agree.', start: 1.8, end: 2.2, emphasis: 'normal' }
+      ]
+    }
+
+    it('applies \\fs override to emphasis words (larger than base)', async () => {
+      // base fontSize = 0.07 * 1920 = 134, emphasis = 134 * 1.25 = 168
+      const content = await capturedContent(
+        makeEmphasisWords(),
+        makeStyle({ animation: 'karaoke-fill', wordsPerLine: 6 })
+      )
+      expect(content).toContain('\\fs168')
+    })
+
+    it('applies \\fs override to supersize words (much larger than base)', async () => {
+      // base fontSize = 0.07 * 1920 = 134, supersize = 134 * 1.6 = 214
+      const content = await capturedContent(
+        makeEmphasisWords(),
+        makeStyle({ animation: 'karaoke-fill', wordsPerLine: 6 })
+      )
+      expect(content).toContain('\\fs214')
+    })
+
+    it('applies emphasis color to emphasis words', async () => {
+      const content = await capturedContent(
+        makeEmphasisWords(),
+        makeStyle({ animation: 'karaoke-fill', wordsPerLine: 6, emphasisColor: '#FF0000' })
+      )
+      // '#FF0000' → ASS &H000000FF (BGR swap)
+      expect(content).toContain('\\1c&H000000FF')
+    })
+
+    it('applies supersize color to supersize words', async () => {
+      const content = await capturedContent(
+        makeEmphasisWords(),
+        makeStyle({ animation: 'karaoke-fill', wordsPerLine: 6, supersizeColor: '#FFD700' })
+      )
+      // '#FFD700' → ASS &H0000D7FF (BGR: 00, D7, FF → blue=00, green=D7, red=FF)
+      expect(content).toContain('\\1c&H0000D7FF')
+    })
+
+    it('applies \\b1 (bold) to supersize words', async () => {
+      const content = await capturedContent(
+        makeEmphasisWords(),
+        makeStyle({ animation: 'karaoke-fill', wordsPerLine: 6 })
+      )
+      expect(content).toContain('\\b1')
+    })
+
+    it('applies \\r reset tags after emphasis words', async () => {
+      const content = await capturedContent(
+        makeEmphasisWords(),
+        makeStyle({ animation: 'karaoke-fill', wordsPerLine: 6 })
+      )
+      expect(content).toContain('\\r')
+    })
+
+    it('does not apply overrides to normal words', async () => {
+      const words: WordInput[] = [
+        { text: 'Hello', start: 0.0, end: 0.5, emphasis: 'normal' },
+        { text: 'world', start: 0.5, end: 1.0, emphasis: 'normal' }
+      ]
+      const content = await capturedContent(
+        words,
+        makeStyle({ animation: 'karaoke-fill', wordsPerLine: 2 })
+      )
+      // Normal words should not have \fs overrides or \r resets
+      expect(content).not.toContain('\\fs')
+      expect(content).not.toContain('\\r')
+    })
+
+    it('defaults to highlightColor when emphasisColor is not set', async () => {
+      const words: WordInput[] = [
+        { text: 'BIG', start: 0.0, end: 0.5, emphasis: 'emphasis' }
+      ]
+      const content = await capturedContent(
+        words,
+        makeStyle({ animation: 'karaoke-fill', highlightColor: '#00FF00' })
+      )
+      // highlightColor '#00FF00' → ASS &H0000FF00
+      expect(content).toContain('\\1c&H0000FF00')
+    })
+
+    it('defaults to gold (#FFD700) when supersizeColor is not set', async () => {
+      const words: WordInput[] = [
+        { text: 'HUGE', start: 0.0, end: 0.5, emphasis: 'supersize' }
+      ]
+      const content = await capturedContent(
+        words,
+        makeStyle({ animation: 'fade-in' })
+      )
+      // '#FFD700' → ASS &H0000D7FF
+      expect(content).toContain('\\1c&H0000D7FF')
+    })
+
+    it('works with word-pop animation — emphasis gets bigger pop scale', async () => {
+      const words: WordInput[] = [
+        { text: 'normal', start: 0.0, end: 0.5, emphasis: 'normal' },
+        { text: 'EMPHASIS', start: 0.5, end: 1.0, emphasis: 'emphasis' },
+        { text: 'SUPER', start: 1.0, end: 1.5, emphasis: 'supersize' }
+      ]
+      const content = await capturedContent(
+        words,
+        makeStyle({ animation: 'word-pop', wordsPerLine: 3 })
+      )
+      // Normal pops at 110, emphasis at 120, supersize at 130
+      expect(content).toContain('\\fscx110')
+      expect(content).toContain('\\fscx120')
+      expect(content).toContain('\\fscx130')
+    })
+
+    it('works with glow animation — emphasis gets thicker glow', async () => {
+      const words: WordInput[] = [
+        { text: 'normal', start: 0.0, end: 0.5, emphasis: 'normal' },
+        { text: 'EMPHASIS', start: 0.5, end: 1.0, emphasis: 'emphasis' },
+        { text: 'SUPER', start: 1.0, end: 1.5, emphasis: 'supersize' }
+      ]
+      const content = await capturedContent(
+        words,
+        makeStyle({ animation: 'glow', outline: 2, wordsPerLine: 3 })
+      )
+      // normal: bord4 (2+2), emphasis: bord5 (2+3), supersize: bord7 (2+5)
+      expect(content).toContain('\\bord4')
+      expect(content).toContain('\\bord5')
+      expect(content).toContain('\\bord7')
+    })
+
+    it('treats missing emphasis field as normal', async () => {
+      const words: WordInput[] = [
+        { text: 'Hello', start: 0.0, end: 0.5 } // no emphasis field
+      ]
+      const content = await capturedContent(
+        words,
+        makeStyle({ animation: 'fade-in' })
+      )
+      // Should not contain emphasis-related overrides
+      expect(content).not.toContain('\\fs')
+      expect(content).not.toContain('\\r')
+    })
+  })
 })

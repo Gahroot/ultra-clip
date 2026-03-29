@@ -3,10 +3,11 @@ import { join, dirname } from 'path'
 import { tmpdir } from 'os'
 
 // ---------------------------------------------------------------------------
-// Types (mirrors renderer CaptionStyle / WordTimestamp)
+// Types (canonical definitions live in @shared/types)
 // ---------------------------------------------------------------------------
 
-export type CaptionAnimation = 'karaoke-fill' | 'word-pop' | 'fade-in' | 'glow'
+import type { CaptionAnimation } from '@shared/types'
+export type { CaptionAnimation }
 
 export interface CaptionStyleInput {
   fontName: string
@@ -20,12 +21,18 @@ export interface CaptionStyleInput {
   borderStyle: number // 1 = outline+shadow, 3 = opaque box
   wordsPerLine: number
   animation: CaptionAnimation
+  /** Color for emphasis-level words (bigger + this color). Defaults to highlightColor. */
+  emphasisColor?: string
+  /** Color for supersize-level words (huge + bold + this color). Defaults to '#FFD700' gold. */
+  supersizeColor?: string
 }
 
 export interface WordInput {
   text: string
   start: number // seconds (relative to clip start)
   end: number // seconds (relative to clip start)
+  /** Emphasis level from word-emphasis analysis. Defaults to 'normal'. */
+  emphasis?: 'normal' | 'emphasis' | 'supersize'
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +95,48 @@ function formatASSTime(seconds: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Emphasis override helpers
+// ---------------------------------------------------------------------------
+
+/** Scale multipliers for emphasis levels relative to the base font size. */
+const EMPHASIS_SCALE = 1.25 // 25% bigger
+const SUPERSIZE_SCALE = 1.6 // 60% bigger
+
+/**
+ * Build ASS inline override tags for an emphasized or supersized word.
+ * Returns an empty string for normal words.
+ *
+ * Uses \fs for absolute font size, \1c for primary color, and \b1 for bold.
+ * A \r tag resets overrides after the word (appended by the caller as the
+ * next word's override block or end of line).
+ */
+function buildEmphasisTags(
+  word: WordInput,
+  style: CaptionStyleInput,
+  baseFontSize: number
+): { prefix: string; suffix: string } {
+  const level = word.emphasis ?? 'normal'
+  if (level === 'normal') return { prefix: '', suffix: '' }
+
+  if (level === 'supersize') {
+    const size = Math.round(baseFontSize * SUPERSIZE_SCALE)
+    const color = hexToASS(style.supersizeColor ?? '#FFD700')
+    return {
+      prefix: `\\fs${size}\\1c${color}\\b1`,
+      suffix: `\\r`
+    }
+  }
+
+  // emphasis
+  const size = Math.round(baseFontSize * EMPHASIS_SCALE)
+  const color = hexToASS(style.emphasisColor ?? style.highlightColor)
+  return {
+    prefix: `\\fs${size}\\1c${color}`,
+    suffix: `\\r`
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Word grouping
 // ---------------------------------------------------------------------------
 
@@ -119,11 +168,12 @@ function groupWords(words: WordInput[], wordsPerLine: number): WordGroup[] {
 /**
  * Karaoke fill: uses \kf tags so each word fills with the highlight color
  * over its duration. The line starts in primaryColor and each word transitions
- * to highlightColor.
+ * to highlightColor. Emphasis/supersize words get larger font + distinct color.
  */
 function buildKaraokeLine(
   group: WordGroup,
-  style: CaptionStyleInput
+  style: CaptionStyleInput,
+  baseFontSize: number
 ): string {
   const start = formatASSTime(group.start)
   const end = formatASSTime(group.end)
@@ -133,7 +183,9 @@ function buildKaraokeLine(
   // \kf duration is in centiseconds
   const parts = group.words.map((w) => {
     const dur = Math.round((w.end - w.start) * 100)
-    return `{\\kf${dur}}${w.text}`
+    const emp = buildEmphasisTags(w, style, baseFontSize)
+    // Emphasis prefix goes inside the override block; suffix (\r) resets after the word
+    return `{\\kf${dur}${emp.prefix}}${w.text}${emp.suffix ? `{${emp.suffix}}` : ''}`
   })
 
   // \1c sets the "post-karaoke" color (highlight), \k fills from primary→highlight
@@ -144,10 +196,12 @@ function buildKaraokeLine(
  * Word pop: each word appears at its timestamp with a brief scale-up effect.
  * We emit one dialogue event per word-group, using override blocks that
  * make words invisible until their start time, then pop in.
+ * Emphasis/supersize words pop in at a larger scale and use distinct colors.
  */
 function buildWordPopLines(
   group: WordGroup,
-  style: CaptionStyleInput
+  style: CaptionStyleInput,
+  baseFontSize: number
 ): string[] {
   const lines: string[] = []
   const highlightASS = hexToASS(style.highlightColor)
@@ -163,17 +217,26 @@ function buildWordPopLines(
     const wordDur = Math.round((w.end - w.start) * 100)
     const isLast = idx === group.words.length - 1
 
+    const emp = buildEmphasisTags(w, style, baseFontSize)
+    const level = w.emphasis ?? 'normal'
+
+    // Emphasis/supersize words pop in bigger and use their own color instead of highlight
+    const popScaleX = level === 'supersize' ? 130 : level === 'emphasis' ? 120 : 110
+    const popScaleY = popScaleX
+    const activeColor = level !== 'normal' ? '' : `\\t(${wordStart},${wordStart + wordDur},\\1c${highlightASS})`
+    const resetColor = level !== 'normal' ? '' : `\\t(${wordStart + wordDur},${wordStart + wordDur},\\1c${primaryASS})`
+
     // Use \t for timed transform: word starts transparent, scales up, then settles
     // \alpha&HFF& = fully transparent, \alpha&H00& = fully visible
     const popDuration = Math.min(8, wordDur) // 80ms pop-in
     const suffix = isLast ? '' : ' '
 
     return (
-      `{\\alpha&HFF&\\t(${wordStart},${wordStart + popDuration},\\alpha&H00&\\fscx110\\fscy110)` +
+      `{${emp.prefix}\\alpha&HFF&\\t(${wordStart},${wordStart + popDuration},\\alpha&H00&\\fscx${popScaleX}\\fscy${popScaleY})` +
       `\\t(${wordStart + popDuration},${wordStart + popDuration + 5},\\fscx100\\fscy100)` +
-      `\\t(${wordStart},${wordStart + wordDur},\\1c${highlightASS})` +
-      `\\t(${wordStart + wordDur},${wordStart + wordDur},\\1c${primaryASS})}` +
-      `${w.text}${suffix}`
+      `${activeColor}` +
+      `${resetColor}}` +
+      `${w.text}${emp.suffix ? `{${emp.suffix}}` : ''}${suffix}`
     )
   })
 
@@ -183,10 +246,12 @@ function buildWordPopLines(
 
 /**
  * Fade-in: each word fades in sequentially at its timestamp.
+ * Emphasis/supersize words fade in at a larger size and distinct color.
  */
 function buildFadeInLines(
   group: WordGroup,
-  _style: CaptionStyleInput
+  style: CaptionStyleInput,
+  baseFontSize: number
 ): string[] {
   const start = formatASSTime(group.start)
   const end = formatASSTime(group.end)
@@ -197,9 +262,11 @@ function buildFadeInLines(
     const isLast = idx === group.words.length - 1
     const suffix = isLast ? '' : ' '
 
+    const emp = buildEmphasisTags(w, style, baseFontSize)
+
     return (
-      `{\\alpha&HFF&\\t(${wordStart},${wordStart + fadeDur},\\alpha&H00&)}` +
-      `${w.text}${suffix}`
+      `{${emp.prefix}\\alpha&HFF&\\t(${wordStart},${wordStart + fadeDur},\\alpha&H00&)}` +
+      `${w.text}${emp.suffix ? `{${emp.suffix}}` : ''}${suffix}`
     )
   })
 
@@ -208,10 +275,12 @@ function buildFadeInLines(
 
 /**
  * Glow: each word gets a colored glow (border) when it's the active word.
+ * Emphasis/supersize words get a larger font and distinct glow color.
  */
 function buildGlowLines(
   group: WordGroup,
-  style: CaptionStyleInput
+  style: CaptionStyleInput,
+  baseFontSize: number
 ): string[] {
   const start = formatASSTime(group.start)
   const end = formatASSTime(group.end)
@@ -225,12 +294,22 @@ function buildGlowLines(
     const isLast = idx === group.words.length - 1
     const suffix = isLast ? '' : ' '
 
+    const emp = buildEmphasisTags(w, style, baseFontSize)
+    const level = w.emphasis ?? 'normal'
+
+    // Emphasis/supersize words get a thicker glow border
+    const glowBord = level === 'supersize'
+      ? style.outline + 5
+      : level === 'emphasis'
+        ? style.outline + 3
+        : style.outline + 2
+
     // Switch outline/border color to highlight during the word's active time
     return (
-      `{\\3c${outlineASS}` +
-      `\\t(${wordStart},${wordStart},\\3c${highlightASS}\\bord${style.outline + 2})` +
+      `{${emp.prefix}\\3c${outlineASS}` +
+      `\\t(${wordStart},${wordStart},\\3c${highlightASS}\\bord${glowBord})` +
       `\\t(${wordEnd},${wordEnd},\\3c${outlineASS}\\bord${style.outline})}` +
-      `${w.text}${suffix}`
+      `${w.text}${emp.suffix ? `{${emp.suffix}}` : ''}${suffix}`
     )
   })
 
@@ -280,16 +359,16 @@ function buildASSDocument(
 
     switch (style.animation) {
       case 'karaoke-fill':
-        dialogueLines.push(buildKaraokeLine(group, style))
+        dialogueLines.push(buildKaraokeLine(group, style, fontSize))
         break
       case 'word-pop':
-        dialogueLines.push(...buildWordPopLines(group, style))
+        dialogueLines.push(...buildWordPopLines(group, style, fontSize))
         break
       case 'fade-in':
-        dialogueLines.push(...buildFadeInLines(group, style))
+        dialogueLines.push(...buildFadeInLines(group, style, fontSize))
         break
       case 'glow':
-        dialogueLines.push(...buildGlowLines(group, style))
+        dialogueLines.push(...buildGlowLines(group, style, fontSize))
         break
     }
   }

@@ -279,6 +279,8 @@ interface CaptionStyleInput {
   borderStyle: number
   wordsPerLine: number
   animation: string
+  emphasisColor?: string
+  supersizeColor?: string
 }
 
 // ---------------------------------------------------------------------------
