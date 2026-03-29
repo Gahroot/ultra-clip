@@ -806,8 +806,8 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       progressBar: { enabled: true, style: 'gradient', position: 'top', height: 5, color: '#00FFFF', opacity: 0.85 },
     },
     colorGrade: { preset: 'high-contrast' },
-    transitionIn: { type: 'crossfade', duration: 0.2 },
-    transitionOut: { type: 'crossfade', duration: 0.2 },
+    transitionIn: { type: 'glitch', duration: 0.2 },
+    transitionOut: { type: 'glitch', duration: 0.2 },
   },
 
   // ── Educational ──────────────────────────────────────────────────────────
@@ -1006,7 +1006,7 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       progressBar: { enabled: true, style: 'glow', position: 'bottom', height: 4, color: '#FFFFFF', opacity: 0.9 },
     },
     colorGrade: { preset: 'warm' },
-    transitionIn: { type: 'swipe-left', duration: 0.3 },
-    transitionOut: { type: 'swipe-left', duration: 0.3 },
+    transitionIn: { type: 'swipe-down', duration: 0.3 },
+    transitionOut: { type: 'swipe-down', duration: 0.3 },
   },
 ]
