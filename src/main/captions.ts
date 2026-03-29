@@ -677,6 +677,155 @@ function buildImpactTwoLines(
 }
 
 /**
+ * Cascade: words flow in with a wave motion — each word starts slightly below
+ * its final position and fully transparent, then floats upward and fades in.
+ * Each successive word begins its animation slightly after the previous one,
+ * creating a smooth ripple effect across the line like text surfacing from water.
+ *
+ * Uses per-word dialogue events (like word-box) with \move for vertical float
+ * and \t(\alpha) for the fade. A stagger delay accumulates so each word's
+ * entrance is offset from the previous one, producing the cascade/wave feel.
+ *
+ * Emphasis words rise from further below with a larger travel distance.
+ * Supersize words rise from even further and arrive with a subtle scale settle.
+ */
+function buildCascadeLines(
+  group: WordGroup,
+  style: CaptionStyleInput,
+  baseFontSize: number,
+  frameWidth: number,
+  frameHeight: number,
+  marginV: number
+): string[] {
+  const lines: string[] = []
+  const primaryASS = hexToASS(style.primaryColor)
+  const emphasisASS = hexToASS(style.emphasisColor ?? style.highlightColor)
+  const supersizeASS = hexToASS(style.supersizeColor ?? '#FFD700')
+  const outlineASS = hexToASS(style.outlineColor)
+
+  const start = formatASSTime(group.start)
+  const end = formatASSTime(group.end)
+
+  // --- Estimate word widths for horizontal layout (same approach as word-box) ---
+  const AVG_CHAR_WIDTH_RATIO = 0.58
+  const wordGap = Math.round(baseFontSize * 0.22)
+
+  interface CascadeMetric {
+    word: WordInput
+    level: 'normal' | 'emphasis' | 'supersize'
+    effectiveSize: number
+    textWidth: number
+  }
+
+  const metrics: CascadeMetric[] = group.words.map((w) => {
+    const level = w.emphasis ?? 'normal'
+    const scale =
+      level === 'supersize'
+        ? SUPERSIZE_SCALE
+        : level === 'emphasis'
+          ? EMPHASIS_SCALE
+          : 1
+    const effectiveSize = Math.round(baseFontSize * scale)
+    const charWidth = effectiveSize * AVG_CHAR_WIDTH_RATIO
+    const textWidth = w.text.length * charWidth
+    return { word: w, level, effectiveSize, textWidth }
+  })
+
+  // Total width + gaps → center the row
+  const totalRowWidth =
+    metrics.reduce((sum, m) => sum + m.textWidth, 0) +
+    Math.max(0, metrics.length - 1) * wordGap
+  let curX = (frameWidth - totalRowWidth) / 2
+
+  // Y position: same as default alignment (bottom with marginV)
+  const finalY = frameHeight - marginV
+
+  // Cascade parameters
+  const staggerDelayCs = 6     // 60ms stagger between successive words
+  const riseDistNormal = Math.round(baseFontSize * 0.35)   // how far below words start
+  const riseDistEmphasis = Math.round(baseFontSize * 0.50)
+  const riseDistSupersize = Math.round(baseFontSize * 0.65)
+  const fadeDurNormal = 18     // 180ms fade-in
+  const fadeDurEmphasis = 15   // 150ms (snappier)
+  const fadeDurSupersize = 12  // 120ms (snappiest)
+
+  for (let i = 0; i < metrics.length; i++) {
+    const m = metrics[i]
+    const w = m.word
+    const centerX = Math.round(curX + m.textWidth / 2)
+
+    // Per-word stagger offset (centiseconds from group start)
+    const cascadeOffsetCs = i * staggerDelayCs
+
+    // Rise distance and fade duration based on emphasis
+    const riseDist =
+      m.level === 'supersize'
+        ? riseDistSupersize
+        : m.level === 'emphasis'
+          ? riseDistEmphasis
+          : riseDistNormal
+    const fadeDur =
+      m.level === 'supersize'
+        ? fadeDurSupersize
+        : m.level === 'emphasis'
+          ? fadeDurEmphasis
+          : fadeDurNormal
+
+    // Start position (below final) and final position
+    const startY = finalY + riseDist
+
+    // \move(x1, y1, x2, y2, t1, t2) — animate position from (x1,y1) to (x2,y2)
+    // between t1 and t2 milliseconds from the dialogue start
+    const moveStartMs = cascadeOffsetCs * 10
+    const moveEndMs = moveStartMs + fadeDur * 10
+
+    const overrides: string[] = [
+      `\\an5`,
+      `\\move(${centerX},${startY},${centerX},${finalY},${moveStartMs},${moveEndMs})`
+    ]
+
+    // Color and size overrides per emphasis level
+    if (m.level === 'supersize') {
+      overrides.push(
+        `\\fs${m.effectiveSize}`,
+        `\\b1`,
+        `\\1c${supersizeASS}`,
+        `\\bord${Math.round(style.outline * 1.5)}`
+      )
+    } else if (m.level === 'emphasis') {
+      overrides.push(
+        `\\fs${m.effectiveSize}`,
+        `\\1c${emphasisASS}`
+      )
+    } else {
+      overrides.push(`\\1c${primaryASS}`)
+    }
+
+    // Fade: invisible → visible, timed to match the move
+    overrides.push(
+      `\\alpha&HFF&`,
+      `\\t(${cascadeOffsetCs},${cascadeOffsetCs + fadeDur},\\alpha&H00&)`
+    )
+
+    // Supersize words get a subtle scale settle (start at 108%, ease to 100%)
+    if (m.level === 'supersize') {
+      overrides.push(
+        `\\fscx108\\fscy108`,
+        `\\t(${cascadeOffsetCs + fadeDur},${cascadeOffsetCs + fadeDur + 8},0.4,\\fscx100\\fscy100)`
+      )
+    }
+
+    lines.push(
+      `Dialogue: 0,${start},${end},Default,,0,0,0,,{${overrides.join('')}}${w.text}`
+    )
+
+    curX += m.textWidth + wordGap
+  }
+
+  return lines
+}
+
+/**
  * Captions.AI — the signature animation style.
  *
  * The contrast between word types is what defines this look:
@@ -835,6 +984,11 @@ function buildASSDocument(
         break
       case 'impact-two':
         dialogueLines.push(...buildImpactTwoLines(group, style, fontSize))
+        break
+      case 'cascade':
+        dialogueLines.push(
+          ...buildCascadeLines(group, style, fontSize, frameWidth, frameHeight, marginV)
+        )
         break
     }
   }
