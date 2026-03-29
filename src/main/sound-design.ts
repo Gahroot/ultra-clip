@@ -22,6 +22,7 @@ export type SFXType =
   | 'camera-shutter'
   | 'rise-tension-short'
   | 'typewriter-key'
+  | 'glitch-hit'
 
 export interface SoundPlacementData {
   type: 'sfx' | 'music'
@@ -165,7 +166,7 @@ export interface EditEvent {
   /** B-Roll transition style (only for broll-transition events) */
   transition?: 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
   /** Shot transition style (only for shot-transition events) */
-  shotTransition?: 'crossfade' | 'dip-black' | 'swipe-left' | 'swipe-up' | 'zoom-in'
+  shotTransition?: 'crossfade' | 'dip-black' | 'swipe-left' | 'swipe-up' | 'swipe-down' | 'zoom-in' | 'zoom-punch' | 'glitch'
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +195,72 @@ export function resolveMusicPath(trackName: MusicTrack | string): string {
 function tryResolve(sfxName: SFXType | string): string | null {
   const p = resolveSfxPath(sfxName)
   return existsSync(p) ? p : null
+}
+
+// ---------------------------------------------------------------------------
+// Shot transition → SFX mapping
+// ---------------------------------------------------------------------------
+
+/** Resolved SFX for a shot transition — path, duration, and volume scale. */
+interface TransitionSfxHit {
+  path: string
+  duration: number
+  volScale: number
+}
+
+/**
+ * Resolve the SFX file + volume for a shot transition type.
+ *
+ * Each transition type has a signature sound that makes it feel intentional:
+ * - Crossfade/dip-black → soft whoosh (gentle, editorial)
+ * - Swipe variants → swipe swoosh (directional energy)
+ * - Zoom-in → low impact (subtle push)
+ * - Zoom-punch → high impact (aggressive slam — the Velocity signature)
+ * - Glitch → glitch hit, or impact-high fallback (digital crunch)
+ *
+ * Returns null if the transition type has no SFX or the file is missing.
+ */
+function resolveShotTransitionSfx(
+  shotTransition: EditEvent['shotTransition'],
+  sfxPaths: Record<string, string | null>
+): TransitionSfxHit | null {
+  if (!shotTransition) return null
+
+  switch (shotTransition) {
+    case 'crossfade':
+      return sfxPaths.whooshSoft
+        ? { path: sfxPaths.whooshSoft, duration: 0.4, volScale: 0.5 }
+        : null
+    case 'dip-black':
+      return sfxPaths.whooshSoft
+        ? { path: sfxPaths.whooshSoft, duration: 0.5, volScale: 0.55 }
+        : null
+    case 'swipe-left':
+    case 'swipe-up':
+    case 'swipe-down':
+      return sfxPaths.swipeTransition
+        ? { path: sfxPaths.swipeTransition, duration: 0.35, volScale: 0.65 }
+        : null
+    case 'zoom-in':
+      return sfxPaths.impactLow
+        ? { path: sfxPaths.impactLow, duration: 0.3, volScale: 0.45 }
+        : null
+    case 'zoom-punch':
+      // The signature Velocity hit — loud and punchy
+      return sfxPaths.impactHigh
+        ? { path: sfxPaths.impactHigh, duration: 0.35, volScale: 0.8 }
+        : null
+    case 'glitch':
+      // Prefer dedicated glitch SFX, fall back to impact-high for digital crunch
+      if (sfxPaths.glitchHit) {
+        return { path: sfxPaths.glitchHit, duration: 0.3, volScale: 0.7 }
+      }
+      return sfxPaths.impactHigh
+        ? { path: sfxPaths.impactHigh, duration: 0.25, volScale: 0.6 }
+        : null
+    default:
+      return null
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +386,7 @@ export function generateSoundPlacements(
     cameraShutter:    tryResolve('camera-shutter'),
     whooshSoft:       tryResolve('whoosh-soft'),
     impactLow:        tryResolve('impact-low'),
+    glitchHit:        tryResolve('glitch-hit'),
   }
 
   // ── 1. Background music ────────────────────────────────────────────────────
@@ -429,7 +497,8 @@ export function generateSoundPlacements(
   }
 
   // ── 4. Edit event synced SFX ───────────────────────────────────────────────
-  // B-Roll transitions → swipe sound; jump-cut zooms → quiet camera shutter.
+  // B-Roll transitions → swipe sound; jump-cut zooms → quiet camera shutter;
+  // shot transitions → type-specific SFX that matches the visual transition.
   // These sync to the visual edit rhythm so audio and video feel connected.
   if (cfg.editSyncEnabled && editEvents && editEvents.length > 0) {
     for (const evt of editEvents) {
@@ -455,6 +524,21 @@ export function generateSoundPlacements(
             startTime: evt.time,
             duration: 0.25,
             volume: sfxVolume * cfg.editJumpCutVolScale
+          })
+          lastSfxTime = evt.time
+        }
+      } else if (evt.type === 'shot-transition') {
+        // Shot transitions get type-matched SFX — each transition style has
+        // a signature sound that reinforces the editorial feel. This is what
+        // makes Velocity feel punchy and Film feel smooth.
+        const resolved = resolveShotTransitionSfx(evt.shotTransition, sfxPaths)
+        if (resolved && evt.time - lastSfxTime >= cfg.editBrollMinGap) {
+          placements.push({
+            type: 'sfx',
+            filePath: resolved.path,
+            startTime: evt.time,
+            duration: resolved.duration,
+            volume: sfxVolume * resolved.volScale
           })
           lastSfxTime = evt.time
         }

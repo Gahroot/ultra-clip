@@ -158,6 +158,8 @@ export interface RenderClipJob {
     enableSoundDesign?: boolean
     enableBrandKit?: boolean
     layout?: 'default' | 'blur-background'
+    /** Per-clip accent color — overrides highlight colors across all visual elements */
+    accentColor?: string
   }
   /**
    * Metadata used when generating the export manifest (manifest.json / manifest.csv).

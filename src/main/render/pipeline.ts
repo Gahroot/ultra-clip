@@ -42,6 +42,7 @@ import { wordEmphasisFeature } from './features/word-emphasis.feature'
 import { brollFeature } from './features/broll.feature'
 import { colorGradeFeature } from './features/color-grade.feature'
 import { shotTransitionFeature } from './features/shot-transition.feature'
+import { accentColorFeature } from './features/accent-color.feature'
 
 // ---------------------------------------------------------------------------
 // Cancellation state
@@ -95,21 +96,25 @@ export async function startBatchRender(
   //
   //  1. filler-removal    — mutates job.sourceVideoPath, startTime, endTime, wordTimestamps
   //  2. brand-kit         — writes job.brandKit (consumed by base-render)
-  //  3. word-emphasis     — writes job.wordEmphasis + job.emphasisKeyframes
-  //  4. captions          — reads job.wordEmphasis, generates ASS, fallback emphasisKeyframes
-  //  5. hook-title        — generates ASS overlay file
-  //  6. rehook            — reads hookTitleOverlay.displayDuration for appear time
-  //  7. progress-bar      — injects job.progressBarConfig
-  //  8. auto-zoom         — reads job.emphasisKeyframes for reactive zoom (prepare stores settings)
-  //  9. broll             — reads job.brollPlacements + shotStyleConfigs.brollMode,
+  //  3. accent-color      — reads clipOverrides.accentColor, overrides highlight/emphasis
+  //                         colors in captionStyle, hookTitleOverlay, progressBarOverlay,
+  //                         and per-shot captionStyle — must run before any visual feature
+  //  4. word-emphasis     — writes job.wordEmphasis + job.emphasisKeyframes
+  //  5. captions          — reads job.wordEmphasis, generates ASS, fallback emphasisKeyframes
+  //  6. hook-title        — generates ASS overlay file
+  //  7. rehook            — reads hookTitleOverlay.displayDuration + textColor for appear time
+  //  8. progress-bar      — injects job.progressBarConfig
+  //  9. auto-zoom         — reads job.emphasisKeyframes for reactive zoom (prepare stores settings)
+  // 10. broll             — reads job.brollPlacements + shotStyleConfigs.brollMode,
   //                         emits 'broll-transition' editEvents
-  // 10. shot-transition   — reads shotStyleConfigs, emits 'shot-transition' editEvents
-  // 11. color-grade       — reads shotStyleConfigs, validates + logs color grade configs
-  // 12. sound-design      — reads ALL editEvents (broll + shot-transition + jump-cut),
+  // 11. shot-transition   — reads shotStyleConfigs, emits 'shot-transition' editEvents
+  // 12. color-grade       — reads shotStyleConfigs, validates + logs color grade configs
+  // 13. sound-design      — reads ALL editEvents (broll + shot-transition + jump-cut),
   //                         validates job.soundPlacements
   //
   // Cross-feature data flow:
   //   filler-removal ──wordTimestamps──▸ word-emphasis (remapped timestamps)
+  //   accent-color ──captionStyle colors──▸ captions, hook-title (+rehook), progress-bar
   //   word-emphasis ──wordEmphasis──▸ captions (emphasis tags for ASS styling)
   //   word-emphasis ──emphasisKeyframes──▸ auto-zoom (reactive zoom keyframes)
   //   captions ──emphasisKeyframes (fallback)──▸ auto-zoom (if word-emphasis didn't produce them)
@@ -121,6 +126,7 @@ export async function startBatchRender(
   const features: RenderFeature[] = [
     createFillerRemovalFeature(),
     brandKitFeature,
+    accentColorFeature,
     wordEmphasisFeature,
     createCaptionsFeature(),
     createHookTitleFeature(),

@@ -432,13 +432,14 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
                         <li key={k} className="flex items-center gap-1.5">
                           <span className={cn(
                             'w-1.5 h-1.5 rounded-full shrink-0',
-                            k === 'layout'
-                              ? 'bg-blue-400'
-                              : val === true ? 'bg-green-400' : 'bg-red-400'
-                          )} />
+                            k === 'layout' ? 'bg-blue-400'
+                              : k === 'accentColor' ? '' : val === true ? 'bg-green-400' : 'bg-red-400'
+                          )}
+                            style={k === 'accentColor' ? { backgroundColor: val as string } : undefined}
+                          />
                           <span>
                             {OVERRIDE_LABELS[k]}
-                            {k !== 'layout' && (
+                            {k !== 'layout' && k !== 'accentColor' && (
                               <span className="text-muted-foreground">
                                 {' '}{val === true ? '(on)' : '(off)'}
                               </span>
@@ -446,6 +447,11 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
                             {k === 'layout' && (
                               <span className="text-muted-foreground">
                                 {' '}= {val as string}
+                              </span>
+                            )}
+                            {k === 'accentColor' && (
+                              <span className="text-muted-foreground">
+                                {' '}= <span className="inline-block w-2.5 h-2.5 rounded-sm align-middle border border-white/20" style={{ backgroundColor: val as string }} />
                               </span>
                             )}
                           </span>

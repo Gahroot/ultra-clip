@@ -529,6 +529,7 @@ export function ClipPreview({
         : undefined,
       wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
       hookTitleText: localHook || undefined,
+      clipOverrides: clip.overrides && Object.keys(clip.overrides).length > 0 ? clip.overrides : undefined,
     }
     setSingleRenderState({ clipId: clip.id, progress: 0, status: 'rendering', outputPath: null, error: null })
     const cleanups: Array<() => void> = []
@@ -1543,6 +1544,70 @@ export function ClipPreview({
                   >
                     Blur Background
                   </button>
+                </div>
+              </div>
+
+              {/* Accent color picker — one color paints the whole edit */}
+              <div className="mb-3">
+                <Label className="text-[10px] text-muted-foreground/60 uppercase tracking-wide mb-2 block">
+                  Accent Color
+                </Label>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <input
+                      type="color"
+                      value={clip.overrides?.accentColor ?? settings.captionStyle.highlightColor}
+                      onChange={(e) => setClipOverride(sourceId, clip.id, 'accentColor', e.target.value)}
+                      className="w-10 h-10 rounded-lg cursor-pointer border-2 border-border bg-transparent p-0.5 transition-shadow hover:shadow-[0_0_12px_var(--accent-glow)] focus:shadow-[0_0_16px_var(--accent-glow)]"
+                      style={{ '--accent-glow': clip.overrides?.accentColor ?? 'transparent' } as React.CSSProperties}
+                      title="Pick an accent color — tints captions, overlays, and progress bar"
+                    />
+                    {clip.overrides?.accentColor && (
+                      <span
+                        className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border border-background"
+                        style={{ backgroundColor: clip.overrides.accentColor }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground leading-snug">
+                      {clip.overrides?.accentColor ? (
+                        <>
+                          <span
+                            className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1.5 border border-white/20"
+                            style={{ backgroundColor: clip.overrides.accentColor }}
+                          />
+                          <span className="font-mono text-[10px]">{clip.overrides.accentColor.toUpperCase()}</span>
+                          <span className="text-muted-foreground/50"> · captions · overlays · progress bar</span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground/50">
+                          Using preset default · pick a color to tint everything
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  {clip.overrides?.accentColor && (
+                    <button
+                      onClick={() => {
+                        const current = clip.overrides ?? {}
+                        const updated = { ...current }
+                        delete updated.accentColor
+                        if (Object.keys(updated).length === 0) {
+                          clearClipOverrides(sourceId, clip.id)
+                        } else {
+                          clearClipOverrides(sourceId, clip.id)
+                          for (const [k, v] of Object.entries(updated)) {
+                            setClipOverride(sourceId, clip.id, k as keyof ClipRenderSettings, v as ClipRenderSettings[keyof ClipRenderSettings])
+                          }
+                        }
+                      }}
+                      className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors underline underline-offset-2 shrink-0"
+                      title="Reset to preset default"
+                    >
+                      reset
+                    </button>
+                  )}
                 </div>
               </div>
 
