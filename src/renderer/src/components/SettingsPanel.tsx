@@ -460,6 +460,8 @@ export function SettingsPanel() {
     setSoundDesignTrack,
     setSoundDesignSfxVolume,
     setSoundDesignMusicVolume,
+    setSoundDesignMusicDucking,
+    setSoundDesignMusicDuckLevel,
     setAutoZoomEnabled,
     setAutoZoomMode,
     setAutoZoomIntensity,
@@ -535,6 +537,8 @@ export function SettingsPanel() {
     setSoundDesignTrack: s.setSoundDesignTrack,
     setSoundDesignSfxVolume: s.setSoundDesignSfxVolume,
     setSoundDesignMusicVolume: s.setSoundDesignMusicVolume,
+    setSoundDesignMusicDucking: s.setSoundDesignMusicDucking,
+    setSoundDesignMusicDuckLevel: s.setSoundDesignMusicDuckLevel,
     setAutoZoomEnabled: s.setAutoZoomEnabled,
     setAutoZoomMode: s.setAutoZoomMode,
     setAutoZoomIntensity: s.setAutoZoomIntensity,
@@ -1767,6 +1771,38 @@ export function SettingsPanel() {
                   onValueChange={([v]) => setSoundDesignMusicVolume(v / 100)}
                 />
               </FieldRow>
+
+              {/* Music ducking */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="music-ducking" className="text-sm font-medium cursor-pointer">
+                    Auto Duck During Speech
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Music drops when the speaker talks, swells during pauses and B-Roll
+                  </p>
+                </div>
+                <Switch
+                  id="music-ducking"
+                  checked={settings.soundDesign.musicDucking}
+                  onCheckedChange={setSoundDesignMusicDucking}
+                />
+              </div>
+
+              {settings.soundDesign.musicDucking && (
+                <FieldRow
+                  label={`Duck Level — ${Math.round(settings.soundDesign.musicDuckLevel * 100)}% during speech`}
+                  hint="How much music volume remains while the speaker is talking"
+                >
+                  <Slider
+                    min={0}
+                    max={60}
+                    step={5}
+                    value={[Math.round(settings.soundDesign.musicDuckLevel * 100)]}
+                    onValueChange={([v]) => setSoundDesignMusicDuckLevel(v / 100)}
+                  />
+                </FieldRow>
+              )}
 
               {/* SFX volume */}
               <FieldRow label={`SFX Volume — ${Math.round(settings.soundDesign.sfxVolume * 100)}%`}>

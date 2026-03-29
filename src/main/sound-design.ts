@@ -28,14 +28,24 @@ export interface SoundPlacementData {
   filePath: string
   startTime: number // seconds within the clip (0 = clip start)
   duration: number  // seconds this sound plays
-  volume: number    // 0–1
+  volume: number    // 0–1 (static scalar, used when volumeExpr is absent)
+  /**
+   * Optional time-varying FFmpeg volume expression (overrides `volume`).
+   * Built using comma-free infix operators so it's safe on Windows:
+   *   - `(t>=s)*(t<=e)` instead of `between(t,s,e)`
+   *   - No function calls with commas (gte/lte/if avoided)
+   * Passed as: `volume=EXPR:eval=frame` in the audio filter chain.
+   */
+  volumeExpr?: string
 }
 
 export interface SoundDesignOptions {
   enabled: boolean
   backgroundMusicTrack: MusicTrack
-  sfxVolume: number   // 0–1
-  musicVolume: number // 0–1
+  sfxVolume: number    // 0–1
+  musicVolume: number  // 0–1
+  musicDucking: boolean  // duck music during speech
+  musicDuckLevel: number // volume fraction during speech (0–1, default 0.2)
 }
 
 /** @deprecated Use WordTimestamp from @shared/types instead */
@@ -80,6 +90,84 @@ export function resolveMusicPath(trackName: MusicTrack | string): string {
 function tryResolve(sfxName: SFXType | string): string | null {
   const p = resolveSfxPath(sfxName)
   return existsSync(p) ? p : null
+}
+
+// ---------------------------------------------------------------------------
+// Music ducking helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge word timestamps into contiguous speech segments.
+ *
+ * Adjacent words whose gap is ≤ `mergeGap` seconds are merged into a single
+ * segment. A small `pad` is added to the end of each segment so the duck
+ * lingers briefly after the last word (natural release feel).
+ *
+ * @returns Array of [startSec, endSec] tuples, non-overlapping.
+ */
+function mergeSpeechSegments(
+  words: WordTimestampInput[],
+  mergeGap: number = 0.15,
+  pad: number = 0.08
+): Array<[number, number]> {
+  if (words.length === 0) return []
+
+  const segments: Array<[number, number]> = []
+  let segStart = words[0].start
+  let segEnd = words[0].end
+
+  for (let i = 1; i < words.length; i++) {
+    const gap = words[i].start - segEnd
+    if (gap <= mergeGap) {
+      // Extend current segment
+      segEnd = words[i].end
+    } else {
+      segments.push([segStart, segEnd + pad])
+      segStart = words[i].start
+      segEnd = words[i].end
+    }
+  }
+  segments.push([segStart, segEnd + pad])
+
+  return segments
+}
+
+/**
+ * Build a comma-free FFmpeg volume expression that ducks during speech.
+ *
+ * The expression uses infix comparison operators (`t>=s`, `t<=e`) which
+ * return 0 or 1 in FFmpeg's expression evaluator, avoiding all commas.
+ * This is safe on Windows where escaped commas in filter values can cause
+ * "Error opening output file: Invalid argument".
+ *
+ * Formula:
+ *   inSpeech = Σ (t>=si)*(t<=ei)   — sums to 0 (pause) or 1 (speech)
+ *   volume   = fullVol + (duckVol - fullVol) * inSpeech
+ *
+ * @param speechSegments  Non-overlapping [start, end] pairs in seconds
+ * @param fullVol         Volume during pauses / B-Roll (0–1)
+ * @param duckVol         Volume during speech (0–1, typically fullVol * duckLevel)
+ * @returns FFmpeg volume expression string ready for `volume=EXPR:eval=frame`
+ */
+export function buildMusicDuckingExpr(
+  speechSegments: Array<[number, number]>,
+  fullVol: number,
+  duckVol: number
+): string {
+  if (speechSegments.length === 0) return fullVol.toFixed(3)
+
+  const fv = fullVol.toFixed(3)
+  const dv = duckVol.toFixed(3)
+
+  // Each term: (t>=si)*(t<=ei) — comma-free binary indicator
+  const inSpeechTerms = speechSegments
+    .map(([s, e]) => `(t>=${s.toFixed(3)})*(t<=${e.toFixed(3)})`)
+    .join('+')
+
+  // fullVol + (duckVol - fullVol) * inSpeech
+  // During speech: fullVol + (duckVol - fullVol) * 1 = duckVol  ✓
+  // During pause:  fullVol + (duckVol - fullVol) * 0 = fullVol  ✓
+  return `${fv}+(${dv}-${fv})*(${inSpeechTerms})`
 }
 
 /**
@@ -131,13 +219,24 @@ export function generateSoundPlacements(
   // ── 1. Background music ────────────────────────────────────────────────────
   const musicPath = resolveMusicPath(options.backgroundMusicTrack)
   if (existsSync(musicPath)) {
-    placements.push({
+    const fullVol = Math.max(0, Math.min(1, options.musicVolume))
+    const musicPlacement: SoundPlacementData = {
       type: 'music',
       filePath: musicPath,
       startTime: 0,
       duration: clipDuration,
-      volume: Math.max(0, Math.min(1, options.musicVolume))
-    })
+      volume: fullVol
+    }
+
+    // Build time-varying ducking expression when ducking is enabled and we
+    // have word timestamps to derive speech/pause windows from.
+    if (options.musicDucking && wordTimestamps.length > 0) {
+      const duckVol = fullVol * Math.max(0, Math.min(1, options.musicDuckLevel))
+      const speechSegments = mergeSpeechSegments(wordTimestamps)
+      musicPlacement.volumeExpr = buildMusicDuckingExpr(speechSegments, fullVol, duckVol)
+    }
+
+    placements.push(musicPlacement)
   } else {
     console.warn(`[SoundDesign] Music file not found, skipping: ${musicPath}`)
   }
