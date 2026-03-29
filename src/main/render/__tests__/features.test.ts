@@ -22,6 +22,12 @@ vi.mock('../../captions', () => ({
   generateCaptions: vi.fn().mockResolvedValue('/tmp/batchcontent-captions-1234.ass')
 }))
 
+vi.mock('../../word-emphasis', () => ({
+  analyzeEmphasisHeuristic: vi.fn((words: Array<{ text: string; start: number; end: number }>) =>
+    words.map((w) => ({ ...w, emphasis: 'normal' }))
+  )
+}))
+
 vi.mock('../../auto-zoom', () => ({
   generateZoomFilter: vi.fn(() => 'crop=trunc(iw*1.1):trunc(ih*1.1):0:0,scale=1080:1920')
 }))
@@ -77,6 +83,8 @@ import { autoZoomFeature } from '../features/auto-zoom.feature'
 import { createFillerRemovalFeature } from '../features/filler-removal.feature'
 import { brandKitFeature } from '../features/brand-kit.feature'
 import { soundDesignFeature } from '../features/sound-design.feature'
+import { wordEmphasisFeature } from '../features/word-emphasis.feature'
+import { brollFeature } from '../features/broll.feature'
 import type { RenderClipJob, RenderBatchOptions } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -775,5 +783,93 @@ describe('SoundDesignFeature', () => {
     })
     const result = await soundDesignFeature.prepare!(job, makeOptions())
     expect(result.modified).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WordEmphasisFeature
+// ---------------------------------------------------------------------------
+
+describe('WordEmphasisFeature', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('computes emphasis from word timestamps', async () => {
+    const job = makeJob()
+    const result = await wordEmphasisFeature.prepare!(job, makeOptions())
+    expect(result).toBeDefined()
+    expect(job.wordEmphasis).toBeDefined()
+    expect(job.emphasisKeyframes).toBeDefined()
+  })
+
+  it('uses pre-computed wordEmphasis when available', async () => {
+    const job = makeJob({
+      wordEmphasis: [
+        { text: 'Hello', start: 0, end: 0.5, emphasis: 'emphasis' },
+        { text: 'world', start: 0.5, end: 1, emphasis: 'normal' }
+      ]
+    })
+    await wordEmphasisFeature.prepare!(job, makeOptions())
+    // Should keep the pre-computed emphasis data
+    expect(job.wordEmphasis).toHaveLength(2)
+    expect(job.emphasisKeyframes).toBeDefined()
+    expect(job.emphasisKeyframes!.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('skips when no word timestamps', async () => {
+    const job = makeJob({ wordTimestamps: [] })
+    const result = await wordEmphasisFeature.prepare!(job, makeOptions())
+    expect(result.modified).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// BRollFeature
+// ---------------------------------------------------------------------------
+
+describe('BRollFeature', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('emits edit events from broll placements', async () => {
+    const job = makeJob({
+      brollPlacements: [
+        {
+          startTime: 5,
+          duration: 3,
+          videoPath: '/broll.mp4',
+          keyword: 'test',
+          displayMode: 'fullscreen',
+          transition: 'crossfade'
+        }
+      ]
+    })
+    const result = await brollFeature.prepare!(job, makeOptions())
+    expect(result.modified).toBe(true)
+    expect(job.editEvents).toHaveLength(1)
+    expect(job.editEvents![0].type).toBe('broll-transition')
+    expect(job.editEvents![0].time).toBe(5)
+  })
+
+  it('does not duplicate existing edit events', async () => {
+    const job = makeJob({
+      brollPlacements: [
+        {
+          startTime: 5,
+          duration: 3,
+          videoPath: '/broll.mp4',
+          keyword: 'test',
+          displayMode: 'fullscreen',
+          transition: 'crossfade'
+        }
+      ],
+      editEvents: [{ type: 'broll-transition', time: 5 }]
+    })
+    const result = await brollFeature.prepare!(job, makeOptions())
+    expect(job.editEvents).toHaveLength(1) // not duplicated
+  })
+
+  it('skips when no broll placements', async () => {
+    const job = makeJob()
+    const result = await brollFeature.prepare!(job, makeOptions())
+    expect(result.modified).toBe(false)
   })
 })

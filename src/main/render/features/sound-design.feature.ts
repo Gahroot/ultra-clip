@@ -129,6 +129,11 @@ export const soundDesignFeature: RenderFeature = {
       return { tempFiles: [], modified: false }
     }
 
+    // Log edit events from upstream features (B-Roll transitions, jump-cuts)
+    const editEventCount = job.editEvents?.length ?? 0
+    const brollEvents = job.editEvents?.filter((e) => e.type === 'broll-transition').length ?? 0
+    const jumpCutEvents = job.editEvents?.filter((e) => e.type === 'jump-cut').length ?? 0
+
     const musicCount = job.soundPlacements!.filter(p => p.type === 'music').length
     const sfxPlacements = job.soundPlacements!.filter(p => p.type === 'sfx')
 
@@ -147,7 +152,10 @@ export const soundDesignFeature: RenderFeature = {
     console.log(
       `[SoundDesign] Clip ${job.clipId}: ${musicCount} music, ${sfxPlacements.length} sfx ` +
       `(${categories.pops} pops, ${categories.impacts} impacts, ${categories.tension} tension, ` +
-      `${categories.transitions} transitions, ${categories.shutters} shutters, ${categories.whooshes} whooshes)`
+      `${categories.transitions} transitions, ${categories.shutters} shutters, ${categories.whooshes} whooshes)` +
+      (editEventCount > 0
+        ? ` — synced to ${editEventCount} edit events (${brollEvents} broll, ${jumpCutEvents} jump-cut)`
+        : '')
     )
 
     return { tempFiles: [], modified: true }

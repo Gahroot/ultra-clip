@@ -202,6 +202,13 @@ export interface ClipCandidate {
    * Each shot is a coherent thought that can receive independent styling.
    */
   shots?: import('@shared/types').ShotSegment[]
+  /**
+   * Per-shot style assignments — maps each shot to a style preset ID.
+   * When present, the render pipeline applies different caption animations,
+   * zoom behaviors, and other style parameters to different shots within
+   * this clip. Shot indices not present in this array use the global style.
+   */
+  shotStyles?: import('@shared/types').ShotStyleAssignment[]
 }
 
 export type PipelineStage =
@@ -729,6 +736,13 @@ export interface EditStylePreset {
   sound: EditStyleSound
   /** On-screen overlay elements (hook title, re-hook, progress bar). */
   overlays: EditStyleOverlays
+
+  /** Optional color grade applied when this preset is used for per-shot styling. */
+  colorGrade?: import('../../../shared/types').ColorGradeConfig
+  /** Optional transition into a shot when this preset is assigned per-shot. */
+  transitionIn?: import('../../../shared/types').ShotTransitionConfig
+  /** Optional transition out of a shot when this preset is assigned per-shot. */
+  transitionOut?: import('../../../shared/types').ShotTransitionConfig
 }
 
 export interface ProcessingConfig {
@@ -916,6 +930,14 @@ export interface AppState {
   setClipShots: (sourceId: string, clipId: string, shots: import('@shared/types').ShotSegment[]) => void
   /** Remove shot segmentation from a clip. */
   clearClipShots: (sourceId: string, clipId: string) => void
+  /** Set the style preset assignment for a specific shot within a clip. */
+  setShotStyle: (sourceId: string, clipId: string, shotIndex: number, presetId: string) => void
+  /** Remove the style preset assignment for a specific shot (falls back to global). */
+  clearShotStyle: (sourceId: string, clipId: string, shotIndex: number) => void
+  /** Replace all shot style assignments for a clip at once. */
+  setClipShotStyles: (sourceId: string, clipId: string, assignments: import('@shared/types').ShotStyleAssignment[]) => void
+  /** Remove all per-shot style assignments (revert to global style). */
+  clearAllShotStyles: (sourceId: string, clipId: string) => void
   approveAll: (sourceId: string) => void
   approveClipsAboveScore: (sourceId: string, minScore: number) => { approved: number; rejected: number }
   rejectAll: (sourceId: string) => void

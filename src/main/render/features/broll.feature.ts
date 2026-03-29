@@ -5,8 +5,8 @@
 import { copyFileSync, existsSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { RenderFeature, PostProcessContext } from './feature'
-import type { RenderClipJob } from '../types'
+import type { RenderFeature, PrepareResult, PostProcessContext } from './feature'
+import type { RenderClipJob, RenderBatchOptions } from '../types'
 import type { BRollPlacement, BRollDisplayMode, BRollTransition } from '../../broll-placement'
 import { toFFmpegPath } from '../helpers'
 import { ffmpeg as createFfmpeg, getSoftwareEncoder } from '../../ffmpeg'
@@ -24,6 +24,47 @@ const CANVAS_H = 1920
 
 export const brollFeature: RenderFeature = {
   name: 'broll',
+
+  async prepare(
+    job: RenderClipJob,
+    _batchOptions: RenderBatchOptions
+  ): Promise<PrepareResult> {
+    // Emit edit events from B-Roll placements so downstream features
+    // (sound-design) can synchronise SFX to B-Roll transitions
+    if (!job.brollPlacements || job.brollPlacements.length === 0) {
+      return { tempFiles: [], modified: false }
+    }
+
+    // Initialize editEvents array if not present
+    if (!job.editEvents) {
+      job.editEvents = []
+    }
+
+    // Derive broll-transition edit events from each placement
+    let emitted = 0
+    for (const br of job.brollPlacements) {
+      // Check if an edit event for this time already exists (from IPC handler pre-computation)
+      const alreadyExists = job.editEvents.some(
+        (e) => e.type === 'broll-transition' && Math.abs(e.time - br.startTime) < 0.05
+      )
+      if (!alreadyExists) {
+        job.editEvents.push({
+          type: 'broll-transition',
+          time: br.startTime,
+          transition: br.transition
+        })
+        emitted++
+      }
+    }
+
+    if (emitted > 0) {
+      console.log(
+        `[B-Roll] Clip ${job.clipId}: emitted ${emitted} edit event(s) from ${job.brollPlacements.length} placement(s)`
+      )
+    }
+
+    return { tempFiles: [], modified: emitted > 0 }
+  },
 
   async postProcess(
     job: RenderClipJob,

@@ -82,6 +82,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { useStore } from '../store'
+import { BUILT_IN_EDIT_STYLE_PRESETS } from '../store/helpers'
 import { useShallow } from 'zustand/react/shallow'
 import type { ClipCandidate, RenderProgress } from '../store'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -257,6 +258,16 @@ export function ClipGrid() {
   const setRenderError = useStore((s) => s.setRenderError)
   const transcriptions = useStore((s) => s.transcriptions)
   const activeStylePresetId = useStore((s) => s.activeStylePresetId)
+
+  // Style presets for per-shot style resolution at render time
+  const stylePresetsForRender = useMemo(() =>
+    BUILT_IN_EDIT_STYLE_PRESETS.map((p) => ({
+      id: p.id,
+      captions: p.captions,
+      zoom: p.zoom
+    })),
+    []
+  )
 
   // Batch multi-select
   const selectedClipIds = useStore((s) => s.selectedClipIds)
@@ -591,6 +602,10 @@ export function ClipGrid() {
         : undefined,
       // Active style preset ID — informational, recorded in manifest
       stylePresetId: clip.aiEditPlan?.stylePresetId ?? activeStylePresetId ?? undefined,
+      // Per-shot style assignments — when present, the render pipeline applies
+      // different style presets to different shot segments within this clip
+      shotStyles: clip.shotStyles && clip.shotStyles.length > 0 ? clip.shotStyles : undefined,
+      shots: clip.shots && clip.shots.length > 0 ? clip.shots : undefined,
     }))
 
     // Add variant render jobs

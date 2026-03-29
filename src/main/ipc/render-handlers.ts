@@ -44,6 +44,7 @@ import {
 } from '../export-manifest'
 import type { RenderClipJob } from '../render-pipeline'
 import { getEncoder } from '../ffmpeg'
+import { resolveShotStyles, buildPresetLookup, type StylePresetForResolution } from '../render/shot-style-resolver'
 
 export function registerRenderHandlers(): void {
   // Render — start a batch render of approved clips
@@ -155,6 +156,35 @@ export function registerRenderHandlers(): void {
           const msg = brollErr instanceof Error ? brollErr.message : String(brollErr)
           console.warn(`[B-Roll] Clip ${job.clipId}: placement generation failed — ${msg}`)
           // Don't abort the whole batch — just skip B-Roll for this clip
+        }
+      }
+    }
+
+    // ── Phase 1.5: Resolve per-shot style assignments ───────────────────────
+    // When clips have shotStyles (preset IDs) and shots (time ranges), resolve
+    // them into concrete ShotStyleConfig objects that the render features consume.
+    if (options.stylePresets && options.stylePresets.length > 0) {
+      const presetLookup = buildPresetLookup(options.stylePresets as StylePresetForResolution[])
+
+      for (const job of options.jobs) {
+        if (!job.shotStyles || job.shotStyles.length === 0 || !job.shots || job.shots.length === 0) {
+          continue
+        }
+
+        try {
+          job.shotStyleConfigs = resolveShotStyles(
+            job.shotStyles,
+            job.shots as import('@shared/types').ShotSegment[],
+            presetLookup
+          )
+
+          if (job.shotStyleConfigs.length > 0) {
+            console.log(
+              `[ShotStyles] Clip ${job.clipId}: resolved ${job.shotStyleConfigs.length} per-shot style config(s)`
+            )
+          }
+        } catch (err) {
+          console.warn(`[ShotStyles] Clip ${job.clipId}: resolution failed —`, err)
         }
       }
     }
