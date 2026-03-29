@@ -7,7 +7,7 @@ import type { WordTimestamp } from '@shared/types'
 // ---------------------------------------------------------------------------
 
 /** Emphasis level for a single word in the transcript. */
-export type EmphasisLevel = 'normal' | 'emphasis' | 'supersize'
+export type EmphasisLevel = 'normal' | 'emphasis' | 'supersize' | 'box'
 
 /** A word with its emphasis level determined by AI or heuristic analysis. */
 export interface EmphasizedWord {

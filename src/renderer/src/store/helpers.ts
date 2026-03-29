@@ -378,6 +378,210 @@ export const CAPTION_PRESETS: Record<string, CaptionStyle> = {
     animation: 'word-pop',
     emphasisColor: '#FB923C',
     supersizeColor: '#F97316'
+  },
+
+  // ---------------------------------------------------------------------------
+  // Neon & Glow family — vivid colored text with glow shadows, dark-optimized
+  // ---------------------------------------------------------------------------
+
+  /** Alcyone — electric blue text with blue glow shadow. Inspired by the Pleiades. */
+  'alcyone': {
+    id: 'alcyone',
+    label: 'Alcyone Blue',
+    fontName: 'Poppins',
+    fontFile: 'Poppins-Bold.ttf',
+    fontSize: 0.065,
+    primaryColor: '#4DA6FF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#0055DD',
+    backColor: '#CC003399',
+    outline: 4,
+    shadow: 3,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'glow',
+    emphasisColor: '#80D4FF',
+    supersizeColor: '#FFFFFF'
+  },
+
+  /** Spica — hot pink text with pink neon glow. Vivid and eye-catching. */
+  'spica': {
+    id: 'spica',
+    label: 'Spica Pink',
+    fontName: 'Poppins',
+    fontFile: 'Poppins-Bold.ttf',
+    fontSize: 0.065,
+    primaryColor: '#FF69B4',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#CC1166',
+    backColor: '#CC880044',
+    outline: 4,
+    shadow: 3,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'glow',
+    emphasisColor: '#FFB6D9',
+    supersizeColor: '#FFFFFF'
+  },
+
+  /** Deneb — purple text with deep purple glow. Rich and atmospheric. */
+  'deneb': {
+    id: 'deneb',
+    label: 'Deneb Purple',
+    fontName: 'Montserrat',
+    fontFile: 'Montserrat-Bold.ttf',
+    fontSize: 0.065,
+    primaryColor: '#B388FF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#6A1B9A',
+    backColor: '#CC440088',
+    outline: 4,
+    shadow: 3,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'glow',
+    emphasisColor: '#D1C4E9',
+    supersizeColor: '#FFFFFF'
+  },
+
+  /** Arcturus — white text with rainbow-cycling emphasis colors. Prismatic. */
+  'arcturus': {
+    id: 'arcturus',
+    label: 'Arcturus Prism',
+    fontName: 'Montserrat',
+    fontFile: 'Montserrat-Bold.ttf',
+    fontSize: 0.065,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#00FF88',
+    outlineColor: '#111111',
+    backColor: '#00000000',
+    outline: 3,
+    shadow: 2,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'captions-ai',
+    emphasisColor: '#FF4488',
+    supersizeColor: '#FFD700'
+  },
+
+  /** Gemma — cyan text with magenta glow. High-contrast split coloring. */
+  'gemma': {
+    id: 'gemma',
+    label: 'Gemma Split',
+    fontName: 'Bangers',
+    fontFile: 'Bangers-Regular.ttf',
+    fontSize: 0.07,
+    primaryColor: '#00FFFF',
+    highlightColor: '#FF00FF',
+    outlineColor: '#880088',
+    backColor: '#CC440055',
+    outline: 3,
+    shadow: 2,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'word-pop',
+    emphasisColor: '#FF00FF',
+    supersizeColor: '#FFFFFF'
+  },
+
+  /** Serpens — neon green on black with typewriter reveal. Matrix terminal vibe. */
+  'serpens': {
+    id: 'serpens',
+    label: 'Serpens Matrix',
+    fontName: 'JetBrains Mono',
+    fontFile: 'JetBrainsMono.ttf',
+    fontSize: 0.055,
+    primaryColor: '#39FF14',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#003300',
+    backColor: '#E6000000',
+    outline: 1,
+    shadow: 2,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'typewriter',
+    emphasisColor: '#7CFF55',
+    supersizeColor: '#FFFFFF'
+  },
+
+  /** Electra — electric yellow with hard glow. Charged and intense. */
+  'electra': {
+    id: 'electra',
+    label: 'Electra Volt',
+    fontName: 'Anton',
+    fontFile: 'Anton-Regular.ttf',
+    fontSize: 0.07,
+    primaryColor: '#FFE400',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#AA8800',
+    backColor: '#CC005588',
+    outline: 5,
+    shadow: 3,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'elastic-bounce',
+    emphasisColor: '#FFF176',
+    supersizeColor: '#FFFFFF'
+  },
+
+  /** Nashira — gradient-feel through alternating vivid word colors. Chromatic. */
+  'nashira': {
+    id: 'nashira',
+    label: 'Nashira Gradient',
+    fontName: 'Poppins',
+    fontFile: 'Poppins-Bold.ttf',
+    fontSize: 0.06,
+    primaryColor: '#FF6EC7',
+    highlightColor: '#7DF9FF',
+    outlineColor: '#222222',
+    backColor: '#00000000',
+    outline: 3,
+    shadow: 1,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'cascade',
+    emphasisColor: '#FFD700',
+    supersizeColor: '#FF4444'
+  },
+
+  /** Betelgeuse — warm orange text with fiery bounce glow. Supergiant energy. */
+  'betelgeuse': {
+    id: 'betelgeuse',
+    label: 'Betelgeuse Ember',
+    fontName: 'Montserrat',
+    fontFile: 'Montserrat-Bold.ttf',
+    fontSize: 0.065,
+    primaryColor: '#FF6B00',
+    highlightColor: '#FFDD44',
+    outlineColor: '#882200',
+    backColor: '#CC001166',
+    outline: 4,
+    shadow: 3,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'elastic-bounce',
+    emphasisColor: '#FFAB40',
+    supersizeColor: '#FFFFFF'
+  },
+
+  /** Fomalhaut — cool teal text with frosted semi-transparent background boxes. */
+  'fomalhaut': {
+    id: 'fomalhaut',
+    label: 'Fomalhaut Frost',
+    fontName: 'Inter',
+    fontFile: 'Inter-Bold.ttf',
+    fontSize: 0.06,
+    primaryColor: '#00E5CC',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#00000000',
+    backColor: '#B31A2A3A',
+    outline: 12,
+    shadow: 0,
+    borderStyle: 3,
+    wordsPerLine: 3,
+    animation: 'fade-in',
+    emphasisColor: '#5EEAD4',
+    supersizeColor: '#FFFFFF'
   }
 }
 

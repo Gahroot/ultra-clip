@@ -60,11 +60,11 @@ export const wordEmphasisFeature: RenderFeature = {
         job.emphasisKeyframes = job.emphasisKeyframesInput
       } else {
         job.emphasisKeyframes = job.wordEmphasis
-          .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize')
+          .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize' || w.emphasis === 'box')
           .map((w) => ({
             time: w.start,
             end: w.end,
-            level: w.emphasis as 'emphasis' | 'supersize'
+            level: w.emphasis as 'emphasis' | 'supersize' | 'box'
           }))
       }
     }

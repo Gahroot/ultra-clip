@@ -25,6 +25,27 @@ export interface CaptionStyleInput {
   emphasisColor?: string
   /** Color for supersize-level words (huge + bold + this color). Defaults to '#FFD700' gold. */
   supersizeColor?: string
+
+  // ---------------------------------------------------------------------------
+  // Style-driven emphasis configuration (from CaptionStyleSchema)
+  // When present, these override the hardcoded defaults.
+  // ---------------------------------------------------------------------------
+
+  /** Scale factor for emphasis words relative to base font size (e.g. 1.25). Default: 1.25 */
+  emphasisScale?: number
+  /** Font weight for emphasis words (100–900). Omit to inherit base style. */
+  emphasisFontWeight?: number
+  /** Scale factor for supersize words relative to base font size (e.g. 1.6). Default: 1.6 */
+  supersizeScale?: number
+  /** Font weight for supersize words (100–900). Default: 800 (extra-bold). */
+  supersizeFontWeight?: number
+
+  /** Box emphasis: opaque rectangle behind the word. */
+  boxColor?: string       // box fill color hex. Falls back to highlightColor.
+  boxOpacity?: number     // 0–1. Default: 0.85
+  boxPadding?: number     // pixels. Default: 10
+  boxTextColor?: string   // text color on box words. Falls back to primaryColor.
+  boxFontWeight?: number  // font weight for box words. Omit to inherit.
 }
 
 export interface WordInput {
@@ -32,7 +53,7 @@ export interface WordInput {
   start: number // seconds (relative to clip start)
   end: number // seconds (relative to clip start)
   /** Emphasis level from word-emphasis analysis. Defaults to 'normal'. */
-  emphasis?: 'normal' | 'emphasis' | 'supersize'
+  emphasis?: 'normal' | 'emphasis' | 'supersize' | 'box'
 }
 
 // ---------------------------------------------------------------------------
@@ -116,17 +137,27 @@ function formatASSTime(seconds: number): string {
 // Emphasis override helpers
 // ---------------------------------------------------------------------------
 
-/** Scale multipliers for emphasis levels relative to the base font size. */
-const EMPHASIS_SCALE = 1.25 // 25% bigger
-const SUPERSIZE_SCALE = 1.6 // 60% bigger
+/** Default scale multipliers — used when style doesn't specify its own. */
+const DEFAULT_EMPHASIS_SCALE = 1.25
+const DEFAULT_SUPERSIZE_SCALE = 1.6
+
+/** Resolve the effective scale factors from a style, falling back to defaults. */
+function resolveEmphasisScale(style: CaptionStyleInput): number {
+  return style.emphasisScale ?? DEFAULT_EMPHASIS_SCALE
+}
+function resolveSupersizeScale(style: CaptionStyleInput): number {
+  return style.supersizeScale ?? DEFAULT_SUPERSIZE_SCALE
+}
 
 /**
- * Build ASS inline override tags for an emphasized or supersized word.
- * Returns an empty string for normal words.
+ * Build ASS inline override tags for a word in one of four visual states:
+ *   1. Normal — no overrides (empty prefix/suffix)
+ *   2. Emphasis — style-defined scale, highlight color, optional bold
+ *   3. Supersize — dramatic scale, accent color, bold
+ *   4. Box — opaque colored rectangle behind the word (thick \3c + \bord + \shad0)
  *
- * Uses \fs for absolute font size, \1c for primary color, and \b1 for bold.
- * A \r tag resets overrides after the word (appended by the caller as the
- * next word's override block or end of line).
+ * Returns an empty string for normal words. A \r tag resets overrides after
+ * the word (appended by the caller).
  */
 function buildEmphasisTags(
   word: WordInput,
@@ -137,19 +168,44 @@ function buildEmphasisTags(
   if (level === 'normal') return { prefix: '', suffix: '' }
 
   if (level === 'supersize') {
-    const size = Math.round(baseFontSize * SUPERSIZE_SCALE)
+    const scale = resolveSupersizeScale(style)
+    const size = Math.round(baseFontSize * scale)
     const color = hexToASS(style.supersizeColor ?? '#FFD700')
+    const weight = style.supersizeFontWeight ?? 800
+    // \b1 for bold; if weight > 400 we always set bold
+    const boldTag = weight > 400 ? '\\b1' : ''
     return {
-      prefix: `\\fs${size}\\1c${color}\\b1`,
+      prefix: `\\fs${size}\\1c${color}${boldTag}`,
+      suffix: `\\r`
+    }
+  }
+
+  if (level === 'box') {
+    const boxColor = hexToASS(style.boxColor ?? style.highlightColor)
+    const textColor = hexToASS(style.boxTextColor ?? style.primaryColor)
+    const padding = style.boxPadding ?? 10
+    const opacity = style.boxOpacity ?? 0.85
+    // Convert 0–1 opacity to ASS alpha (0=opaque, FF=transparent)
+    const alpha = Math.round((1 - opacity) * 255)
+    const alphaPad = alpha.toString(16).toUpperCase().padStart(2, '0')
+    const boldTag = style.boxFontWeight && style.boxFontWeight > 400 ? '\\b1' : ''
+    // Thick outline in box color acts as opaque rectangle behind the word.
+    // \3c = outline color (box fill), \bord = padding, \shad0 = no shadow leak.
+    // \4a = shadow alpha fully transparent to avoid colored edges.
+    return {
+      prefix: `\\3c${boxColor}\\3a&H${alphaPad}&\\bord${padding}\\xbord${padding + 4}\\ybord${padding}\\shad0\\4a&HFF&\\1c${textColor}${boldTag}`,
       suffix: `\\r`
     }
   }
 
   // emphasis
-  const size = Math.round(baseFontSize * EMPHASIS_SCALE)
+  const scale = resolveEmphasisScale(style)
+  const size = Math.round(baseFontSize * scale)
   const color = hexToASS(style.emphasisColor ?? style.highlightColor)
+  const weight = style.emphasisFontWeight
+  const boldTag = weight && weight > 400 ? '\\b1' : ''
   return {
-    prefix: `\\fs${size}\\1c${color}`,
+    prefix: `\\fs${size}\\1c${color}${boldTag}`,
     suffix: `\\r`
   }
 }
@@ -378,13 +434,16 @@ function buildWordBoxLines(
     boxWidth: number
   }
 
+  const empScale = resolveEmphasisScale(style)
+  const supScale = resolveSupersizeScale(style)
+
   const metrics: WordMetric[] = group.words.map((w) => {
     const level = w.emphasis ?? 'normal'
     const scale =
       level === 'supersize'
-        ? SUPERSIZE_SCALE
-        : level === 'emphasis'
-          ? EMPHASIS_SCALE
+        ? supScale
+        : level === 'emphasis' || level === 'box'
+          ? empScale
           : 1
     const effectiveSize = Math.round(baseFontSize * scale)
     const charWidth = effectiveSize * AVG_CHAR_WIDTH_RATIO
@@ -735,13 +794,16 @@ function buildCascadeLines(
     textWidth: number
   }
 
+  const empScale = resolveEmphasisScale(style)
+  const supScale = resolveSupersizeScale(style)
+
   const metrics: CascadeMetric[] = group.words.map((w) => {
     const level = w.emphasis ?? 'normal'
     const scale =
       level === 'supersize'
-        ? SUPERSIZE_SCALE
-        : level === 'emphasis'
-          ? EMPHASIS_SCALE
+        ? supScale
+        : level === 'emphasis' || level === 'box'
+          ? empScale
           : 1
     const effectiveSize = Math.round(baseFontSize * scale)
     const charWidth = effectiveSize * AVG_CHAR_WIDTH_RATIO

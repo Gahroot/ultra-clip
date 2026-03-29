@@ -96,8 +96,8 @@ export function createCaptionsFeature(): RenderFeature {
       // If upstream word-emphasis feature didn't provide keyframes, compute them here as fallback
       if (!job.emphasisKeyframes || job.emphasisKeyframes.length === 0) {
         job.emphasisKeyframes = localWords
-          .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize')
-          .map((w) => ({ time: w.start, end: w.end, level: w.emphasis as 'emphasis' | 'supersize' }))
+          .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize' || w.emphasis === 'box')
+          .map((w) => ({ time: w.start, end: w.end, level: w.emphasis as 'emphasis' | 'supersize' | 'box' }))
       }
 
       // Resolve fonts dir (cached after first call)

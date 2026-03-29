@@ -212,6 +212,20 @@ export interface CaptionSupersizeStyle {
   fontWeight: number
 }
 
+/** Box emphasis tier overrides — word sits on a colored opaque rectangle. */
+export interface CaptionBoxEmphasisStyle {
+  /** Box fill color in hex (e.g. '#FF0000'). Falls back to highlightColor if omitted. */
+  color?: string
+  /** Box opacity from 0 (transparent) to 1 (opaque). Defaults to 0.85. */
+  opacity: number
+  /** Padding around the text in pixels. Defaults to 10. */
+  padding: number
+  /** Override text color for box-emphasis words. Falls back to base textColor if omitted. */
+  textColor?: string
+  /** Override font weight for box-emphasis words. Falls back to base fontWeight if omitted. */
+  fontWeight?: number
+}
+
 /**
  * Rich caption style schema — the complete DNA of how words look on screen.
  *
@@ -269,6 +283,8 @@ export interface CaptionStyleSchema {
   emphasis: CaptionEmphasisStyle
   /** Visual overrides for words tagged 'supersize' by the AI edit plan. */
   supersize: CaptionSupersizeStyle
+  /** Visual overrides for words tagged 'box' — opaque background rectangle. */
+  boxEmphasis: CaptionBoxEmphasisStyle
 
   // ---------------------------------------------------------------------------
   // Animation
@@ -298,7 +314,7 @@ export interface CaptionStyleSchema {
 // ---------------------------------------------------------------------------
 
 /** Emphasis level for a single word in the transcript. */
-export type EmphasisLevel = 'normal' | 'emphasis' | 'supersize'
+export type EmphasisLevel = 'normal' | 'emphasis' | 'supersize' | 'box'
 
 /** A word with its emphasis level determined by AI or heuristic analysis. */
 export interface EmphasizedWord {
@@ -470,7 +486,7 @@ export interface AIEditPlanWordEmphasis {
   /** Clip-relative end timestamp in seconds. */
   end: number
   /** How much visual weight this word should carry in captions. */
-  level: 'emphasis' | 'supersize'
+  level: 'emphasis' | 'supersize' | 'box'
 }
 
 /** A B-Roll placement suggestion from the AI edit plan. */

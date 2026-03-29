@@ -524,7 +524,7 @@ interface AIEditPlanWordEmphasis {
   text: string
   start: number
   end: number
-  level: 'emphasis' | 'supersize'
+  level: 'emphasis' | 'supersize' | 'box'
 }
 
 interface AIEditPlanBRollSuggestion {
@@ -839,6 +839,32 @@ interface RecentProjectEntry {
   sourceCount: number
 }
 
+// ---------------------------------------------------------------------------
+// Filler Detection types
+// ---------------------------------------------------------------------------
+
+interface FillerSegment {
+  start: number
+  end: number
+  type: 'filler' | 'silence' | 'repeat'
+  label: string
+}
+
+interface FillerDetectionSettings {
+  removeFillerWords: boolean
+  trimSilences: boolean
+  removeRepeats: boolean
+  silenceThreshold: number
+  silenceTargetGap: number
+  fillerWords: string[]
+}
+
+interface FillerDetectionResult {
+  segments: FillerSegment[]
+  timeSaved: number
+  counts: { filler: number; silence: number; repeat: number }
+}
+
 interface Api {
   openFiles: () => Promise<string[]>
   openDirectory: () => Promise<string | null>
@@ -1148,6 +1174,12 @@ interface Api {
     model: string
     timestamp: number
   }) => void) => () => void
+  // Filler Detection — detect filler words, silences, and repeats
+  detectFillers: (
+    words: WordTimestamp[],
+    settings: FillerDetectionSettings
+  ) => Promise<FillerDetectionResult>
+
   // Shot Segmentation — segment a clip's transcript into natural 4-6 second "shots"
   segmentClipIntoShots: (
     words: WordTimestamp[],

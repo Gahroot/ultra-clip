@@ -211,7 +211,7 @@ export function parseEditPlanResponse(
       text: String(e.text ?? word.text),
       start: Number.isFinite(Number(e.start)) ? Number(e.start) : word.clipRelStart,
       end: Number.isFinite(Number(e.end)) ? Number(e.end) : word.clipRelEnd,
-      level: level as 'emphasis' | 'supersize'
+      level: level as 'emphasis' | 'supersize' | 'box'
     })
   }
 

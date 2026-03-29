@@ -5,6 +5,7 @@ import type {
   ClipRenderSettings,
   ClipVariantUI,
   CropRegion,
+  FillerSegmentUI,
   PartInfoUI,
   StitchedClipCandidate,
   StoryArcUI,
@@ -57,6 +58,12 @@ export interface ClipsSlice {
   setClipShotStyles: (sourceId: string, clipId: string, assignments: ShotStyleAssignment[]) => void
   /** Remove all per-shot style assignments (revert to global style). */
   clearAllShotStyles: (sourceId: string, clipId: string) => void
+  /** Store detected filler segments for a clip. */
+  setClipFillers: (sourceId: string, clipId: string, segments: FillerSegmentUI[], timeSaved: number) => void
+  /** Toggle whether a filler segment is restored (user wants to keep it). */
+  toggleFillerRestore: (sourceId: string, clipId: string, segmentIndex: number) => void
+  /** Clear all filler detection data from a clip. */
+  clearClipFillers: (sourceId: string, clipId: string) => void
   approveAll: (sourceId: string) => void
   approveClipsAboveScore: (sourceId: string, minScore: number) => { approved: number; rejected: number }
   rejectAll: (sourceId: string) => void
@@ -484,6 +491,42 @@ export const createClipsSlice: StateCreator<
           ...state.clips,
           [sourceId]: updateItemById(sourceClips, clipId, { shotStyles: undefined })
         }
+      }
+    }),
+
+  setClipFillers: (sourceId, clipId, segments, timeSaved) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      return {
+        clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { fillerSegments: segments, fillerTimeSaved: timeSaved, restoredFillerIndices: [] }) }
+      }
+    }),
+
+  toggleFillerRestore: (sourceId, clipId, segmentIndex) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      return {
+        clips: {
+          ...state.clips,
+          [sourceId]: updateItemById(sourceClips, clipId, (c) => {
+            const restored = [...(c.restoredFillerIndices ?? [])]
+            const idx = restored.indexOf(segmentIndex)
+            if (idx >= 0) restored.splice(idx, 1)
+            else restored.push(segmentIndex)
+            return { restoredFillerIndices: restored }
+          })
+        }
+      }
+    }),
+
+  clearClipFillers: (sourceId, clipId) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      return {
+        clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { fillerSegments: undefined, fillerTimeSaved: undefined, restoredFillerIndices: undefined }) }
       }
     }),
 
