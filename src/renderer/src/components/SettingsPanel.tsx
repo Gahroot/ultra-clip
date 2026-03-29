@@ -59,7 +59,8 @@ import {
   type EncodingPreset,
   type OutputAspectRatio,
   type BRollDisplayMode,
-  type BRollTransition
+  type BRollTransition,
+  type SFXStyle,
 } from '@/store'
 import { cn, formatFileSize } from '@/lib/utils'
 import { DropZone } from './DropZone'
@@ -462,6 +463,7 @@ export function SettingsPanel() {
     setSoundDesignMusicVolume,
     setSoundDesignMusicDucking,
     setSoundDesignMusicDuckLevel,
+    setSoundDesignSfxStyle,
     setAutoZoomEnabled,
     setAutoZoomMode,
     setAutoZoomIntensity,
@@ -1803,6 +1805,50 @@ export function SettingsPanel() {
                   />
                 </FieldRow>
               )}
+
+              {/* SFX style preset */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">SFX Style</Label>
+                <p className="text-xs text-muted-foreground">
+                  Controls how aggressively sound effects are placed across the clip
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      {
+                        value: 'minimal' as SFXStyle,
+                        label: 'Minimal',
+                        desc: '1–2 quiet hits only',
+                      },
+                      {
+                        value: 'standard' as SFXStyle,
+                        label: 'Standard',
+                        desc: 'Emphasis-driven',
+                      },
+                      {
+                        value: 'energetic' as SFXStyle,
+                        label: 'Energetic',
+                        desc: 'Maximum density',
+                      },
+                    ] satisfies { value: SFXStyle; label: string; desc: string }[]
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setSoundDesignSfxStyle(opt.value)}
+                      className={cn(
+                        'flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center transition-colors',
+                        settings.soundDesign.sfxStyle === opt.value
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-background text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground'
+                      )}
+                    >
+                      <span className="text-xs font-semibold leading-tight">{opt.label}</span>
+                      <span className="text-[10px] leading-tight opacity-80">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* SFX volume */}
               <FieldRow label={`SFX Volume — ${Math.round(settings.soundDesign.sfxVolume * 100)}%`}>

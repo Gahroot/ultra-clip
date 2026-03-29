@@ -39,6 +39,107 @@ export interface SoundPlacementData {
   volumeExpr?: string
 }
 
+export type SFXStyle = 'minimal' | 'standard' | 'energetic'
+
+/**
+ * Tunable parameters that drive SFX placement for each style preset.
+ * All gap values are in seconds. Volume scales are multiplied by the
+ * user-controlled sfxVolume before being written into SoundPlacementData.
+ */
+export interface SFXStyleConfig {
+  // Supersize word impacts
+  supersizeMinGap: number
+  supersizeVolScale: number
+  risingTensionEnabled: boolean
+  maxSupersizeHits: number | null  // null = unlimited
+
+  // Emphasis word pops
+  emphasisEnabled: boolean
+  emphasisMinGap: number
+  emphasisVolScale: number
+
+  // Edit event sync (B-Roll transitions, jump-cuts)
+  editSyncEnabled: boolean
+  editBrollMinGap: number
+  editBrollVolScale: number
+  editJumpCutMinGap: number
+  editJumpCutVolScale: number
+
+  // Pause whooshes
+  whooshEnabled: boolean
+  whooshMinPause: number           // minimum gap length to trigger a whoosh
+  whooshMinGap: number             // min gap from previous SFX
+  whooshSecondsPerWhoosh: number   // rate-limit: 1 whoosh per N seconds of clip
+  whooshVolScale: number
+}
+
+/** Preset configs indexed by SFXStyle. */
+export const SFX_STYLE_CONFIGS: Record<SFXStyle, SFXStyleConfig> = {
+  /** Barely-there: at most 2 quiet impacts and a single subtle whoosh. */
+  minimal: {
+    supersizeMinGap: 10.0,
+    supersizeVolScale: 0.65,
+    risingTensionEnabled: false,
+    maxSupersizeHits: 2,
+    emphasisEnabled: false,
+    emphasisMinGap: 9999,
+    emphasisVolScale: 0.5,
+    editSyncEnabled: false,
+    editBrollMinGap: 9999,
+    editBrollVolScale: 0.65,
+    editJumpCutMinGap: 9999,
+    editJumpCutVolScale: 0.35,
+    whooshEnabled: true,
+    whooshMinPause: 0.6,
+    whooshMinGap: 2.0,
+    whooshSecondsPerWhoosh: 20,
+    whooshVolScale: 0.3,
+  },
+
+  /** Balanced: emphasis-driven placement at moderate density. Current default behaviour. */
+  standard: {
+    supersizeMinGap: 3.0,
+    supersizeVolScale: 1.0,
+    risingTensionEnabled: true,
+    maxSupersizeHits: null,
+    emphasisEnabled: true,
+    emphasisMinGap: 2.5,
+    emphasisVolScale: 0.5,
+    editSyncEnabled: true,
+    editBrollMinGap: 1.0,
+    editBrollVolScale: 0.65,
+    editJumpCutMinGap: 1.5,
+    editJumpCutVolScale: 0.35,
+    whooshEnabled: true,
+    whooshMinPause: 0.4,
+    whooshMinGap: 1.0,
+    whooshSecondsPerWhoosh: 8,
+    whooshVolScale: 0.7,
+  },
+
+  /** Maximum density: pops on every emphasis word, impacts on every supersize word,
+   *  whooshes on every edit event and eligible pause. */
+  energetic: {
+    supersizeMinGap: 1.0,
+    supersizeVolScale: 1.0,
+    risingTensionEnabled: true,
+    maxSupersizeHits: null,
+    emphasisEnabled: true,
+    emphasisMinGap: 0.5,
+    emphasisVolScale: 0.75,
+    editSyncEnabled: true,
+    editBrollMinGap: 0.4,
+    editBrollVolScale: 0.85,
+    editJumpCutMinGap: 0.75,
+    editJumpCutVolScale: 0.6,
+    whooshEnabled: true,
+    whooshMinPause: 0.25,
+    whooshMinGap: 0.4,
+    whooshSecondsPerWhoosh: 3,
+    whooshVolScale: 0.9,
+  },
+}
+
 export interface SoundDesignOptions {
   enabled: boolean
   backgroundMusicTrack: MusicTrack
@@ -46,6 +147,7 @@ export interface SoundDesignOptions {
   musicVolume: number  // 0–1
   musicDucking: boolean  // duck music during speech
   musicDuckLevel: number // volume fraction during speech (0–1, default 0.2)
+  sfxStyle: SFXStyle   // placement density preset (default 'standard')
 }
 
 /** @deprecated Use WordTimestamp from @shared/types instead */
@@ -203,6 +305,7 @@ export function generateSoundPlacements(
 
   const placements: SoundPlacementData[] = []
   const sfxVolume = Math.max(0, Math.min(1, options.sfxVolume))
+  const cfg = SFX_STYLE_CONFIGS[options.sfxStyle ?? 'standard']
 
   // Resolve all available SFX files up-front
   const sfxPaths = {
@@ -257,10 +360,11 @@ export function generateSoundPlacements(
   if (hasImpact && supersizeWords.length > 0) {
     // Alternating between impact-high and bass-drop for variety
     let useBassDrop = false
-    const MIN_SUPER_GAP = 3.0 // minimum seconds between supersize impacts
+    let supersizeHitCount = 0
 
     for (const word of supersizeWords) {
-      if (word.start - lastSfxTime < MIN_SUPER_GAP) continue
+      if (cfg.maxSupersizeHits !== null && supersizeHitCount >= cfg.maxSupersizeHits) break
+      if (word.start - lastSfxTime < cfg.supersizeMinGap) continue
       if (word.start < 0.2) continue // too close to clip start
 
       // Pick the impact SFX — alternate for variety, fall back to whatever exists
@@ -273,7 +377,7 @@ export function generateSoundPlacements(
 
       if (sfxPath) {
         // ── Rising tension: 0.3s before the supersize word ──────────────
-        if (sfxPaths.riseTensionShort) {
+        if (cfg.risingTensionEnabled && sfxPaths.riseTensionShort) {
           const riseTime = word.start - 0.3
           if (riseTime > 0.1 && riseTime - lastSfxTime >= 0.5) {
             placements.push({
@@ -292,22 +396,22 @@ export function generateSoundPlacements(
           filePath: sfxPath,
           startTime: word.start,
           duration: 0.6,
-          volume: sfxVolume
+          volume: sfxVolume * cfg.supersizeVolScale
         })
 
         lastSfxTime = word.start
         useBassDrop = !useBassDrop
+        supersizeHitCount++
       }
     }
   }
 
   // ── 3. Emphasis word pops ──────────────────────────────────────────────────
   const emphasisWords = (emphasizedWords ?? []).filter(w => w.emphasis === 'emphasis')
-  const MIN_EMPHASIS_GAP = 2.5
 
-  if (sfxPaths.wordPop && emphasisWords.length > 0) {
+  if (cfg.emphasisEnabled && sfxPaths.wordPop && emphasisWords.length > 0) {
     for (const word of emphasisWords) {
-      if (word.start - lastSfxTime < MIN_EMPHASIS_GAP) continue
+      if (word.start - lastSfxTime < cfg.emphasisMinGap) continue
       if (word.start < 0.2) continue
 
       placements.push({
@@ -315,7 +419,7 @@ export function generateSoundPlacements(
         filePath: sfxPaths.wordPop,
         startTime: word.start,
         duration: 0.3,
-        volume: sfxVolume * 0.5 // subtle — adds texture without overpowering
+        volume: sfxVolume * cfg.emphasisVolScale
       })
 
       lastSfxTime = word.start
@@ -325,31 +429,30 @@ export function generateSoundPlacements(
   // ── 4. Edit event synced SFX ───────────────────────────────────────────────
   // B-Roll transitions → swipe sound; jump-cut zooms → quiet camera shutter.
   // These sync to the visual edit rhythm so audio and video feel connected.
-  if (editEvents && editEvents.length > 0) {
+  if (cfg.editSyncEnabled && editEvents && editEvents.length > 0) {
     for (const evt of editEvents) {
       if (evt.time < 0.1 || evt.time > clipDuration - 0.3) continue
 
       if (evt.type === 'broll-transition' && sfxPaths.swipeTransition) {
-        // Don't collide with existing placements
-        if (evt.time - lastSfxTime >= 1.0) {
+        if (evt.time - lastSfxTime >= cfg.editBrollMinGap) {
           placements.push({
             type: 'sfx',
             filePath: sfxPaths.swipeTransition,
             startTime: evt.time,
             duration: 0.4,
-            volume: sfxVolume * 0.65
+            volume: sfxVolume * cfg.editBrollVolScale
           })
           lastSfxTime = evt.time
         }
       } else if (evt.type === 'jump-cut' && sfxPaths.cameraShutter) {
         // Camera shutter is intentionally quiet — it's felt more than heard
-        if (evt.time - lastSfxTime >= 1.5) {
+        if (evt.time - lastSfxTime >= cfg.editJumpCutMinGap) {
           placements.push({
             type: 'sfx',
             filePath: sfxPaths.cameraShutter,
             startTime: evt.time,
             duration: 0.25,
-            volume: sfxVolume * 0.35
+            volume: sfxVolume * cfg.editJumpCutVolScale
           })
           lastSfxTime = evt.time
         }
@@ -359,24 +462,23 @@ export function generateSoundPlacements(
 
   // ── 5. Transition whooshes at speech pauses ────────────────────────────────
   // Topic shifts / natural speech pauses get a soft whoosh to mark the
-  // transition. Rate-limited to ~1 per 8 seconds so they don't clutter.
-  if (sfxPaths.whooshSoft && wordTimestamps.length > 1) {
-    const maxWhooshes = Math.max(1, Math.floor(clipDuration / 8))
+  // transition. Rate-limited by cfg.whooshSecondsPerWhoosh.
+  if (cfg.whooshEnabled && sfxPaths.whooshSoft && wordTimestamps.length > 1) {
+    const maxWhooshes = Math.max(1, Math.floor(clipDuration / cfg.whooshSecondsPerWhoosh))
     let whooshCount = 0
 
     for (let i = 1; i < wordTimestamps.length && whooshCount < maxWhooshes; i++) {
       const gapStart = wordTimestamps[i - 1].end
       const gapLength = wordTimestamps[i].start - gapStart
 
-      if (gapLength >= 0.4 && gapStart > 2 && gapStart + 0.8 < clipDuration) {
-        // Don't collide with existing SFX
-        if (gapStart - lastSfxTime >= 1.0) {
+      if (gapLength >= cfg.whooshMinPause && gapStart > 2 && gapStart + 0.8 < clipDuration) {
+        if (gapStart - lastSfxTime >= cfg.whooshMinGap) {
           placements.push({
             type: 'sfx',
             filePath: sfxPaths.whooshSoft,
             startTime: gapStart,
             duration: Math.min(gapLength, 0.8),
-            volume: sfxVolume * 0.7
+            volume: sfxVolume * cfg.whooshVolScale
           })
           lastSfxTime = gapStart
           whooshCount++

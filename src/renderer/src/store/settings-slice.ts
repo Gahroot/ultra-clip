@@ -24,6 +24,7 @@ import type {
   PythonSetupState,
   BRollDisplayMode,
   BRollTransition,
+  SFXStyle,
 } from './types'
 import {
   DEFAULT_SETTINGS,
@@ -71,6 +72,7 @@ export interface SettingsSlice {
   setSoundDesignMusicVolume: (volume: number) => void
   setSoundDesignMusicDucking: (enabled: boolean) => void
   setSoundDesignMusicDuckLevel: (level: number) => void
+  setSoundDesignSfxStyle: (style: SFXStyle) => void
   setAutoZoomEnabled: (enabled: boolean) => void
   setAutoZoomMode: (mode: ZoomMode) => void
   setAutoZoomIntensity: (intensity: ZoomIntensity) => void
@@ -218,6 +220,11 @@ export const createSettingsSlice: StateCreator<
   setSoundDesignMusicDuckLevel: (musicDuckLevel) =>
     set((state) => ({
       settings: { ...state.settings, soundDesign: { ...state.settings.soundDesign, musicDuckLevel } }
+    })),
+
+  setSoundDesignSfxStyle: (sfxStyle) =>
+    set((state) => ({
+      settings: { ...state.settings, soundDesign: { ...state.settings.soundDesign, sfxStyle } }
     })),
 
   setAutoZoomEnabled: (enabled) =>

@@ -240,6 +240,15 @@ export interface CaptionStyle {
   supersizeColor?: string
 }
 
+/**
+ * SFX placement density/aggressiveness preset.
+ * - minimal    — 1–2 quiet impacts only; barely noticeable
+ * - standard   — emphasis-driven placement at moderate density (default)
+ * - energetic  — maximum density; pops on every emphasis word, impacts on every
+ *                supersize word, whooshes on every edit event
+ */
+export type SFXStyle = 'minimal' | 'standard' | 'energetic'
+
 export interface SoundDesignSettings {
   enabled: boolean
   backgroundMusicTrack: MusicTrack
@@ -249,6 +258,8 @@ export interface SoundDesignSettings {
   musicDucking: boolean
   /** Volume fraction to apply during speech (0–1). 0.2 = drop to 20% of full music volume. Default: 0.2 */
   musicDuckLevel: number
+  /** SFX placement density preset. Default: 'standard' */
+  sfxStyle: SFXStyle
 }
 
 export interface BrandKit {

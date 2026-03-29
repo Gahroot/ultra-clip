@@ -80,6 +80,7 @@ interface SoundDesignSettings {
   musicVolume: number
   musicDucking: boolean
   musicDuckLevel: number
+  sfxStyle: 'minimal' | 'standard' | 'energetic'
 }
 
 interface AutoZoomSettings {

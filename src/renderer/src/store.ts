@@ -35,6 +35,7 @@ export type {
   BRollSettings,
   BRollDisplayMode,
   BRollTransition,
+  SFXStyle,
   FillerRemovalSettings,
   RenderQualityPreset,
   OutputResolution,
