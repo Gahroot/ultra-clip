@@ -174,6 +174,210 @@ export const CAPTION_PRESETS: Record<string, CaptionStyle> = {
     animation: 'impact-two',
     emphasisColor: '#00FF00',
     supersizeColor: '#FFFFFF'
+  },
+
+  // ---------------------------------------------------------------------------
+  // Clean & Minimal family — constellation-named basic caption styles
+  // ---------------------------------------------------------------------------
+
+  /** Acamar — white text with subtle fade-in. Clean and understated. */
+  'acamar': {
+    id: 'acamar',
+    label: 'Acamar',
+    fontName: 'Inter',
+    fontFile: 'Inter.ttf',
+    fontSize: 0.055,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'fade-in',
+    emphasisColor: '#E0E7FF',
+    supersizeColor: '#C7D2FE'
+  },
+
+  /** Sirius — white text with pop animation. Crisp and attention-grabbing. */
+  'sirius': {
+    id: 'sirius',
+    label: 'Sirius',
+    fontName: 'Poppins',
+    fontFile: 'Poppins-Bold.ttf',
+    fontSize: 0.06,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 3,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'word-pop',
+    emphasisColor: '#F0ABFC',
+    supersizeColor: '#E879F9'
+  },
+
+  /** Vega — light gray with thin outline. Soft and refined. */
+  'vega': {
+    id: 'vega',
+    label: 'Vega',
+    fontName: 'Outfit',
+    fontFile: 'Outfit.ttf',
+    fontSize: 0.055,
+    primaryColor: '#E5E7EB',
+    highlightColor: '#F3F4F6',
+    outlineColor: '#1F2937',
+    backColor: '#00000000',
+    outline: 1,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'fade-in',
+    emphasisColor: '#D1D5DB',
+    supersizeColor: '#FFFFFF'
+  },
+
+  /** Capella — clean sans-serif with colored emphasis words. */
+  'capella': {
+    id: 'capella',
+    label: 'Capella',
+    fontName: 'Inter',
+    fontFile: 'Inter-Bold.ttf',
+    fontSize: 0.06,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#60A5FA',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'captions-ai',
+    emphasisColor: '#60A5FA',
+    supersizeColor: '#3B82F6'
+  },
+
+  /** Mira — minimal with rounded background boxes. */
+  'mira': {
+    id: 'mira',
+    label: 'Mira',
+    fontName: 'Poppins',
+    fontFile: 'Poppins-Regular.ttf',
+    fontSize: 0.055,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#00000000',
+    backColor: '#B3000000',
+    outline: 12,
+    shadow: 0,
+    borderStyle: 3,
+    wordsPerLine: 3,
+    animation: 'fade-in',
+    emphasisColor: '#FDE68A',
+    supersizeColor: '#FBBF24'
+  },
+
+  /** Lyra — thin weight elegant with gentle bounce. */
+  'lyra': {
+    id: 'lyra',
+    label: 'Lyra',
+    fontName: 'Outfit',
+    fontFile: 'Outfit.ttf',
+    fontSize: 0.055,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 1,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'elastic-bounce',
+    emphasisColor: '#A78BFA',
+    supersizeColor: '#8B5CF6'
+  },
+
+  /** Rigel — small caps with slide-up reveal. Structured and editorial. */
+  'rigel': {
+    id: 'rigel',
+    label: 'Rigel',
+    fontName: 'Montserrat',
+    fontFile: 'Montserrat.ttf',
+    fontSize: 0.05,
+    primaryColor: '#F9FAFB',
+    highlightColor: '#F9FAFB',
+    outlineColor: '#111827',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'cascade',
+    emphasisColor: '#FCA5A5',
+    supersizeColor: '#F87171'
+  },
+
+  /** Polaris — centered single-word-at-a-time with fade. Bold and focused. */
+  'polaris': {
+    id: 'polaris',
+    label: 'Polaris',
+    fontName: 'Montserrat',
+    fontFile: 'Montserrat-Bold.ttf',
+    fontSize: 0.075,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 3,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 1,
+    animation: 'fade-in',
+    emphasisColor: '#34D399',
+    supersizeColor: '#10B981'
+  },
+
+  /** Aldebaran — two-word grouping with clean highlight. */
+  'aldebaran': {
+    id: 'aldebaran',
+    label: 'Aldebaran',
+    fontName: 'Inter',
+    fontFile: 'Inter-Bold.ttf',
+    fontSize: 0.06,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FBBF24',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'captions-ai',
+    emphasisColor: '#FBBF24',
+    supersizeColor: '#F59E0B'
+  },
+
+  /** Antares — bold sans-serif with drop shadow. Strong and readable. */
+  'antares': {
+    id: 'antares',
+    label: 'Antares',
+    fontName: 'Poppins',
+    fontFile: 'Poppins-Bold.ttf',
+    fontSize: 0.065,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 0,
+    shadow: 3,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'word-pop',
+    emphasisColor: '#FB923C',
+    supersizeColor: '#F97316'
   }
 }
 
