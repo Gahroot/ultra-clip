@@ -44,6 +44,8 @@ import {
   BUILT_IN_EDIT_STYLE_PRESETS,
   loadActiveStylePresetId,
   persistActiveStylePresetId,
+  loadActiveVariantId,
+  persistActiveVariantId,
   applyEditStylePresetToSettings,
 } from './helpers'
 import { _pushUndo } from './history-slice'
@@ -159,7 +161,9 @@ export interface SettingsSlice {
 
   // Edit Style Presets
   activeStylePresetId: string | null
-  applyEditStylePreset: (id: string) => void
+  /** Active variant within the selected style preset (null = first/default variant). */
+  activeVariantId: string | null
+  applyEditStylePreset: (id: string, variantId?: string | null) => void
 }
 
 export const createSettingsSlice: StateCreator<
@@ -179,6 +183,7 @@ export const createSettingsSlice: StateCreator<
   settingsSnapshot: null,
   settingsChanged: false,
   activeStylePresetId: loadActiveStylePresetId(),
+  activeVariantId: loadActiveVariantId(),
 
   // --- Settings ---
 
@@ -723,12 +728,14 @@ export const createSettingsSlice: StateCreator<
 
   // --- Edit Style Presets ---
 
-  applyEditStylePreset: (id) => {
+  applyEditStylePreset: (id, variantId) => {
     const preset = BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === id)
     if (!preset) return
+    const resolvedVariantId = variantId ?? null
     const { settings } = get()
-    const newSettings = applyEditStylePresetToSettings(settings, preset)
+    const newSettings = applyEditStylePresetToSettings(settings, preset, resolvedVariantId)
     persistActiveStylePresetId(id)
-    set({ settings: newSettings, activeStylePresetId: id })
+    persistActiveVariantId(resolvedVariantId)
+    set({ settings: newSettings, activeStylePresetId: id, activeVariantId: resolvedVariantId })
   },
 })

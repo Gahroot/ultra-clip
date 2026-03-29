@@ -743,6 +743,56 @@ export interface EditStylePreset {
   transitionIn?: import('../../../shared/types').ShotTransitionConfig
   /** Optional transition out of a shot when this preset is assigned per-shot. */
   transitionOut?: import('../../../shared/types').ShotTransitionConfig
+
+  /**
+   * Sub-variants within this style family. Each variant shares the parent's
+   * energy/mood but differs in visual execution — different caption animations,
+   * color palettes, B-Roll density, transition aggressiveness, etc.
+   *
+   * The first variant is the default and represents the "base" look for this style.
+   * When a user selects a style without picking a variant, the first variant is applied.
+   */
+  variants?: EditStyleVariant[]
+}
+
+/**
+ * A visual sub-variant within a parent style family.
+ *
+ * Uses deep partial overrides — only the properties that differ from the parent
+ * preset are specified. At application time, variant overrides are merged on top
+ * of the parent preset to produce a complete EditStylePreset.
+ *
+ * Example: "Velocity Bold" might override captions.style.fontSize and
+ * zoom.intensity but inherit everything else from the parent "Velocity" preset.
+ */
+export interface EditStyleVariant {
+  /** Unique ID within the parent style (e.g. 'velocity-bold'). */
+  id: string
+  /** Short display name (e.g. 'Bold', 'Clean', 'Neon'). */
+  name: string
+  /** Brief description of how this variant differs from the base. */
+  description: string
+  /** Emoji or small visual tag for the variant thumbnail. */
+  thumbnail: string
+
+  /** Caption overrides — merged on top of the parent's captions. */
+  captions?: DeepPartial<EditStyleCaptions>
+  /** Zoom overrides — merged on top of the parent's zoom. */
+  zoom?: DeepPartial<EditStyleZoom>
+  /** B-Roll overrides — merged on top of the parent's broll. */
+  broll?: DeepPartial<EditStyleBRoll>
+  /** Sound overrides — merged on top of the parent's sound. */
+  sound?: DeepPartial<EditStyleSound>
+  /** Overlay overrides — merged on top of the parent's overlays. */
+  overlays?: DeepPartial<EditStyleOverlays>
+}
+
+/**
+ * Recursive partial — allows overriding any nested property at any depth
+ * without requiring every sibling to also be specified.
+ */
+export type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P]
 }
 
 export interface ProcessingConfig {

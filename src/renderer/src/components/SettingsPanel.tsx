@@ -466,13 +466,31 @@ const CATEGORY_META: Record<EditStyleCategory, { label: string; gradient: string
 
 function StylePresetPicker() {
   const activeStylePresetId = useStore((s) => s.activeStylePresetId)
+  const activeVariantId = useStore((s) => s.activeVariantId)
   const applyEditStylePreset = useStore((s) => s.applyEditStylePreset)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [hoveredVariantId, setHoveredVariantId] = useState<string | null>(null)
   const [isExpanded, setIsExpanded] = useState(true)
 
   const focusedPreset = BUILT_IN_EDIT_STYLE_PRESETS.find(
     (p) => p.id === (hoveredId ?? activeStylePresetId)
   ) ?? null
+
+  // Show variants panel for the active preset (not for hovered — that would be jarring)
+  const activePreset = BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === activeStylePresetId) ?? null
+  const variants = activePreset?.variants ?? []
+  const hasVariants = variants.length > 0
+
+  // Determine which variant is focused (hovered or active)
+  const focusedVariant = hoveredVariantId
+    ? variants.find((v) => v.id === hoveredVariantId) ?? null
+    : variants.find((v) => v.id === activeVariantId) ?? (variants[0] ?? null)
+
+  // Build the active label for the header
+  const activePresetName = activePreset?.name ?? null
+  const activeVariantName = activeVariantId
+    ? variants.find((v) => v.id === activeVariantId)?.name ?? null
+    : null
 
   return (
     <div className="shrink-0 border-b border-border">
@@ -484,9 +502,9 @@ function StylePresetPicker() {
         <div className="flex items-center gap-2">
           <span className="text-sm">🎨</span>
           <span className="text-xs font-semibold text-foreground">Style Presets</span>
-          {activeStylePresetId && (
+          {activePresetName && (
             <span className="text-[10px] text-muted-foreground">
-              · {BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === activeStylePresetId)?.name}
+              · {activePresetName}{activeVariantName ? ` / ${activeVariantName}` : ''}
             </span>
           )}
         </div>
@@ -495,7 +513,7 @@ function StylePresetPicker() {
 
       {isExpanded && (
         <div className="px-3 pb-3 space-y-2">
-          {/* Horizontal scroll strip */}
+          {/* Horizontal scroll strip — style families */}
           <div className="overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
             <div className="flex gap-2 min-w-max">
               {BUILT_IN_EDIT_STYLE_PRESETS.map((preset) => {
@@ -504,7 +522,7 @@ function StylePresetPicker() {
                 return (
                   <button
                     key={preset.id}
-                    onClick={() => applyEditStylePreset(preset.id)}
+                    onClick={() => applyEditStylePreset(preset.id, preset.variants?.[0]?.id ?? null)}
                     onMouseEnter={() => setHoveredId(preset.id)}
                     onMouseLeave={() => setHoveredId(null)}
                     className={cn(
@@ -575,6 +593,66 @@ function StylePresetPicker() {
           )}
           {!focusedPreset && (
             <p className="text-[10px] text-muted-foreground text-center py-0.5">Hover a preset to preview · click to apply</p>
+          )}
+
+          {/* Variant panel — only shown when a style with variants is active */}
+          {hasVariants && activePreset && !hoveredId && (
+            <div className="rounded-lg bg-muted/20 border border-border/40 px-3 py-2 space-y-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold text-foreground">{activePreset.name} Variants</span>
+                <span className="text-[9px] text-muted-foreground">· {variants.length} looks</span>
+              </div>
+
+              {/* Variant grid */}
+              <div className="grid grid-cols-5 gap-1.5">
+                {variants.map((variant) => {
+                  const isVariantActive = variant.id === activeVariantId ||
+                    (!activeVariantId && variant.id === variants[0]?.id)
+                  const meta = CATEGORY_META[activePreset.category]
+                  return (
+                    <button
+                      key={variant.id}
+                      onClick={() => applyEditStylePreset(activePreset.id, variant.id)}
+                      onMouseEnter={() => setHoveredVariantId(variant.id)}
+                      onMouseLeave={() => setHoveredVariantId(null)}
+                      className={cn(
+                        'flex flex-col items-center rounded-lg overflow-hidden transition-all duration-150 cursor-pointer select-none',
+                        'hover:scale-105 active:scale-95',
+                        isVariantActive ? 'ring-2 shadow-md' : 'ring-1 ring-border/40 hover:ring-border'
+                      )}
+                      style={{
+                        ...(isVariantActive ? { boxShadow: `0 0 0 2px ${meta.ring}` } : {}),
+                      }}
+                      title={`${activePreset.name} ${variant.name}`}
+                    >
+                      {/* Variant thumbnail — small gradient card with emoji */}
+                      <div
+                        className="w-full flex items-center justify-center"
+                        style={{
+                          background: isVariantActive
+                            ? meta.gradient
+                            : 'linear-gradient(135deg, var(--muted) 0%, var(--muted) 100%)',
+                          height: 32,
+                        }}
+                      >
+                        <span style={{ fontSize: '1rem', lineHeight: 1 }}>{variant.thumbnail}</span>
+                      </div>
+                      <div className="w-full px-0.5 py-0.5 text-center bg-muted/40">
+                        <span className="text-[8px] font-medium text-foreground leading-none block truncate">{variant.name}</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Variant description */}
+              {focusedVariant && (
+                <p className="text-[9px] text-muted-foreground leading-relaxed">
+                  <span className="font-medium text-foreground">{activePreset.name} {focusedVariant.name}</span>
+                  {' — '}{focusedVariant.description}
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}

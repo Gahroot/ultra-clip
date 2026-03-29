@@ -617,6 +617,7 @@ export function saveHookTemplatesToStorage(templates: HookTextTemplate[]): void 
 // ---------------------------------------------------------------------------
 
 const ACTIVE_STYLE_PRESET_KEY = 'batchcontent-active-style-preset'
+const ACTIVE_VARIANT_KEY = 'batchcontent-active-variant'
 
 export function loadActiveStylePresetId(): string | null {
   try {
@@ -638,35 +639,122 @@ export function persistActiveStylePresetId(id: string | null): void {
   }
 }
 
-/** Apply an EditStylePreset onto existing AppSettings, preserving secrets and machine-specific values. */
-export function applyEditStylePresetToSettings(settings: AppSettings, preset: EditStylePreset): AppSettings {
+export function loadActiveVariantId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_VARIANT_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function persistActiveVariantId(id: string | null): void {
+  try {
+    if (id === null) {
+      localStorage.removeItem(ACTIVE_VARIANT_KEY)
+    } else {
+      localStorage.setItem(ACTIVE_VARIANT_KEY, id)
+    }
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Deep merge utility — recursively merges `override` into `base`.
+ * Only overrides keys that are explicitly present in the override object.
+ * Primitive values replace; objects recurse.
+ */
+function deepMerge<T extends Record<string, unknown>>(base: T, override: Record<string, unknown>): T {
+  const result = { ...base } as Record<string, unknown>
+  for (const key of Object.keys(override)) {
+    const baseVal = result[key]
+    const overVal = override[key]
+    if (
+      overVal !== null &&
+      overVal !== undefined &&
+      typeof overVal === 'object' &&
+      !Array.isArray(overVal) &&
+      typeof baseVal === 'object' &&
+      baseVal !== null &&
+      !Array.isArray(baseVal)
+    ) {
+      result[key] = deepMerge(
+        baseVal as Record<string, unknown>,
+        overVal as Record<string, unknown>
+      )
+    } else if (overVal !== undefined) {
+      result[key] = overVal
+    }
+  }
+  return result as T
+}
+
+/**
+ * Resolve a preset + optional variant into a fully concrete EditStylePreset.
+ * If variantId is null or not found, returns the preset as-is.
+ */
+export function resolvePresetVariant(preset: EditStylePreset, variantId: string | null): EditStylePreset {
+  if (!variantId || !preset.variants || preset.variants.length === 0) return preset
+  const variant = preset.variants.find((v) => v.id === variantId)
+  if (!variant) return preset
+
+  // Merge each domain that has overrides
+  const resolved = { ...preset }
+  if (variant.captions) {
+    resolved.captions = deepMerge(preset.captions, variant.captions as Record<string, unknown>) as typeof preset.captions
+  }
+  if (variant.zoom) {
+    resolved.zoom = deepMerge(preset.zoom, variant.zoom as Record<string, unknown>) as typeof preset.zoom
+  }
+  if (variant.broll) {
+    resolved.broll = deepMerge(preset.broll, variant.broll as Record<string, unknown>) as typeof preset.broll
+  }
+  if (variant.sound) {
+    resolved.sound = deepMerge(preset.sound, variant.sound as Record<string, unknown>) as typeof preset.sound
+  }
+  if (variant.overlays) {
+    resolved.overlays = deepMerge(preset.overlays, variant.overlays as Record<string, unknown>) as typeof preset.overlays
+  }
+  return resolved
+}
+
+/**
+ * Apply an EditStylePreset (optionally with a variant) onto existing AppSettings,
+ * preserving secrets and machine-specific values.
+ */
+export function applyEditStylePresetToSettings(
+  settings: AppSettings,
+  preset: EditStylePreset,
+  variantId?: string | null
+): AppSettings {
+  const resolved = resolvePresetVariant(preset, variantId ?? null)
   return {
     ...settings,
-    captionStyle: preset.captions.style,
-    captionsEnabled: preset.captions.enabled,
-    autoZoom: preset.zoom,
-    soundDesign: preset.sound,
+    captionStyle: resolved.captions.style,
+    captionsEnabled: resolved.captions.enabled,
+    autoZoom: resolved.zoom,
+    soundDesign: resolved.sound,
     broll: {
-      ...preset.broll,
+      ...resolved.broll,
       pexelsApiKey: settings.broll.pexelsApiKey,
     },
     hookTitleOverlay: {
       ...settings.hookTitleOverlay,
-      enabled: preset.overlays.hookTitle.enabled,
-      style: preset.overlays.hookTitle.style,
-      displayDuration: preset.overlays.hookTitle.displayDuration,
-      fontSize: preset.overlays.hookTitle.fontSize,
-      textColor: preset.overlays.hookTitle.textColor,
-      outlineColor: preset.overlays.hookTitle.outlineColor,
-      outlineWidth: preset.overlays.hookTitle.outlineWidth,
+      enabled: resolved.overlays.hookTitle.enabled,
+      style: resolved.overlays.hookTitle.style,
+      displayDuration: resolved.overlays.hookTitle.displayDuration,
+      fontSize: resolved.overlays.hookTitle.fontSize,
+      textColor: resolved.overlays.hookTitle.textColor,
+      outlineColor: resolved.overlays.hookTitle.outlineColor,
+      outlineWidth: resolved.overlays.hookTitle.outlineWidth,
     },
     rehookOverlay: {
       ...settings.rehookOverlay,
-      enabled: preset.overlays.rehook.enabled,
-      style: preset.overlays.rehook.style,
-      displayDuration: preset.overlays.rehook.displayDuration,
+      enabled: resolved.overlays.rehook.enabled,
+      style: resolved.overlays.rehook.style,
+      displayDuration: resolved.overlays.rehook.displayDuration,
     },
-    progressBarOverlay: preset.overlays.progressBar,
+    progressBarOverlay: resolved.overlays.progressBar,
   }
 }
 
@@ -693,6 +781,9 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       rehook: { enabled: true, style: 'bar', displayDuration: 1.5 },
       progressBar: { enabled: true, style: 'glow', position: 'bottom', height: 4, color: '#FF6B35', opacity: 0.9 },
     },
+    colorGrade: { preset: 'high-contrast' },
+    transitionIn: { type: 'zoom-in', duration: 0.25 },
+    transitionOut: { type: 'zoom-in', duration: 0.25 },
   },
   {
     id: 'tiktok-hype',
@@ -714,6 +805,9 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       rehook: { enabled: true, style: 'slide-up', displayDuration: 1.5 },
       progressBar: { enabled: true, style: 'gradient', position: 'top', height: 5, color: '#00FFFF', opacity: 0.85 },
     },
+    colorGrade: { preset: 'high-contrast' },
+    transitionIn: { type: 'crossfade', duration: 0.2 },
+    transitionOut: { type: 'crossfade', duration: 0.2 },
   },
 
   // ── Educational ──────────────────────────────────────────────────────────
@@ -737,6 +831,9 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       rehook: { enabled: true, style: 'text-only', displayDuration: 1.5 },
       progressBar: { enabled: true, style: 'solid', position: 'bottom', height: 3, color: '#2563EB', opacity: 0.9 },
     },
+    colorGrade: { preset: 'none' },
+    transitionIn: { type: 'none' },
+    transitionOut: { type: 'none' },
   },
   {
     id: 'podcast-cuts',
@@ -758,6 +855,9 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       rehook: { enabled: false, style: 'bar', displayDuration: 1.5 },
       progressBar: { enabled: true, style: 'solid', position: 'bottom', height: 3, color: '#FFFFFF', opacity: 0.7 },
     },
+    colorGrade: { preset: 'warm', brightness: 0.01 },
+    transitionIn: { type: 'none' },
+    transitionOut: { type: 'none' },
   },
 
   // ── Cinematic ────────────────────────────────────────────────────────────
@@ -781,6 +881,9 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       rehook: { enabled: false, style: 'bar', displayDuration: 1.5 },
       progressBar: { enabled: true, style: 'solid', position: 'bottom', height: 2, color: '#FFFFFF', opacity: 0.6 },
     },
+    colorGrade: { preset: 'cinematic' },
+    transitionIn: { type: 'dip-black', duration: 0.4 },
+    transitionOut: { type: 'dip-black', duration: 0.4 },
   },
   {
     id: 'chill-vibes',
@@ -802,6 +905,9 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       rehook: { enabled: false, style: 'bar', displayDuration: 1.5 },
       progressBar: { enabled: false, style: 'solid', position: 'bottom', height: 4, color: '#FFFFFF', opacity: 0.9 },
     },
+    colorGrade: { preset: 'vintage' },
+    transitionIn: { type: 'crossfade', duration: 0.5 },
+    transitionOut: { type: 'crossfade', duration: 0.5 },
   },
 
   // ── Minimal ──────────────────────────────────────────────────────────────
@@ -825,6 +931,9 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       rehook: { enabled: false, style: 'bar', displayDuration: 1.5 },
       progressBar: { enabled: false, style: 'solid', position: 'bottom', height: 4, color: '#FFFFFF', opacity: 0.9 },
     },
+    colorGrade: { preset: 'none' },
+    transitionIn: { type: 'none' },
+    transitionOut: { type: 'none' },
   },
   {
     id: 'reels-minimal',
@@ -846,6 +955,9 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       rehook: { enabled: false, style: 'bar', displayDuration: 1.5 },
       progressBar: { enabled: false, style: 'solid', position: 'bottom', height: 4, color: '#FFFFFF', opacity: 0.9 },
     },
+    colorGrade: { preset: 'none' },
+    transitionIn: { type: 'crossfade', duration: 0.3 },
+    transitionOut: { type: 'crossfade', duration: 0.3 },
   },
 
   // ── Branded ──────────────────────────────────────────────────────────────
@@ -869,6 +981,9 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       rehook: { enabled: true, style: 'bar', displayDuration: 1.5 },
       progressBar: { enabled: true, style: 'gradient', position: 'bottom', height: 5, color: '#FFFFFF', opacity: 0.9 },
     },
+    colorGrade: { preset: 'film' },
+    transitionIn: { type: 'crossfade', duration: 0.3 },
+    transitionOut: { type: 'crossfade', duration: 0.3 },
   },
   {
     id: 'creator-mode',
@@ -890,5 +1005,8 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       rehook: { enabled: true, style: 'slide-up', displayDuration: 1.5 },
       progressBar: { enabled: true, style: 'glow', position: 'bottom', height: 4, color: '#FFFFFF', opacity: 0.9 },
     },
+    colorGrade: { preset: 'warm' },
+    transitionIn: { type: 'swipe-left', duration: 0.3 },
+    transitionOut: { type: 'swipe-left', duration: 0.3 },
   },
 ]

@@ -96,22 +96,27 @@ export async function startBatchRender(
   //  1. filler-removal    — mutates job.sourceVideoPath, startTime, endTime, wordTimestamps
   //  2. brand-kit         — writes job.brandKit (consumed by base-render)
   //  3. word-emphasis     — writes job.wordEmphasis + job.emphasisKeyframes
-  //  4. captions          — reads job.wordEmphasis, generates ASS, fallback emphasis
+  //  4. captions          — reads job.wordEmphasis, generates ASS, fallback emphasisKeyframes
   //  5. hook-title        — generates ASS overlay file
   //  6. rehook            — reads hookTitleOverlay.displayDuration for appear time
   //  7. progress-bar      — injects job.progressBarConfig
-  //  8. broll             — reads job.brollPlacements, emits job.editEvents
-  //  9. sound-design      — reads job.editEvents, validates job.soundPlacements
-  // 10. auto-zoom         — reads job.emphasisKeyframes for reactive zoom
-  // 11. color-grade       — applies color grading filters
-  // 12. shot-transition   — applies shot transition effects
+  //  8. auto-zoom         — reads job.emphasisKeyframes for reactive zoom (prepare stores settings)
+  //  9. broll             — reads job.brollPlacements + shotStyleConfigs.brollMode,
+  //                         emits 'broll-transition' editEvents
+  // 10. shot-transition   — reads shotStyleConfigs, emits 'shot-transition' editEvents
+  // 11. color-grade       — reads shotStyleConfigs, validates + logs color grade configs
+  // 12. sound-design      — reads ALL editEvents (broll + shot-transition + jump-cut),
+  //                         validates job.soundPlacements
   //
   // Cross-feature data flow:
   //   filler-removal ──wordTimestamps──▸ word-emphasis (remapped timestamps)
-  //   word-emphasis ──wordEmphasis──▸ captions (emphasis tags for ASS)
-  //   word-emphasis ──emphasisKeyframes──▸ auto-zoom (reactive mode)
+  //   word-emphasis ──wordEmphasis──▸ captions (emphasis tags for ASS styling)
+  //   word-emphasis ──emphasisKeyframes──▸ auto-zoom (reactive zoom keyframes)
+  //   captions ──emphasisKeyframes (fallback)──▸ auto-zoom (if word-emphasis didn't produce them)
+  //   IPC handler ──shotStyleConfigs──▸ captions, auto-zoom, broll, color-grade, shot-transition
   //   IPC handler ──brollPlacements──▸ broll (postProcess + edit event emission)
-  //   broll ──editEvents──▸ sound-design (B-Roll transitions SFX sync)
+  //   broll ──editEvents['broll-transition']──▸ sound-design (B-Roll transition SFX sync)
+  //   shot-transition ──editEvents['shot-transition']──▸ sound-design (shot boundary SFX sync)
   //   IPC handler ──soundPlacements──▸ sound-design (base render filter_complex)
   const features: RenderFeature[] = [
     createFillerRemovalFeature(),
@@ -121,11 +126,11 @@ export async function startBatchRender(
     createHookTitleFeature(),
     createRehookFeature(),
     progressBarFeature,
-    brollFeature,
-    soundDesignFeature,
     autoZoomFeature,
+    brollFeature,
+    shotTransitionFeature,
     colorGradeFeature,
-    shotTransitionFeature
+    soundDesignFeature
   ]
 
   // ── Resolve batch-level config ────────────────────────────────────────────
