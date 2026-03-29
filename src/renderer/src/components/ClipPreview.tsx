@@ -1412,9 +1412,47 @@ export function ClipPreview({
                   </Tooltip>
                 </TooltipProvider>
               </div>
+
+              {/* Filler summary bar */}
+              {clip.fillerSegments && clip.fillerSegments.length > 0 && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 px-1">
+                  <span>
+                    Fillers: {clip.fillerSegments.filter((s) => s.type === 'filler').length} words,{' '}
+                    {clip.fillerSegments.filter((s) => s.type === 'silence').length} silences
+                    {clip.fillerSegments.filter((s) => s.type === 'repeat').length > 0 &&
+                      `, ${clip.fillerSegments.filter((s) => s.type === 'repeat').length} repeats`}
+                    {clip.fillerTimeSaved != null && ` · Saving ${clip.fillerTimeSaved.toFixed(1)}s`}
+                  </span>
+                  <button
+                    className="ml-auto text-xs text-amber-400 hover:text-amber-300"
+                    onClick={() => {
+                      const segs = clip.fillerSegments ?? []
+                      const restored = clip.restoredFillerIndices ?? []
+                      const allRestored = segs.length > 0 && restored.length === segs.length
+                      // Toggle: restore all or clear all
+                      for (let idx = 0; idx < segs.length; idx++) {
+                        const isRestored = restored.includes(idx)
+                        if (allRestored && isRestored) {
+                          toggleFillerRestore(sourceId, clip.id, idx)
+                        } else if (!allRestored && !isRestored) {
+                          toggleFillerRestore(sourceId, clip.id, idx)
+                        }
+                      }
+                    }}
+                  >
+                    {(clip.restoredFillerIndices ?? []).length === (clip.fillerSegments ?? []).length
+                      ? 'Remove All'
+                      : 'Restore All'}
+                  </button>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-1">
                 {clip.wordTimestamps.map((w, i) => {
                   const isActive = currentTime >= w.start && currentTime < w.end
+                  const fillerIdx = getWordFillerIndex(w)
+                  const isRestored =
+                    fillerIdx >= 0 && (clip.restoredFillerIndices ?? []).includes(fillerIdx)
                   return (
                     <button
                       key={i}
@@ -1423,9 +1461,25 @@ export function ClipPreview({
                         'text-xs px-1.5 py-0.5 rounded border transition-colors',
                         isActive
                           ? 'bg-primary/20 border-primary/50 text-primary'
-                          : 'border-border text-muted-foreground hover:text-foreground hover:border-primary/40'
+                          : 'border-border text-muted-foreground hover:text-foreground hover:border-primary/40',
+                        fillerIdx >= 0 &&
+                          !isRestored &&
+                          'line-through text-red-400/70 border-red-500/30',
+                        fillerIdx >= 0 &&
+                          isRestored &&
+                          'underline decoration-dashed decoration-amber-400/50 text-amber-300/70 border-amber-500/30'
                       )}
-                      title={`${formatTime(w.start)} – ${formatTime(w.end)}`}
+                      title={
+                        fillerIdx >= 0
+                          ? `${formatTime(w.start)} – ${formatTime(w.end)} · ${isRestored ? 'Restored filler' : 'Filler (right-click to restore)'}`
+                          : `${formatTime(w.start)} – ${formatTime(w.end)}`
+                      }
+                      onContextMenu={(e) => {
+                        if (fillerIdx >= 0) {
+                          e.preventDefault()
+                          toggleFillerRestore(sourceId, clip.id, fillerIdx)
+                        }
+                      }}
                     >
                       {w.text}
                     </button>
