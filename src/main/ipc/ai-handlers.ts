@@ -34,6 +34,7 @@ import type { DescriptionClipInput } from '../ai/description-generator'
 import { resolveHookFont } from '../hook-title'
 import { analyzeWordEmphasis } from '../word-emphasis'
 import { generateEditPlan } from '../ai/edit-plan'
+import { clearEditPlanCache, getEditPlanCacheSize } from '../ai/edit-plan-cache'
 import type { WordTimestamp } from '@shared/types'
 
 const AI_VALIDATION_MODEL = 'gemini-2.5-flash-lite'
@@ -300,6 +301,24 @@ export function registerAiHandlers(): void {
       }
       return plans
     })
+  )
+
+  // AI Edit Plan Cache — clear all cached edit plans
+  ipcMain.handle(
+    Ch.Invoke.AI_EDIT_PLAN_CACHE_CLEAR,
+    async (): Promise<{ removed: number }> => {
+      const removed = clearEditPlanCache()
+      console.log(`[EditPlanCache] Cleared ${removed} cached plans`)
+      return { removed }
+    }
+  )
+
+  // AI Edit Plan Cache — get total cache size in bytes
+  ipcMain.handle(
+    Ch.Invoke.AI_EDIT_PLAN_CACHE_SIZE,
+    async (): Promise<{ bytes: number }> => {
+      return { bytes: getEditPlanCacheSize() }
+    }
   )
 
   // Emoji Burst — identify high-emotion moments via AI

@@ -47,6 +47,8 @@ export const InvokeChannels = {
   AI_ANALYZE_WORD_EMPHASIS: 'ai:analyzeWordEmphasis',
   AI_GENERATE_EDIT_PLAN: 'ai:generateEditPlan',
   AI_GENERATE_BATCH_EDIT_PLANS: 'ai:generateBatchEditPlans',
+  AI_EDIT_PLAN_CACHE_CLEAR: 'ai:editPlanCacheClear',
+  AI_EDIT_PLAN_CACHE_SIZE: 'ai:editPlanCacheSize',
 
   // Face detection
   FACE_DETECT_CROPS: 'face:detectCrops',
