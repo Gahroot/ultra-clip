@@ -218,6 +218,7 @@ export const DEFAULT_SOUND_DESIGN: SoundDesignSettings = {
 
 export const DEFAULT_AUTO_ZOOM: ZoomSettings = {
   enabled: false,
+  mode: 'ken-burns',
   intensity: 'subtle',
   intervalSeconds: 4
 }
@@ -485,7 +486,7 @@ export const BUILT_IN_PROFILES: Record<string, SettingsProfile> = {
     captionStyle: CAPTION_PRESETS['hormozi-bold'],
     captionsEnabled: true,
     soundDesign: DEFAULT_SOUND_DESIGN,
-    autoZoom: { enabled: true, intensity: 'medium', intervalSeconds: 4 },
+    autoZoom: { enabled: true, mode: 'ken-burns', intensity: 'medium', intervalSeconds: 4 },
     brandKit: DEFAULT_BRAND_KIT,
     hookTitleOverlay: { ...DEFAULT_HOOK_TITLE_OVERLAY, enabled: true, style: 'centered-bold' },
     rehookOverlay: DEFAULT_REHOOK_OVERLAY,
@@ -503,7 +504,7 @@ export const BUILT_IN_PROFILES: Record<string, SettingsProfile> = {
     captionStyle: CAPTION_PRESETS['captions-ai'],
     captionsEnabled: true,
     soundDesign: DEFAULT_SOUND_DESIGN,
-    autoZoom: { enabled: true, intensity: 'subtle', intervalSeconds: 4 },
+    autoZoom: { enabled: true, mode: 'ken-burns', intensity: 'subtle', intervalSeconds: 4 },
     brandKit: DEFAULT_BRAND_KIT,
     hookTitleOverlay: { ...DEFAULT_HOOK_TITLE_OVERLAY, enabled: true, style: 'slide-in' },
     rehookOverlay: DEFAULT_REHOOK_OVERLAY,
@@ -521,7 +522,7 @@ export const BUILT_IN_PROFILES: Record<string, SettingsProfile> = {
     captionStyle: CAPTION_PRESETS['captions-ai'],
     captionsEnabled: false,
     soundDesign: { ...DEFAULT_SOUND_DESIGN, enabled: false },
-    autoZoom: { enabled: false, intensity: 'subtle', intervalSeconds: 4 },
+    autoZoom: { enabled: false, mode: 'ken-burns', intensity: 'subtle', intervalSeconds: 4 },
     brandKit: DEFAULT_BRAND_KIT,
     hookTitleOverlay: { ...DEFAULT_HOOK_TITLE_OVERLAY, enabled: false },
     rehookOverlay: { ...DEFAULT_REHOOK_OVERLAY, enabled: false },

@@ -82,6 +82,7 @@ interface SoundDesignSettings {
 
 interface AutoZoomSettings {
   enabled: boolean
+  mode: 'ken-burns' | 'reactive' | 'jump-cut'
   intensity: 'subtle' | 'medium' | 'dynamic'
   intervalSeconds: number
 }

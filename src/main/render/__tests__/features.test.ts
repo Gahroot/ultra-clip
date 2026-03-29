@@ -541,7 +541,7 @@ describe('AutoZoomFeature', () => {
     const result = await autoZoomFeature.prepare!(
       makeJob(),
       makeOptions({
-        autoZoom: { enabled: false, intensity: 'medium', intervalSeconds: 3 }
+        autoZoom: { enabled: false, mode: 'ken-burns', intensity: 'medium', intervalSeconds: 3 }
       })
     )
     expect(result.modified).toBe(false)
@@ -551,7 +551,7 @@ describe('AutoZoomFeature', () => {
     const result = await autoZoomFeature.prepare!(
       makeJob(),
       makeOptions({
-        autoZoom: { enabled: true, intensity: 'medium', intervalSeconds: 3 }
+        autoZoom: { enabled: true, mode: 'ken-burns', intensity: 'medium', intervalSeconds: 3 }
       })
     )
     expect(result.modified).toBe(true)
@@ -562,7 +562,7 @@ describe('AutoZoomFeature', () => {
     const result = await autoZoomFeature.prepare!(
       job,
       makeOptions({
-        autoZoom: { enabled: true, intensity: 'medium', intervalSeconds: 3 }
+        autoZoom: { enabled: true, mode: 'ken-burns', intensity: 'medium', intervalSeconds: 3 }
       })
     )
     expect(result.modified).toBe(false)
@@ -573,7 +573,7 @@ describe('AutoZoomFeature', () => {
     await autoZoomFeature.prepare!(
       job,
       makeOptions({
-        autoZoom: { enabled: true, intensity: 'medium', intervalSeconds: 3 }
+        autoZoom: { enabled: true, mode: 'ken-burns', intensity: 'medium', intervalSeconds: 3 }
       })
     )
     const filter = autoZoomFeature.videoFilter!(job, {

@@ -10,6 +10,7 @@ import type {
   Platform,
   OutputAspectRatio,
   ZoomIntensity,
+  ZoomMode,
   HookTitleStyle,
   RehookStyle,
   ProgressBarStyle,
@@ -37,6 +38,7 @@ export type {
   Platform,
   OutputAspectRatio,
   ZoomIntensity,
+  ZoomMode,
   HookTitleStyle,
   RehookStyle,
   ProgressBarStyle,
@@ -261,8 +263,15 @@ export interface BrandKit {
 }
 
 export interface ZoomSettings {
-  /** Whether auto-zoom (Ken Burns) is applied during rendering */
+  /** Whether auto-zoom is applied during rendering */
   enabled: boolean
+  /**
+   * Zoom animation mode.
+   * - ken-burns:  smooth sinusoidal breathing (default)
+   * - reactive:   zoom responds to word emphasis moments
+   * - jump-cut:   instant zoom changes simulating multi-camera editing
+   */
+  mode: ZoomMode
   /**
    * How pronounced the zoom/pan motion is.
    * - subtle:  ±5% zoom  (default)

@@ -14,6 +14,7 @@ import type {
 import type {
   MusicTrack,
   ZoomIntensity,
+  ZoomMode,
   HookTitleStyle,
   RehookStyle,
   ProgressBarPosition,
@@ -69,6 +70,7 @@ export interface SettingsSlice {
   setSoundDesignSfxVolume: (volume: number) => void
   setSoundDesignMusicVolume: (volume: number) => void
   setAutoZoomEnabled: (enabled: boolean) => void
+  setAutoZoomMode: (mode: ZoomMode) => void
   setAutoZoomIntensity: (intensity: ZoomIntensity) => void
   setAutoZoomInterval: (seconds: number) => void
   setHookTitleEnabled: (enabled: boolean) => void
@@ -209,6 +211,11 @@ export const createSettingsSlice: StateCreator<
   setAutoZoomEnabled: (enabled) =>
     set((state) => ({
       settings: { ...state.settings, autoZoom: { ...state.settings.autoZoom, enabled } }
+    })),
+
+  setAutoZoomMode: (mode) =>
+    set((state) => ({
+      settings: { ...state.settings, autoZoom: { ...state.settings.autoZoom, mode } }
     })),
 
   setAutoZoomIntensity: (intensity) =>
