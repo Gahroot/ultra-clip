@@ -213,6 +213,14 @@ export type OutputAspectRatio = '9:16' | '1:1' | '4:5' | '16:9'
 /** Zoom motion intensity for Ken Burns effect. */
 export type ZoomIntensity = 'subtle' | 'medium' | 'dynamic'
 
+/**
+ * Zoom animation mode.
+ * - ken-burns:  smooth sinusoidal breathing zoom (default)
+ * - reactive:   zoom responds to word emphasis moments (keyframe-driven)
+ * - jump-cut:   instant zoom level changes that simulate multi-camera editing
+ */
+export type ZoomMode = 'ken-burns' | 'reactive' | 'jump-cut'
+
 // ---------------------------------------------------------------------------
 // Hook Title Overlay
 // ---------------------------------------------------------------------------

@@ -44,6 +44,7 @@ import {
   type CaptionAnimation,
   type MusicTrack,
   type ZoomIntensity,
+  type ZoomMode,
   type LogoPosition,
   type HookTitleStyle,
   type ProgressBarStyle,
@@ -460,6 +461,7 @@ export function SettingsPanel() {
     setSoundDesignSfxVolume,
     setSoundDesignMusicVolume,
     setAutoZoomEnabled,
+    setAutoZoomMode,
     setAutoZoomIntensity,
     setAutoZoomInterval,
     setHookTitleEnabled,
@@ -534,6 +536,7 @@ export function SettingsPanel() {
     setSoundDesignSfxVolume: s.setSoundDesignSfxVolume,
     setSoundDesignMusicVolume: s.setSoundDesignMusicVolume,
     setAutoZoomEnabled: s.setAutoZoomEnabled,
+    setAutoZoomMode: s.setAutoZoomMode,
     setAutoZoomIntensity: s.setAutoZoomIntensity,
     setAutoZoomInterval: s.setAutoZoomInterval,
     setHookTitleEnabled: s.setHookTitleEnabled,
@@ -1917,9 +1920,35 @@ export function SettingsPanel() {
               )}
             >
               <p className="text-xs text-muted-foreground">
-                Adds subtle zoom-in / zoom-out breathing motion to rendered clips.
+                Adds animated zoom motion to rendered clips.
                 Prevents static talking-head feel and boosts viewer retention.
               </p>
+
+              {/* Mode selector */}
+              <FieldRow
+                label="Mode"
+                hint={
+                  settings.autoZoom.mode === 'ken-burns'
+                    ? 'Smooth sinusoidal breathing — classic Ken Burns feel'
+                    : settings.autoZoom.mode === 'reactive'
+                    ? 'Zoom responds to word emphasis moments — content-aware energy'
+                    : 'Instant zoom changes — simulates multi-camera editing'
+                }
+              >
+                <Select
+                  value={settings.autoZoom.mode}
+                  onValueChange={(v) => setAutoZoomMode(v as ZoomMode)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ken-burns">Ken Burns</SelectItem>
+                    <SelectItem value="reactive">Reactive</SelectItem>
+                    <SelectItem value="jump-cut">Jump Cut</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FieldRow>
 
               {/* Intensity selector */}
               <FieldRow

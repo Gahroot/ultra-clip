@@ -1,9 +1,10 @@
 /**
- * Auto-Zoom Engine — Ken Burns-style zoom/pan for rendered clips.
+ * Auto-Zoom Engine — animated zoom/pan for rendered clips.
  *
- * Generates FFmpeg zoompan filter expressions that create subtle animated
- * zoom and pan movements every few seconds, preventing static talking-head
- * feel and boosting viewer retention.
+ * Supports three modes:
+ * - ken-burns:  smooth sinusoidal breathing zoom (cosine wave)
+ * - reactive:   zoom responds to word emphasis moments (keyframe-driven)
+ * - jump-cut:   instant zoom level changes simulating multi-camera editing
  *
  * The filter must be inserted AFTER `scale=1080:1920` in the filter chain
  * and BEFORE any subtitle burn-in (e.g. `ass=...`).
@@ -13,12 +14,19 @@
 // Types
 // ---------------------------------------------------------------------------
 
-import type { ZoomIntensity } from '@shared/types'
-export type { ZoomIntensity }
+import type { ZoomIntensity, ZoomMode } from '@shared/types'
+export type { ZoomIntensity, ZoomMode }
 
 export interface ZoomSettings {
   /** Whether auto-zoom is applied to rendered clips */
   enabled: boolean
+  /**
+   * Zoom animation mode.
+   * - ken-burns:  smooth sinusoidal breathing (default)
+   * - reactive:   zoom responds to word emphasis moments (keyframe-driven)
+   * - jump-cut:   instant zoom level changes simulating multi-camera editing
+   */
+  mode: ZoomMode
   /**
    * How pronounced the zoom/pan motion is.
    * - subtle:  ±5% zoom, no horizontal drift  (default)
@@ -84,6 +92,12 @@ export function generateZoomFilter(
   outH: number = 1920
 ): string {
   if (!settings.enabled) return ''
+
+  // Only ken-burns is implemented in this function. Reactive and jump-cut
+  // modes require emphasis keyframe data and are handled by dedicated
+  // generators (generateReactiveZoomFilter / generateJumpCutZoomFilter).
+  const mode = settings.mode ?? 'ken-burns'
+  if (mode !== 'ken-burns') return ''
 
   const { amplitude, panFrac } = INTENSITY_CONFIG[settings.intensity]
 
@@ -181,6 +195,10 @@ export function getZoomKeyframes(
   faceYNorm: number = 0.38
 ): ZoomKeyframe[] {
   if (!settings.enabled || clipDuration <= 0) return []
+
+  // Only ken-burns generates preview keyframes from this function.
+  const mode = settings.mode ?? 'ken-burns'
+  if (mode !== 'ken-burns') return []
 
   const { amplitude, panFrac } = INTENSITY_CONFIG[settings.intensity]
   const period = Math.min(settings.intervalSeconds * 2, clipDuration * 2)
