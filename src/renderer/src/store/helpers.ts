@@ -102,6 +102,24 @@ export const CAPTION_PRESETS: Record<string, CaptionStyle> = {
     emphasisColor: '#FFFFFF',
     supersizeColor: '#FFD700'
   },
+  'clarity-boxes': {
+    id: 'clarity-boxes',
+    label: 'Clarity Boxes',
+    fontName: 'Inter',
+    fontFile: 'Inter-Bold.ttf',
+    fontSize: 0.065,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#E0192033',
+    backColor: '#00000000',
+    outline: 15,
+    shadow: 0,
+    borderStyle: 3,
+    wordsPerLine: 3,
+    animation: 'word-box',
+    emphasisColor: '#2563EB',
+    supersizeColor: '#DC2626'
+  },
   'classic-karaoke': {
     id: 'classic-karaoke',
     label: 'Classic Karaoke',

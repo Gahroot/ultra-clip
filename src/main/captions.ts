@@ -316,6 +316,128 @@ function buildGlowLines(
   return [`Dialogue: 0,${start},${end},Default,,0,0,0,,${parts.join('')}`]
 }
 
+/**
+ * Word box (Clarity): each word gets its own positioned dialogue event with
+ * BorderStyle=3 so every word sits on an individual opaque background box.
+ * Emphasis/supersize words receive a distinct box color via \3c override.
+ * Words pop in at their timestamp with a brief scale-up animation.
+ *
+ * In BorderStyle=3 mode:
+ *   - OutlineColour (\3c) = box fill color
+ *   - Outline (\bord)     = box padding around the text
+ *   - BackColour (\4c)    = box drop-shadow color (we keep transparent)
+ */
+function buildWordBoxLines(
+  group: WordGroup,
+  style: CaptionStyleInput,
+  baseFontSize: number,
+  frameWidth: number,
+  frameHeight: number,
+  marginV: number
+): string[] {
+  const lines: string[] = []
+  const primaryASS = hexToASS(style.primaryColor)
+
+  // Box colors: OutlineColour is the box fill in BorderStyle=3
+  const normalBoxASS = hexToASS(style.outlineColor)
+  const emphasisBoxASS = hexToASS(style.emphasisColor ?? style.highlightColor)
+  const supersizeBoxASS = hexToASS(style.supersizeColor ?? '#FFD700')
+
+  const start = formatASSTime(group.start)
+  const end = formatASSTime(group.end)
+
+  // --- Estimate word widths for horizontal layout ---
+  // Average character width ratio for bold sans-serif at a given font size.
+  const AVG_CHAR_WIDTH_RATIO = 0.58
+  const boxPadding = Math.max(8, Math.round(baseFontSize * 0.18))
+  const wordGap = Math.round(baseFontSize * 0.18)
+
+  interface WordMetric {
+    word: WordInput
+    level: 'normal' | 'emphasis' | 'supersize'
+    effectiveSize: number
+    textWidth: number
+    boxWidth: number
+  }
+
+  const metrics: WordMetric[] = group.words.map((w) => {
+    const level = w.emphasis ?? 'normal'
+    const scale =
+      level === 'supersize'
+        ? SUPERSIZE_SCALE
+        : level === 'emphasis'
+          ? EMPHASIS_SCALE
+          : 1
+    const effectiveSize = Math.round(baseFontSize * scale)
+    const charWidth = effectiveSize * AVG_CHAR_WIDTH_RATIO
+    const textWidth = w.text.length * charWidth
+    const boxWidth = textWidth + boxPadding * 2
+    return { word: w, level, effectiveSize, textWidth, boxWidth }
+  })
+
+  // Total width of all boxes + gaps
+  const totalRowWidth =
+    metrics.reduce((sum, m) => sum + m.boxWidth, 0) +
+    Math.max(0, metrics.length - 1) * wordGap
+
+  // Start X so the row is centered horizontally
+  let curX = (frameWidth - totalRowWidth) / 2
+
+  // Y position: bottom-up from frame edge (same semantics as ASS marginV)
+  const yPos = frameHeight - marginV
+
+  for (let i = 0; i < metrics.length; i++) {
+    const m = metrics[i]
+    const w = m.word
+    const centerX = Math.round(curX + m.boxWidth / 2)
+
+    // Per-word box color
+    const boxColor =
+      m.level === 'supersize'
+        ? supersizeBoxASS
+        : m.level === 'emphasis'
+          ? emphasisBoxASS
+          : normalBoxASS
+
+    // Word timing relative to group start (centiseconds)
+    const wordStartCs = Math.round((w.start - group.start) * 100)
+    const wordDurCs = Math.round((w.end - w.start) * 100)
+    const popDur = Math.min(8, wordDurCs) // 80ms pop-in
+
+    const overrides: string[] = [
+      `\\an5`,
+      `\\pos(${centerX},${yPos})`,
+      `\\1c${primaryASS}`,
+      `\\3c${boxColor}`,
+      `\\4c&H00000000`,
+      `\\bord${boxPadding}`,
+      `\\shad0`
+    ]
+
+    // Font size override for emphasis/supersize
+    if (m.level === 'emphasis') {
+      overrides.push(`\\fs${m.effectiveSize}`)
+    } else if (m.level === 'supersize') {
+      overrides.push(`\\fs${m.effectiveSize}`, `\\b1`)
+    }
+
+    // Pop-in animation: invisible → scale-up → settle
+    overrides.push(
+      `\\alpha&HFF&`,
+      `\\t(${wordStartCs},${wordStartCs + popDur},\\alpha&H00&\\fscx108\\fscy108)`,
+      `\\t(${wordStartCs + popDur},${wordStartCs + popDur + 5},\\fscx100\\fscy100)`
+    )
+
+    lines.push(
+      `Dialogue: 0,${start},${end},WordBox,,0,0,0,,{${overrides.join('')}}${w.text}`
+    )
+
+    curX += m.boxWidth + wordGap
+  }
+
+  return lines
+}
+
 // ---------------------------------------------------------------------------
 // ASS document generator
 // ---------------------------------------------------------------------------
@@ -346,6 +468,12 @@ function buildASSDocument(
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     `Style: Default,${style.fontName},${fontSize},${primaryASS},${primaryASS},${outlineASS},${backASS},-1,0,0,0,100,100,0,0,${style.borderStyle},${style.outline},${style.shadow},2,40,40,${marginV},1`,
+    // WordBox style: BorderStyle=3 for per-word opaque boxes; padding via Outline field
+    ...(style.animation === 'word-box'
+      ? [
+          `Style: WordBox,${style.fontName},${fontSize},${primaryASS},${primaryASS},${outlineASS},&H00000000,-1,0,0,0,100,100,0,0,3,${Math.max(8, Math.round(fontSize * 0.18))},0,5,0,0,0,1`
+        ]
+      : []),
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
@@ -369,6 +497,11 @@ function buildASSDocument(
         break
       case 'glow':
         dialogueLines.push(...buildGlowLines(group, style, fontSize))
+        break
+      case 'word-box':
+        dialogueLines.push(
+          ...buildWordBoxLines(group, style, fontSize, frameWidth, frameHeight, marginV)
+        )
         break
     }
   }

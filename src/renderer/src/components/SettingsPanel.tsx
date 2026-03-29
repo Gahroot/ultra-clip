@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Eye, EyeOff, FolderOpen, ExternalLink, Music2, Zap, Scan, Film, Briefcase, Type, Clapperboard, Scissors, HardDrive, Bell, RotateCcw, CaseSensitive, CheckCircle2, XCircle, Loader2, PenSquare, Trash2, Pencil, Image, Code2, FileOutput, FileDown, Layers } from 'lucide-react'
+import { Eye, EyeOff, FolderOpen, ExternalLink, Music2, Zap, Scan, Film, Briefcase, Type, Clapperboard, Scissors, HardDrive, Bell, RotateCcw, CaseSensitive, CheckCircle2, XCircle, Loader2, PenSquare, Trash2, Pencil, Image, Code2, FileOutput, FileDown, Layers, Save, BookmarkCheck, AlertTriangle } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -37,6 +38,8 @@ import {
   DEFAULT_HOOK_TEMPLATES,
   applyHookTemplate,
   DEFAULT_SETTINGS,
+  BUILT_IN_PROFILE_NAMES,
+  extractProfileFromSettings,
   type CaptionStyle,
   type CaptionAnimation,
   type MusicTrack,
@@ -45,6 +48,9 @@ import {
   type HookTitleStyle,
   type ProgressBarStyle,
   type ProgressBarPosition,
+  type HookTitleOverlaySettings,
+  type RehookOverlaySettings,
+  type RehookStyle,
   type HookTextTemplate,
   type RenderQualityPreset,
   type OutputResolution,
@@ -59,7 +65,8 @@ const ANIMATION_OPTIONS: { value: CaptionAnimation; label: string }[] = [
   { value: 'word-pop', label: 'Word Pop' },
   { value: 'karaoke-fill', label: 'Karaoke Fill' },
   { value: 'fade-in', label: 'Fade In' },
-  { value: 'glow', label: 'Glow' }
+  { value: 'glow', label: 'Glow' },
+  { value: 'word-box', label: 'Clarity Boxes' }
 ]
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
@@ -98,7 +105,7 @@ const MUSIC_TRACK_OPTIONS: { value: MusicTrack; label: string; description: stri
   { value: 'ambient-chill', label: 'Chill Lo-Fi', description: 'Relaxed, laid-back' }
 ]
 
-type SectionKey = 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'progressBar' | 'fillerRemoval' | 'broll' | 'aiSettings'
+type SectionKey = 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'progressBar' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality'
 
 function SectionResetButton({ section, onReset }: { section: SectionKey; onReset: (s: SectionKey) => void }) {
   return (
@@ -119,6 +126,279 @@ function SectionResetButton({ section, onReset }: { section: SectionKey; onReset
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Phone frame preview dimensions — scaled 9:16 (200×356)
+// ---------------------------------------------------------------------------
+
+const PHONE_W = 200
+const PHONE_H = 356
+/** Scale factor from 1080×1920 canvas to preview frame */
+const PHONE_SCALE = PHONE_W / 1080
+
+/**
+ * Mini 9:16 phone frame that previews caption styling in-context.
+ * Renders sample text styled to match the current CaptionStyle settings.
+ */
+function CaptionPhonePreview({ captionStyle }: { captionStyle: CaptionStyle }) {
+  // Scale font size proportionally (fontSize is fraction of 1920 frame height)
+  const scaledFontSize = Math.round(captionStyle.fontSize * 1920 * PHONE_SCALE)
+  const isWordBox = captionStyle.animation === 'word-box'
+  const hasBox = captionStyle.borderStyle === 3 && !isWordBox
+  const outlineWidth = Math.max(1, Math.round(captionStyle.outline * PHONE_SCALE))
+
+  // Sample words to preview
+  const words = ['This', 'is', 'what', 'your']
+  const words2 = ['captions', 'look', 'like']
+  const wordsPerLine = captionStyle.wordsPerLine
+  const line1Words = words.slice(0, wordsPerLine)
+  const line2Arr = [...words.slice(wordsPerLine), ...words2]
+  const line2Words = line2Arr.slice(0, wordsPerLine)
+
+  // Show highlight on the second word
+  const renderLine = (text: string, highlightIdx: number) => {
+    const tokens = text.split(' ')
+    return tokens.map((word, i) => (
+      <span
+        key={i}
+        style={{
+          color: i === highlightIdx ? captionStyle.highlightColor : captionStyle.primaryColor
+        }}
+      >
+        {word}{i < tokens.length - 1 ? ' ' : ''}
+      </span>
+    ))
+  }
+
+  /**
+   * Word-box mode: render each word in its own rounded-rect background box.
+   * Simulates emphasis (idx 2) and supersize (idx 0 of line 2) with distinct box colors.
+   */
+  const renderWordBoxLine = (lineWords: string[], emphasisIdx: number, supersizeIdx: number) => (
+    <div className="flex items-center justify-center gap-[3px] flex-wrap" style={{ maxWidth: '90%' }}>
+      {lineWords.map((word, i) => {
+        const isEmphasis = i === emphasisIdx
+        const isSupersize = i === supersizeIdx
+        const boxColor = isSupersize
+          ? (captionStyle.supersizeColor ?? '#DC2626')
+          : isEmphasis
+            ? (captionStyle.emphasisColor ?? captionStyle.highlightColor)
+            : captionStyle.outlineColor
+        const scale = isSupersize ? 1.2 : isEmphasis ? 1.1 : 1
+        return (
+          <span
+            key={i}
+            style={{
+              fontFamily: `"${captionStyle.fontName}", sans-serif`,
+              fontSize: `${Math.max(8, Math.round(scaledFontSize * scale))}px`,
+              fontWeight: isSupersize ? 900 : 700,
+              color: captionStyle.primaryColor,
+              backgroundColor: boxColor,
+              borderRadius: '4px',
+              padding: '1px 5px',
+              display: 'inline-block',
+              lineHeight: 1.3
+            }}
+          >
+            {word}
+          </span>
+        )
+      })}
+    </div>
+  )
+
+  const textStyle: React.CSSProperties = {
+    fontFamily: `"${captionStyle.fontName}", sans-serif`,
+    fontSize: `${Math.max(8, scaledFontSize)}px`,
+    fontWeight: 700,
+    lineHeight: 1.3,
+    textAlign: 'center',
+    WebkitTextStroke: hasBox ? undefined : `${outlineWidth}px ${captionStyle.outlineColor}`,
+    textShadow: hasBox ? undefined : `1px 1px 2px ${captionStyle.outlineColor}`,
+    padding: hasBox ? '2px 6px' : undefined,
+    backgroundColor: hasBox ? captionStyle.backColor : undefined,
+    borderRadius: hasBox ? '3px' : undefined,
+    wordBreak: 'break-word' as const,
+    maxWidth: '90%'
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Live Preview</p>
+      <div
+        className="mx-auto rounded-xl border-2 border-border overflow-hidden select-none relative"
+        style={{
+          width: PHONE_W,
+          height: PHONE_H,
+          background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+        }}
+      >
+        {/* Silhouette to simulate video content */}
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ opacity: 0.08 }}
+        >
+          <div
+            style={{
+              width: 60,
+              height: 80,
+              borderRadius: '50% 50% 40% 40%',
+              background: '#fff'
+            }}
+          />
+        </div>
+
+        {/* Caption text — positioned at bottom ~12% from bottom like real ASS captions */}
+        <div
+          className="absolute left-0 right-0 flex flex-col items-center gap-0.5"
+          style={{ bottom: Math.round(PHONE_H * 0.12) }}
+        >
+          {isWordBox ? (
+            <>
+              {renderWordBoxLine(line1Words, 2, -1)}
+              {line2Words.length > 0 && renderWordBoxLine(line2Words, -1, 0)}
+            </>
+          ) : (
+            <>
+              <div style={textStyle}>{renderLine(line1Words.join(' '), 1)}</div>
+              {line2Words.length > 0 && (
+                <div style={textStyle}>{renderLine(line2Words.join(' '), 0)}</div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Animation type badge */}
+        <div className="absolute top-2 right-2">
+          <span className="text-[8px] bg-black/50 text-white/70 rounded px-1 py-0.5 uppercase tracking-wider">
+            {captionStyle.animation}
+          </span>
+        </div>
+
+        {/* Font name label */}
+        <div className="absolute top-2 left-2">
+          <span className="text-[8px] bg-black/50 text-white/70 rounded px-1 py-0.5 truncate max-w-[100px] block">
+            {captionStyle.fontName}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Mini 9:16 phone frame that previews hook title overlay and re-hook styling.
+ */
+function HookTitlePhonePreview({
+  hookTitleOverlay,
+  rehookOverlay
+}: {
+  hookTitleOverlay: HookTitleOverlaySettings
+  rehookOverlay: RehookOverlaySettings
+}) {
+  const scaledFontSize = Math.round(hookTitleOverlay.fontSize * PHONE_SCALE)
+  const outlineW = Math.max(1, Math.round(hookTitleOverlay.outlineWidth * PHONE_SCALE))
+  const style = hookTitleOverlay.style
+
+  // Hook title text
+  const hookText = 'Wait for it…'
+  const rehookText = "Here's why it matters"
+
+  const hookTextStyle: React.CSSProperties = {
+    fontSize: `${Math.max(9, scaledFontSize)}px`,
+    fontWeight: 800,
+    color: hookTitleOverlay.textColor,
+    WebkitTextStroke: `${outlineW}px ${hookTitleOverlay.outlineColor}`,
+    textShadow: `1px 1px 3px ${hookTitleOverlay.outlineColor}`,
+    lineHeight: 1.2,
+    textAlign: style === 'slide-in' ? 'left' : 'center',
+    maxWidth: '85%',
+    wordBreak: 'break-word' as const
+  }
+
+  // Top-bar: semi-transparent dark bar behind text
+  const barBg = style === 'top-bar' ? 'rgba(0,0,0,0.6)' : undefined
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Live Preview</p>
+      <div
+        className="mx-auto rounded-xl border-2 border-border overflow-hidden select-none relative"
+        style={{
+          width: PHONE_W,
+          height: PHONE_H,
+          background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+        }}
+      >
+        {/* Silhouette */}
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ opacity: 0.08 }}
+        >
+          <div
+            style={{
+              width: 60,
+              height: 80,
+              borderRadius: '50% 50% 40% 40%',
+              background: '#fff'
+            }}
+          />
+        </div>
+
+        {/* Hook title — top area */}
+        <div
+          className="absolute left-0 right-0 flex justify-center"
+          style={{
+            top: style === 'centered-bold' ? '15%' : style === 'top-bar' ? 0 : '15%',
+            padding: style === 'top-bar' ? '8px 0' : undefined,
+            backgroundColor: barBg
+          }}
+        >
+          <div
+            style={{
+              ...hookTextStyle,
+              paddingLeft: style === 'slide-in' ? '8px' : undefined
+            }}
+          >
+            {hookText}
+          </div>
+        </div>
+
+        {/* Re-hook — mid-clip overlay (if enabled) */}
+        {rehookOverlay.enabled && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2"
+            style={{ top: '50%' }}
+          >
+            <div
+              style={{
+                fontSize: `${Math.max(7, Math.round(scaledFontSize * 0.7))}px`,
+                fontWeight: 700,
+                color: '#1a1a2e',
+                backgroundColor: 'rgba(255,255,255,0.92)',
+                borderRadius: '4px',
+                padding: '3px 8px',
+                whiteSpace: 'nowrap',
+                maxWidth: PHONE_W - 20,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}
+            >
+              {rehookText}
+            </div>
+          </div>
+        )}
+
+        {/* Style badge */}
+        <div className="absolute bottom-2 right-2">
+          <span className="text-[8px] bg-black/50 text-white/70 rounded px-1 py-0.5 uppercase tracking-wider">
+            {style}
+          </span>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -143,8 +423,13 @@ export function SettingsPanel() {
     setHookTitleFontSize,
     setHookTitleTextColor,
     setHookTitleOutlineColor,
+    setHookTitleOutlineWidth,
+    setHookTitleFadeIn,
+    setHookTitleFadeOut,
     setRehookEnabled,
     setRehookDisplayDuration,
+    setRehookStyle,
+    setRehookPositionFraction,
     setProgressBarEnabled,
     setProgressBarPosition,
     setProgressBarHeight,
@@ -171,6 +456,8 @@ export function SettingsPanel() {
     setOutputAspectRatio,
     setFilenameTemplate,
     setRenderConcurrency,
+    setEnableNotifications,
+    setDeveloperMode,
     resetSettings,
     resetSection,
     hookTemplates,
@@ -206,8 +493,13 @@ export function SettingsPanel() {
     setHookTitleFontSize: s.setHookTitleFontSize,
     setHookTitleTextColor: s.setHookTitleTextColor,
     setHookTitleOutlineColor: s.setHookTitleOutlineColor,
+    setHookTitleOutlineWidth: s.setHookTitleOutlineWidth,
+    setHookTitleFadeIn: s.setHookTitleFadeIn,
+    setHookTitleFadeOut: s.setHookTitleFadeOut,
     setRehookEnabled: s.setRehookEnabled,
     setRehookDisplayDuration: s.setRehookDisplayDuration,
+    setRehookStyle: s.setRehookStyle,
+    setRehookPositionFraction: s.setRehookPositionFraction,
     setProgressBarEnabled: s.setProgressBarEnabled,
     setProgressBarPosition: s.setProgressBarPosition,
     setProgressBarHeight: s.setProgressBarHeight,
@@ -234,10 +526,34 @@ export function SettingsPanel() {
     setOutputAspectRatio: s.setOutputAspectRatio,
     setFilenameTemplate: s.setFilenameTemplate,
     setRenderConcurrency: s.setRenderConcurrency,
+    setEnableNotifications: s.setEnableNotifications,
+    setDeveloperMode: s.setDeveloperMode,
     resetSettings: s.resetSettings,
-    resetSection: s.resetSection
+    resetSection: s.resetSection,
+    settingsProfiles: s.settingsProfiles,
+    activeProfileName: s.activeProfileName,
+    saveProfile: s.saveProfile,
+    loadProfile: s.loadProfile,
+    deleteProfile: s.deleteProfile
   }))
 )
+
+  // Settings lock — detect changes since processing
+  const settingsChanged = useStore((s) => s.settingsChanged)
+  const settingsSnapshot = useStore((s) => s.settingsSnapshot)
+  const revertToSnapshot = useStore((s) => s.revertToSnapshot)
+  const dismissSettingsWarning = useStore((s) => s.dismissSettingsWarning)
+  const getSettingsDiff = useStore((s) => s.getSettingsDiff)
+  const changedSettingNames = settingsChanged ? getSettingsDiff() : []
+
+  // Active tab — persisted to localStorage
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    try { return localStorage.getItem('batchcontent-settings-tab') ?? 'general' } catch { return 'general' }
+  })
+  function handleTabChange(tab: string) {
+    setActiveTab(tab)
+    try { localStorage.setItem('batchcontent-settings-tab', tab) } catch {}
+  }
 
   const [showApiKey, setShowApiKey] = useState(false)
   const [apiKeyDraft, setApiKeyDraft] = useState(settings.geminiApiKey)
@@ -248,6 +564,20 @@ export function SettingsPanel() {
 
   // Filename template input ref (for cursor-position-aware variable insertion)
   const filenameTemplateInputRef = useRef<HTMLInputElement>(null)
+
+  // Profile UI state
+  const [showSaveProfileDialog, setShowSaveProfileDialog] = useState(false)
+  const [saveProfileName, setSaveProfileName] = useState('')
+  const [showDeleteProfileDialog, setShowDeleteProfileDialog] = useState(false)
+
+  // Detect if current settings differ from the active profile
+  const profileModified = (() => {
+    if (!activeProfileName) return false
+    const savedProfile = settingsProfiles[activeProfileName]
+    if (!savedProfile) return false
+    const current = extractProfileFromSettings(settings)
+    return JSON.stringify(current) !== JSON.stringify(savedProfile)
+  })()
 
   // Hook template dialog state
   const [showTemplateManager, setShowTemplateManager] = useState(false)
@@ -466,9 +796,146 @@ export function SettingsPanel() {
     setShowResetAllDialog(false)
   }
 
+  const isBuiltInProfile = activeProfileName
+    ? (BUILT_IN_PROFILE_NAMES as readonly string[]).includes(activeProfileName)
+    : false
+
+  const profileNames = Object.keys(settingsProfiles)
+
   return (
-    <ScrollArea className="h-full">
-      <div className="p-4 space-y-6">
+    <div className="flex h-full flex-col">
+      {/* ── Settings Profile Selector ── */}
+      <div className="shrink-0 border-b border-border px-4 py-2.5 space-y-2">
+        <div className="flex items-center gap-2">
+          <BookmarkCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <Select
+            value={activeProfileName ?? '__none__'}
+            onValueChange={(v) => {
+              if (v === '__none__') return
+              loadProfile(v)
+            }}
+          >
+            <SelectTrigger className="flex-1 h-8 text-xs">
+              <SelectValue placeholder="No profile selected" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__" disabled>No profile</SelectItem>
+              <SelectGroup>
+                <SelectLabel>Built-in Presets</SelectLabel>
+                {BUILT_IN_PROFILE_NAMES.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectGroup>
+              {profileNames.filter((n) => !(BUILT_IN_PROFILE_NAMES as readonly string[]).includes(n)).length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>My Profiles</SelectLabel>
+                  {profileNames
+                    .filter((n) => !(BUILT_IN_PROFILE_NAMES as readonly string[]).includes(n))
+                    .map((name) => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                </SelectGroup>
+              )}
+            </SelectContent>
+          </Select>
+          {profileModified && (
+            <span className="text-[10px] text-amber-500 font-medium whitespace-nowrap">(modified)</span>
+          )}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  title="Save current settings as profile"
+                  onClick={() => {
+                    setSaveProfileName(activeProfileName ?? '')
+                    setShowSaveProfileDialog(true)
+                  }}
+                >
+                  <Save className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom"><p>Save as Profile</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  title="Delete selected profile"
+                  disabled={!activeProfileName || isBuiltInProfile}
+                  onClick={() => setShowDeleteProfileDialog(true)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>{isBuiltInProfile ? 'Built-in presets cannot be deleted' : 'Delete Profile'}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+
+      {/* ── Settings Changed Warning Banner ── */}
+      {settingsSnapshot && settingsChanged && changedSettingNames.length > 0 && (
+        <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-amber-500">
+                Settings changed since processing
+              </p>
+              <p className="text-xs text-amber-500/80 mt-0.5">
+                Changed: {changedSettingNames.join(', ')}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+              onClick={revertToSnapshot}
+            >
+              <RotateCcw className="w-3 h-3 mr-1" />
+              Revert to Processing Settings
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-muted-foreground"
+              onClick={dismissSettingsWarning}
+            >
+              Keep Changes
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex h-full flex-col">
+        <div className="shrink-0 border-b border-border px-4 pt-3 pb-0">
+          <TabsList className="w-full flex-wrap h-auto gap-1">
+            <TabsTrigger value="general" className="text-xs px-2.5 py-1">General</TabsTrigger>
+            <TabsTrigger value="captions" className="text-xs px-2.5 py-1">Captions</TabsTrigger>
+            <TabsTrigger value="overlays" className="text-xs px-2.5 py-1">Overlays</TabsTrigger>
+            <TabsTrigger value="audio" className="text-xs px-2.5 py-1">Audio</TabsTrigger>
+            <TabsTrigger value="effects" className="text-xs px-2.5 py-1">Effects</TabsTrigger>
+            <TabsTrigger value="brand" className="text-xs px-2.5 py-1">Brand</TabsTrigger>
+            <TabsTrigger value="advanced" className="text-xs px-2.5 py-1">Advanced</TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* ── General Tab ── */}
+        <TabsContent value="general" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-6">
+
         {/* AI Settings */}
         <div>
           <div className="flex items-center">
@@ -709,6 +1176,7 @@ export function SettingsPanel() {
           <div className="flex items-center gap-2 mb-3">
             <Clapperboard className="w-3.5 h-3.5 text-muted-foreground" />
             <SectionHeader>Render Quality</SectionHeader>
+            <SectionResetButton section="renderQuality" onReset={resetSection} />
           </div>
           <div className="space-y-4">
             {/* Quality preset buttons */}
@@ -924,7 +1392,7 @@ export function SettingsPanel() {
               <Switch
                 id="notifications-enabled"
                 checked={settings.enableNotifications}
-                onCheckedChange={useStore.getState().setEnableNotifications}
+                onCheckedChange={setEnableNotifications}
               />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -950,7 +1418,7 @@ export function SettingsPanel() {
               <Switch
                 id="developer-mode-enabled"
                 checked={settings.developerMode}
-                onCheckedChange={useStore.getState().setDeveloperMode}
+                onCheckedChange={setDeveloperMode}
               />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -990,7 +1458,14 @@ export function SettingsPanel() {
           </div>
         </div>
 
-        <Separator />
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* ── Captions Tab ── */}
+        <TabsContent value="captions" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-6">
 
         {/* Captions */}
         <div>
@@ -1154,25 +1629,19 @@ export function SettingsPanel() {
                 </FieldRow>
               </div>
 
-              {/* Preview swatch */}
-              <div
-                className="rounded-md border border-border p-3 text-center text-sm font-bold select-none"
-                style={{
-                  backgroundColor: '#111',
-                  color: settings.captionStyle.primaryColor,
-                  fontSize: '1rem',
-                  textShadow: `0 0 4px ${settings.captionStyle.highlightColor}`
-                }}
-              >
-                <span>{settings.captionStyle.fontName}</span>
-                <span className="ml-2 opacity-50">·</span>
-                <span className="ml-2">Caption Preview</span>
-              </div>
+              {/* Phone frame caption preview */}
+              <CaptionPhonePreview captionStyle={settings.captionStyle} />
             </div>
           </div>
         </div>
+            </div>
+          </ScrollArea>
+        </TabsContent>
 
-        <Separator />
+        {/* ── Audio Tab ── */}
+        <TabsContent value="audio" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-6">
 
         {/* Sound Design */}
         <div>
@@ -1264,7 +1733,107 @@ export function SettingsPanel() {
           </div>
         </div>
 
+
         <Separator />
+
+        {/* Filler & Silence Removal */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Scissors className="w-3.5 h-3.5 text-muted-foreground" />
+            <SectionHeader>Filler &amp; Silence Removal</SectionHeader>
+            <SectionResetButton section="fillerRemoval" onReset={resetSection} />
+          </div>
+
+          {/* Enable toggle */}
+          <div className="flex items-center justify-between">
+            <Label htmlFor="filler-enabled" className="text-sm font-medium cursor-pointer">
+              Auto-Remove Fillers &amp; Dead Air
+            </Label>
+            <Switch
+              id="filler-enabled"
+              checked={settings.fillerRemoval.enabled}
+              onCheckedChange={setFillerRemovalEnabled}
+            />
+          </div>
+
+          <div
+            className={cn(
+              'space-y-4 transition-opacity',
+              !settings.fillerRemoval.enabled && 'opacity-40 pointer-events-none'
+            )}
+          >
+            <p className="text-xs text-muted-foreground">
+              Automatically detects and removes filler words (um, uh, like), awkward pauses,
+              and stuttered repeats — creating tight, fast-paced jump cuts that boost retention.
+              Works like Captions.ai and Descript.
+            </p>
+
+            {/* Sub-toggles */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="filler-words-toggle" className="text-sm cursor-pointer">
+                  Remove filler words
+                </Label>
+                <Switch
+                  id="filler-words-toggle"
+                  checked={settings.fillerRemoval.removeFillerWords}
+                  onCheckedChange={setFillerRemovalFillerWords}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="filler-silences-toggle" className="text-sm cursor-pointer">
+                  Trim long silences
+                </Label>
+                <Switch
+                  id="filler-silences-toggle"
+                  checked={settings.fillerRemoval.trimSilences}
+                  onCheckedChange={setFillerRemovalSilences}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="filler-repeats-toggle" className="text-sm cursor-pointer">
+                  Remove repeated starts
+                </Label>
+                <Switch
+                  id="filler-repeats-toggle"
+                  checked={settings.fillerRemoval.removeRepeats}
+                  onCheckedChange={setFillerRemovalRepeats}
+                />
+              </div>
+            </div>
+
+            {/* Silence threshold slider */}
+            <FieldRow
+              label={`Silence Threshold — ${settings.fillerRemoval.silenceThreshold.toFixed(1)}s`}
+              hint="Pauses longer than this are trimmed (0.4–2.0 seconds)"
+            >
+              <Slider
+                min={4}
+                max={20}
+                step={1}
+                value={[settings.fillerRemoval.silenceThreshold * 10]}
+                onValueChange={([v]) => setFillerRemovalSilenceThreshold(v / 10)}
+              />
+            </FieldRow>
+
+            <p className="text-xs text-muted-foreground">
+              <strong>How it works:</strong> Uses word-level timestamps from transcription to identify
+              filler words, long gaps, and stutters. Removes them with frame-accurate cuts and
+              re-syncs captions automatically. Requires transcription to be completed first.
+            </p>
+          </div>
+        </div>
+
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* ── Effects Tab ── */}
+        <TabsContent value="effects" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-6">
 
         {/* Auto-Zoom */}
         <div>
@@ -1342,7 +1911,168 @@ export function SettingsPanel() {
           </div>
         </div>
 
+
         <Separator />
+
+        {/* B-Roll Insertion */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Clapperboard className="w-3.5 h-3.5 text-muted-foreground" />
+            <SectionHeader>B-Roll Insertion</SectionHeader>
+            <SectionResetButton section="broll" onReset={resetSection} />
+          </div>
+          <div className="space-y-4">
+            {/* Master toggle */}
+            <div className="flex items-center justify-between">
+              <Label htmlFor="broll-enabled" className="text-sm font-medium cursor-pointer">
+                Auto B-Roll (Pexels Stock Footage)
+              </Label>
+              <Switch
+                id="broll-enabled"
+                checked={settings.broll.enabled}
+                onCheckedChange={setBRollEnabled}
+              />
+            </div>
+
+            <div
+              className={cn(
+                'space-y-4 transition-opacity',
+                !settings.broll.enabled && 'opacity-40 pointer-events-none'
+              )}
+            >
+              <p className="text-xs text-muted-foreground">
+                Automatically inserts relevant Pexels stock footage every few seconds to break up
+                talking-head monotony and boost viewer retention — the same feature as Opus Clip Pro.
+                Clips are cached locally so the same footage isn&apos;t re-downloaded.
+              </p>
+
+              {/* Pexels API key */}
+              <FieldRow
+                label="Pexels API Key"
+                htmlFor="pexels-api-key"
+                hint="Free at pexels.com/api — 200 requests/hour, 20,000/month"
+              >
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      id="pexels-api-key"
+                      type={showPexelsKey ? 'text' : 'password'}
+                      placeholder="Your Pexels API key…"
+                      value={pexelsKeyDraft}
+                      onChange={(e) => {
+                        setPexelsKeyDraft(e.target.value)
+                        setPexelsValidation({ state: 'idle' })
+                      }}
+                      onBlur={handlePexelsKeyBlur}
+                      onKeyDown={(e) => e.key === 'Enter' && handlePexelsKeyBlur()}
+                      className="pr-9 font-mono text-sm"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPexelsKey((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      tabIndex={-1}
+                      aria-label={showPexelsKey ? 'Hide Pexels key' : 'Show Pexels key'}
+                    >
+                      {showPexelsKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5 px-3"
+                    title="Test this API key"
+                    disabled={!pexelsKeyDraft.trim() || pexelsValidation.state === 'testing'}
+                    onClick={handleTestPexelsKey}
+                  >
+                    {pexelsValidation.state === 'testing' ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : pexelsValidation.state === 'valid' ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                    ) : pexelsValidation.state === 'invalid' ? (
+                      <XCircle className="w-3.5 h-3.5 text-destructive" />
+                    ) : (
+                      <Zap className="w-3.5 h-3.5" />
+                    )}
+                    <span className="text-xs">
+                      {pexelsValidation.state === 'testing' ? 'Testing…' :
+                       pexelsValidation.state === 'valid' ? 'Valid' :
+                       pexelsValidation.state === 'invalid' ? 'Invalid' : 'Test'}
+                    </span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0"
+                    title="Get a free Pexels API key"
+                    onClick={() => window.open('https://www.pexels.com/api/')}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                </div>
+                {pexelsValidation.state === 'valid' && (
+                  <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Key is valid and working
+                  </p>
+                )}
+                {pexelsValidation.state === 'invalid' && (
+                  <p className="text-xs text-destructive mt-1 flex items-center gap-1">
+                    <XCircle className="w-3 h-3" /> {pexelsValidation.error ?? 'Invalid key'}
+                  </p>
+                )}
+                {pexelsValidation.state === 'idle' && settings.broll.pexelsApiKey && (
+                  <p className="text-xs text-muted-foreground mt-1">✓ Pexels API key saved</p>
+                )}
+              </FieldRow>
+
+              {/* B-Roll interval */}
+              <FieldRow
+                label={`B-Roll Every — ${settings.broll.intervalSeconds}s`}
+                hint="Target interval between B-Roll clip insertions"
+              >
+                <Slider
+                  min={3}
+                  max={10}
+                  step={1}
+                  value={[settings.broll.intervalSeconds]}
+                  onValueChange={([v]) => setBRollIntervalSeconds(v)}
+                />
+              </FieldRow>
+
+              {/* B-Roll clip duration */}
+              <FieldRow
+                label={`Clip Duration — ${settings.broll.clipDuration}s`}
+                hint="How long each B-Roll overlay lasts (2–6 seconds)"
+              >
+                <Slider
+                  min={2}
+                  max={6}
+                  step={1}
+                  value={[settings.broll.clipDuration]}
+                  onValueChange={([v]) => setBRollClipDuration(v)}
+                />
+              </FieldRow>
+
+              <p className="text-xs text-muted-foreground">
+                <strong>How it works:</strong> At render time, Gemini AI extracts visual keywords
+                from each clip&apos;s transcript, searches Pexels for matching stock footage, and
+                composites it onto your video with 0.3s fade transitions. The first 3 seconds
+                (the hook) are never covered.
+              </p>
+            </div>
+          </div>
+        </div>
+
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* ── Brand Tab ── */}
+        <TabsContent value="brand" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-6">
 
         {/* Brand Kit */}
         <div>
@@ -1471,7 +2201,14 @@ export function SettingsPanel() {
           </div>
         </div>
 
-        <Separator />
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        {/* ── Overlays Tab ── */}
+        <TabsContent value="overlays" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-6">
 
         {/* Hook Title Overlay */}
         <div>
@@ -1635,22 +2372,56 @@ export function SettingsPanel() {
                 </FieldRow>
               </div>
 
-              {/* Preview swatch */}
-              <div
-                className="rounded-md border border-border p-3 text-center font-bold select-none"
-                style={{
-                  backgroundColor: '#111',
-                  color: settings.hookTitleOverlay.textColor,
-                  fontSize: `${Math.round(settings.hookTitleOverlay.fontSize / 72 * 28)}px`,
-                  WebkitTextStroke: `2px ${settings.hookTitleOverlay.outlineColor}`,
-                  textShadow: `2px 2px 0 ${settings.hookTitleOverlay.outlineColor}`
-                }}
+              {/* Outline width slider */}
+              <FieldRow
+                label={`Outline Width — ${settings.hookTitleOverlay.outlineWidth}px`}
+                hint="Thickness of the text outline on 1080×1920 canvas"
               >
-                Hook Preview
+                <Slider
+                  min={0}
+                  max={8}
+                  step={1}
+                  value={[settings.hookTitleOverlay.outlineWidth]}
+                  onValueChange={([v]) => setHookTitleOutlineWidth(v)}
+                />
+              </FieldRow>
+
+              {/* Fade timing */}
+              <div className="grid grid-cols-2 gap-3">
+                <FieldRow
+                  label={`Fade In — ${settings.hookTitleOverlay.fadeIn.toFixed(1)}s`}
+                >
+                  <Slider
+                    min={0}
+                    max={10}
+                    step={1}
+                    value={[Math.round(settings.hookTitleOverlay.fadeIn * 10)]}
+                    onValueChange={([v]) => setHookTitleFadeIn(v / 10)}
+                  />
+                </FieldRow>
+
+                <FieldRow
+                  label={`Fade Out — ${settings.hookTitleOverlay.fadeOut.toFixed(1)}s`}
+                >
+                  <Slider
+                    min={0}
+                    max={10}
+                    step={1}
+                    value={[Math.round(settings.hookTitleOverlay.fadeOut * 10)]}
+                    onValueChange={([v]) => setHookTitleFadeOut(v / 10)}
+                  />
+                </FieldRow>
               </div>
+
+              {/* Phone frame hook title preview */}
+              <HookTitlePhonePreview
+                hookTitleOverlay={settings.hookTitleOverlay}
+                rehookOverlay={settings.rehookOverlay}
+              />
             </div>
           </div>
         </div>
+
 
         <Separator />
 
@@ -1695,6 +2466,44 @@ export function SettingsPanel() {
                 />
               </FieldRow>
 
+              <FieldRow
+                label="Style"
+                hint={
+                  settings.rehookOverlay.style === 'bar'
+                    ? 'White rounded bar with dark text (default)'
+                    : settings.rehookOverlay.style === 'text-only'
+                    ? 'Plain text without background'
+                    : 'Text slides up from bottom'
+                }
+              >
+                <Select
+                  value={settings.rehookOverlay.style}
+                  onValueChange={(v) => setRehookStyle(v as RehookStyle)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bar">Bar</SelectItem>
+                    <SelectItem value="text-only">Text Only</SelectItem>
+                    <SelectItem value="slide-up">Slide Up</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FieldRow>
+
+              <FieldRow
+                label={`Position — ${Math.round(settings.rehookOverlay.positionFraction * 100)}%`}
+                hint="Where in the clip the re-hook appears (% of clip duration)"
+              >
+                <Slider
+                  min={40}
+                  max={60}
+                  step={1}
+                  value={[Math.round(settings.rehookOverlay.positionFraction * 100)]}
+                  onValueChange={([v]) => setRehookPositionFraction(v / 100)}
+                />
+              </FieldRow>
+
               <p className="text-xs text-muted-foreground italic">
                 Visual settings (font size, text color, outline) are inherited from Hook Title Overlay above.
               </p>
@@ -1703,6 +2512,7 @@ export function SettingsPanel() {
             </div>
           </div>
         </div>
+
 
         <Separator />
 
@@ -1886,252 +2696,14 @@ export function SettingsPanel() {
           </div>
         </div>
 
-        <Separator />
-
-        {/* Filler & Silence Removal */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Scissors className="w-3.5 h-3.5 text-muted-foreground" />
-            <SectionHeader>Filler &amp; Silence Removal</SectionHeader>
-            <SectionResetButton section="fillerRemoval" onReset={resetSection} />
-          </div>
-
-          {/* Enable toggle */}
-          <div className="flex items-center justify-between">
-            <Label htmlFor="filler-enabled" className="text-sm font-medium cursor-pointer">
-              Auto-Remove Fillers &amp; Dead Air
-            </Label>
-            <Switch
-              id="filler-enabled"
-              checked={settings.fillerRemoval.enabled}
-              onCheckedChange={setFillerRemovalEnabled}
-            />
-          </div>
-
-          <div
-            className={cn(
-              'space-y-4 transition-opacity',
-              !settings.fillerRemoval.enabled && 'opacity-40 pointer-events-none'
-            )}
-          >
-            <p className="text-xs text-muted-foreground">
-              Automatically detects and removes filler words (um, uh, like), awkward pauses,
-              and stuttered repeats — creating tight, fast-paced jump cuts that boost retention.
-              Works like Captions.ai and Descript.
-            </p>
-
-            {/* Sub-toggles */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="filler-words-toggle" className="text-sm cursor-pointer">
-                  Remove filler words
-                </Label>
-                <Switch
-                  id="filler-words-toggle"
-                  checked={settings.fillerRemoval.removeFillerWords}
-                  onCheckedChange={setFillerRemovalFillerWords}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label htmlFor="filler-silences-toggle" className="text-sm cursor-pointer">
-                  Trim long silences
-                </Label>
-                <Switch
-                  id="filler-silences-toggle"
-                  checked={settings.fillerRemoval.trimSilences}
-                  onCheckedChange={setFillerRemovalSilences}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label htmlFor="filler-repeats-toggle" className="text-sm cursor-pointer">
-                  Remove repeated starts
-                </Label>
-                <Switch
-                  id="filler-repeats-toggle"
-                  checked={settings.fillerRemoval.removeRepeats}
-                  onCheckedChange={setFillerRemovalRepeats}
-                />
-              </div>
             </div>
+          </ScrollArea>
+        </TabsContent>
 
-            {/* Silence threshold slider */}
-            <FieldRow
-              label={`Silence Threshold — ${settings.fillerRemoval.silenceThreshold.toFixed(1)}s`}
-              hint="Pauses longer than this are trimmed (0.4–2.0 seconds)"
-            >
-              <Slider
-                min={4}
-                max={20}
-                step={1}
-                value={[settings.fillerRemoval.silenceThreshold * 10]}
-                onValueChange={([v]) => setFillerRemovalSilenceThreshold(v / 10)}
-              />
-            </FieldRow>
-
-            <p className="text-xs text-muted-foreground">
-              <strong>How it works:</strong> Uses word-level timestamps from transcription to identify
-              filler words, long gaps, and stutters. Removes them with frame-accurate cuts and
-              re-syncs captions automatically. Requires transcription to be completed first.
-            </p>
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* B-Roll Insertion */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Clapperboard className="w-3.5 h-3.5 text-muted-foreground" />
-            <SectionHeader>B-Roll Insertion</SectionHeader>
-            <SectionResetButton section="broll" onReset={resetSection} />
-          </div>
-          <div className="space-y-4">
-            {/* Master toggle */}
-            <div className="flex items-center justify-between">
-              <Label htmlFor="broll-enabled" className="text-sm font-medium cursor-pointer">
-                Auto B-Roll (Pexels Stock Footage)
-              </Label>
-              <Switch
-                id="broll-enabled"
-                checked={settings.broll.enabled}
-                onCheckedChange={setBRollEnabled}
-              />
-            </div>
-
-            <div
-              className={cn(
-                'space-y-4 transition-opacity',
-                !settings.broll.enabled && 'opacity-40 pointer-events-none'
-              )}
-            >
-              <p className="text-xs text-muted-foreground">
-                Automatically inserts relevant Pexels stock footage every few seconds to break up
-                talking-head monotony and boost viewer retention — the same feature as Opus Clip Pro.
-                Clips are cached locally so the same footage isn&apos;t re-downloaded.
-              </p>
-
-              {/* Pexels API key */}
-              <FieldRow
-                label="Pexels API Key"
-                htmlFor="pexels-api-key"
-                hint="Free at pexels.com/api — 200 requests/hour, 20,000/month"
-              >
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Input
-                      id="pexels-api-key"
-                      type={showPexelsKey ? 'text' : 'password'}
-                      placeholder="Your Pexels API key…"
-                      value={pexelsKeyDraft}
-                      onChange={(e) => {
-                        setPexelsKeyDraft(e.target.value)
-                        setPexelsValidation({ state: 'idle' })
-                      }}
-                      onBlur={handlePexelsKeyBlur}
-                      onKeyDown={(e) => e.key === 'Enter' && handlePexelsKeyBlur()}
-                      className="pr-9 font-mono text-sm"
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPexelsKey((v) => !v)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      tabIndex={-1}
-                      aria-label={showPexelsKey ? 'Hide Pexels key' : 'Show Pexels key'}
-                    >
-                      {showPexelsKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 gap-1.5 px-3"
-                    title="Test this API key"
-                    disabled={!pexelsKeyDraft.trim() || pexelsValidation.state === 'testing'}
-                    onClick={handleTestPexelsKey}
-                  >
-                    {pexelsValidation.state === 'testing' ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : pexelsValidation.state === 'valid' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                    ) : pexelsValidation.state === 'invalid' ? (
-                      <XCircle className="w-3.5 h-3.5 text-destructive" />
-                    ) : (
-                      <Zap className="w-3.5 h-3.5" />
-                    )}
-                    <span className="text-xs">
-                      {pexelsValidation.state === 'testing' ? 'Testing…' :
-                       pexelsValidation.state === 'valid' ? 'Valid' :
-                       pexelsValidation.state === 'invalid' ? 'Invalid' : 'Test'}
-                    </span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="shrink-0"
-                    title="Get a free Pexels API key"
-                    onClick={() => window.open('https://www.pexels.com/api/')}
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </Button>
-                </div>
-                {pexelsValidation.state === 'valid' && (
-                  <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Key is valid and working
-                  </p>
-                )}
-                {pexelsValidation.state === 'invalid' && (
-                  <p className="text-xs text-destructive mt-1 flex items-center gap-1">
-                    <XCircle className="w-3 h-3" /> {pexelsValidation.error ?? 'Invalid key'}
-                  </p>
-                )}
-                {pexelsValidation.state === 'idle' && settings.broll.pexelsApiKey && (
-                  <p className="text-xs text-muted-foreground mt-1">✓ Pexels API key saved</p>
-                )}
-              </FieldRow>
-
-              {/* B-Roll interval */}
-              <FieldRow
-                label={`B-Roll Every — ${settings.broll.intervalSeconds}s`}
-                hint="Target interval between B-Roll clip insertions"
-              >
-                <Slider
-                  min={3}
-                  max={10}
-                  step={1}
-                  value={[settings.broll.intervalSeconds]}
-                  onValueChange={([v]) => setBRollIntervalSeconds(v)}
-                />
-              </FieldRow>
-
-              {/* B-Roll clip duration */}
-              <FieldRow
-                label={`Clip Duration — ${settings.broll.clipDuration}s`}
-                hint="How long each B-Roll overlay lasts (2–6 seconds)"
-              >
-                <Slider
-                  min={2}
-                  max={6}
-                  step={1}
-                  value={[settings.broll.clipDuration]}
-                  onValueChange={([v]) => setBRollClipDuration(v)}
-                />
-              </FieldRow>
-
-              <p className="text-xs text-muted-foreground">
-                <strong>How it works:</strong> At render time, Gemini AI extracts visual keywords
-                from each clip&apos;s transcript, searches Pexels for matching stock footage, and
-                composites it onto your video with 0.3s fade transitions. The first 3 seconds
-                (the hook) are never covered.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <Separator />
+        {/* ── Advanced Tab ── */}
+        <TabsContent value="advanced" className="flex-1 overflow-hidden mt-0">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-6">
 
         {/* Storage */}
         <div>
@@ -2213,6 +2785,7 @@ export function SettingsPanel() {
           </div>
         </div>
 
+
         <Separator />
 
         {/* Debug Log */}
@@ -2281,6 +2854,7 @@ export function SettingsPanel() {
           </div>
         </div>
 
+
         <Separator />
 
         {/* Reset All */}
@@ -2295,7 +2869,11 @@ export function SettingsPanel() {
           </Button>
         </div>
 
-      </div>
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+      </Tabs>
 
       {/* Template Manager Dialog */}
       <Dialog open={showTemplateManager} onOpenChange={setShowTemplateManager}>
@@ -2417,6 +2995,7 @@ export function SettingsPanel() {
         </DialogContent>
       </Dialog>
 
+
       {/* Reset All Confirmation Dialog */}
       <Dialog open={showResetAllDialog} onOpenChange={setShowResetAllDialog}>
         <DialogContent className="sm:max-w-sm">
@@ -2438,6 +3017,86 @@ export function SettingsPanel() {
         </DialogContent>
       </Dialog>
 
-    </ScrollArea>
+      {/* Save Profile Dialog */}
+      <Dialog open={showSaveProfileDialog} onOpenChange={setShowSaveProfileDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Save Settings Profile</DialogTitle>
+            <DialogDescription>
+              Save your current render settings as a reusable profile. Built-in preset names
+              cannot be overwritten.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label htmlFor="profile-name" className="text-sm font-medium">Profile Name</Label>
+            <Input
+              id="profile-name"
+              placeholder="e.g. My TikTok Style"
+              value={saveProfileName}
+              onChange={(e) => setSaveProfileName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && saveProfileName.trim() &&
+                    !(BUILT_IN_PROFILE_NAMES as readonly string[]).includes(saveProfileName.trim())) {
+                  saveProfile(saveProfileName.trim())
+                  setShowSaveProfileDialog(false)
+                }
+              }}
+              autoFocus
+              className="mt-1.5"
+            />
+            {(BUILT_IN_PROFILE_NAMES as readonly string[]).includes(saveProfileName.trim()) && (
+              <p className="text-xs text-destructive mt-1.5">
+                Cannot overwrite built-in presets. Choose a different name.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSaveProfileDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!saveProfileName.trim() || (BUILT_IN_PROFILE_NAMES as readonly string[]).includes(saveProfileName.trim())}
+              onClick={() => {
+                saveProfile(saveProfileName.trim())
+                setShowSaveProfileDialog(false)
+              }}
+            >
+              Save Profile
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Profile Confirmation Dialog */}
+      <Dialog open={showDeleteProfileDialog} onOpenChange={setShowDeleteProfileDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Profile?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the profile &ldquo;{activeProfileName}&rdquo;?
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteProfileDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (activeProfileName) {
+                  deleteProfile(activeProfileName)
+                }
+                setShowDeleteProfileDialog(false)
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
+    </div>
   )
 }
