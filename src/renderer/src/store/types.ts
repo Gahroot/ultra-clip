@@ -507,6 +507,213 @@ export interface SettingsProfile {
 /** Names of profiles that ship with the app and cannot be deleted. */
 export const BUILT_IN_PROFILE_NAMES = ['TikTok Optimized', 'Reels Clean', 'Minimal'] as const
 
+// ---------------------------------------------------------------------------
+// Edit Style Presets
+// ---------------------------------------------------------------------------
+
+/**
+ * Category grouping for the style picker UI.
+ *
+ *   'viral'       — Fast-paced, high-energy, engagement-maximizing
+ *   'educational' — Clear typography, minimal distraction, readable captions
+ *   'cinematic'   — Premium feel, subtle motion, restrained overlays
+ *   'minimal'     — Clean silence, no overlays, simple captions
+ *   'branded'     — Designed to slot in brand colors and logo patterns
+ *   'custom'      — User-created; not shipped with the app
+ */
+export type EditStyleCategory =
+  | 'viral'
+  | 'educational'
+  | 'cinematic'
+  | 'minimal'
+  | 'branded'
+  | 'custom'
+
+/** Caption typography, color palette, and word-level animation within a style preset. */
+export interface EditStyleCaptions {
+  /** Whether captions are burned in at render time. */
+  enabled: boolean
+  /**
+   * Full caption appearance: font, all colors, sizes, word-box borders,
+   * and the frame-level animation type.
+   */
+  style: CaptionStyle
+}
+
+/** Auto-zoom / Ken Burns / reactive camera movement within a style preset. */
+export interface EditStyleZoom {
+  /** Whether auto-zoom is applied at render time. */
+  enabled: boolean
+  /** Zoom algorithm: smooth pan ('ken-burns'), beat-reactive ('reactive'), or hard jump-cut ('jump-cut'). */
+  mode: ZoomMode
+  /** Scale of zoom effect — how far in the camera pushes. */
+  intensity: ZoomIntensity
+  /** Seconds between zoom keyframe triggers. Default: 4. */
+  intervalSeconds: number
+}
+
+/** B-Roll stock footage overlay layout and transitions within a style preset. */
+export interface EditStyleBRoll {
+  /** Whether B-Roll insertion is enabled at render time. */
+  enabled: boolean
+  /**
+   * How B-Roll is composited onto the frame:
+   *   'fullscreen'   — B-Roll fills the entire 1080×1920 canvas
+   *   'split-top'    — B-Roll occupies the top ~65%, speaker shrinks to bottom strip
+   *   'split-bottom' — Speaker fills top ~65%, B-Roll fills bottom strip
+   *   'pip'          — B-Roll goes fullscreen, speaker shrinks to a corner window
+   */
+  displayMode: BRollDisplayMode
+  /**
+   * How B-Roll enters and exits the frame:
+   *   'hard-cut'   — Instant cut with no animation
+   *   'crossfade'  — Alpha fade in / fade out
+   *   'swipe-up'   — B-Roll slides in from the bottom
+   *   'swipe-down' — B-Roll slides in from the top
+   */
+  transition: BRollTransition
+  /**
+   * Picture-in-picture speaker window size as a fraction of canvas width (0.2–0.4).
+   * Only relevant when displayMode === 'pip'. Default: 0.25.
+   */
+  pipSize: number
+  /**
+   * Corner to anchor the PiP speaker window.
+   * Only relevant when displayMode === 'pip'. Default: 'bottom-right'.
+   */
+  pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  /** Target seconds between B-Roll clip insertions. Default: 5. */
+  intervalSeconds: number
+  /** Duration of each B-Roll clip in seconds (2–6). Default: 3. */
+  clipDuration: number
+}
+
+/** Background music, SFX density, and ducking mix within a style preset. */
+export interface EditStyleSound {
+  /** Whether sound design (music + SFX) is applied at render time. */
+  enabled: boolean
+  /**
+   * SFX placement density and character:
+   *   'minimal'   — Sparse, only key moments
+   *   'standard'  — Balanced mix
+   *   'energetic' — Dense, high-energy
+   */
+  sfxStyle: SFXStyle
+  /** Background music loop to mix under the clip. */
+  backgroundMusicTrack: MusicTrack
+  /** SFX channel volume scalar (0–1). Default: 0.5. */
+  sfxVolume: number
+  /** Music channel volume scalar (0–1). Default: 0.1. */
+  musicVolume: number
+  /** When true, music ducks automatically during speech. */
+  musicDucking: boolean
+  /** Target volume level during ducking (0–1, lower = deeper duck). Default: 0.2. */
+  musicDuckLevel: number
+}
+
+/** Hook title overlay style within a style preset. */
+export interface EditStyleHookTitle {
+  /** Whether the hook title is burned in at the start of the clip. */
+  enabled: boolean
+  /** Visual treatment for the hook title card. */
+  style: HookTitleStyle
+  /** How long the hook title remains fully visible (seconds). Default: 2.5. */
+  displayDuration: number
+  /** Font size in pixels on the 1080×1920 canvas. Default: 72. */
+  fontSize: number
+  /** Text fill color in CSS hex. Default: '#FFFFFF'. */
+  textColor: string
+  /** Text stroke/outline color in CSS hex. Default: '#000000'. */
+  outlineColor: string
+  /** Stroke width in pixels. Default: 4. */
+  outlineWidth: number
+}
+
+/** Re-hook / pattern-interrupt overlay style within a style preset. */
+export interface EditStyleRehook {
+  /** Whether the mid-clip re-hook overlay is burned in. */
+  enabled: boolean
+  /** Visual treatment for the re-hook element. */
+  style: RehookStyle
+  /** How long the re-hook element stays visible (seconds). Default: 1.5. */
+  displayDuration: number
+}
+
+/** Animated progress bar overlay style within a style preset. */
+export interface EditStyleProgressBar {
+  /** Whether the progress bar is burned in. */
+  enabled: boolean
+  /** Visual treatment for the bar fill. */
+  style: ProgressBarStyle
+  /** Edge of the frame to anchor the bar ('top' or 'bottom'). */
+  position: ProgressBarPosition
+  /** Bar thickness in pixels on the 1080×1920 canvas (2–8). Default: 4. */
+  height: number
+  /** Bar fill color in CSS hex. Default: '#FFFFFF'. */
+  color: string
+  /** Bar opacity (0–1). Default: 0.9. */
+  opacity: number
+}
+
+/** All on-screen overlay elements bundled within a style preset. */
+export interface EditStyleOverlays {
+  /** Opening hook title card. */
+  hookTitle: EditStyleHookTitle
+  /** Mid-clip re-hook / pattern-interrupt element. */
+  rehook: EditStyleRehook
+  /** Animated completion progress bar. */
+  progressBar: EditStyleProgressBar
+}
+
+/**
+ * EditStylePreset — a complete named creative style for one-click application.
+ *
+ * Bundles all aesthetic decisions (captions, zoom, B-Roll, sound, overlays)
+ * into a single coherent package. Intentionally excludes machine-specific or
+ * pipeline settings (output resolution, API keys, brand kit paths, filler
+ * removal config, min score) because those are not part of the creative identity.
+ *
+ * Built-in presets ship with the app and cannot be deleted. User-created
+ * presets (builtIn: false) can be saved, renamed, and removed freely.
+ */
+export interface EditStylePreset {
+  /**
+   * Unique identifier.
+   * Slug-style for built-ins (e.g. 'hormozi-bold'); UUID for user-created.
+   */
+  id: string
+  /** Human-readable name shown in the style picker card. */
+  name: string
+  /** One-sentence description of the aesthetic feel. */
+  description: string
+  /**
+   * Visual preview for the picker card.
+   * Built-ins use a representative emoji (e.g. '🔥').
+   * User-created presets may store a base64 data URL or a file path.
+   */
+  thumbnail: string
+  /** Category used for grouping and filtering in the picker UI. */
+  category: EditStyleCategory
+  /**
+   * Optional freeform tags for search (e.g. ['bold', 'dark', 'motivational']).
+   * Lower-cased at creation; matched case-insensitively in search.
+   */
+  tags?: string[]
+  /** True for presets bundled with the app; false for user-created presets. */
+  builtIn: boolean
+
+  /** Caption typography, color palette, and word-level animation. */
+  captions: EditStyleCaptions
+  /** Auto-zoom / Ken Burns / reactive camera movement. */
+  zoom: EditStyleZoom
+  /** B-Roll overlay layout and transitions. */
+  broll: EditStyleBRoll
+  /** Background music, SFX density, and ducking mix. */
+  sound: EditStyleSound
+  /** On-screen overlay elements (hook title, re-hook, progress bar). */
+  overlays: EditStyleOverlays
+}
+
 export interface ProcessingConfig {
   targetDuration: TargetDuration
   enablePerfectLoop: boolean
