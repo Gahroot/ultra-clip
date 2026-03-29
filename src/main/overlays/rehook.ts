@@ -6,8 +6,8 @@ import { emitUsageFromResponse } from '../ai-usage'
 // Types
 // ---------------------------------------------------------------------------
 
-/** Visual style for the re-hook / pattern interrupt overlay. */
-export type RehookStyle = 'bar' | 'text-only' | 'slide-up'
+import type { RehookStyle } from '@shared/types'
+export type { RehookStyle }
 
 /**
  * Full configuration for the mid-clip re-hook overlay.

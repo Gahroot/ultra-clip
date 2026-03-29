@@ -104,6 +104,9 @@ export function setupFFmpeg(): void {
   // Probe available hardware encoders at startup
   detectHardwareEncoder()
 
+  // Probe CUDA filter availability
+  hasScaleCuda()
+
   console.log(`[FFmpeg] Ready: ${ffmpegReady}, ffmpeg: ${ffmpegBin}, ffprobe: ${ffprobeBin}`)
 }
 
@@ -146,6 +149,33 @@ function detectHardwareEncoder(): HwEncoder {
   cachedEncoder = 'libx264'
   console.log('[FFmpeg] No hardware encoder found, using libx264')
   return cachedEncoder
+}
+
+// --- CUDA scale filter detection ---
+
+let cachedHasScaleCuda: boolean | null = null
+
+/**
+ * Detect if FFmpeg supports the scale_cuda filter.
+ * This requires an NVIDIA GPU with CUDA support and an FFmpeg build
+ * that includes the CUDA filters.
+ */
+export function hasScaleCuda(): boolean {
+  if (cachedHasScaleCuda !== null) return cachedHasScaleCuda
+
+  const bin = resolvedFfmpegPath ?? 'ffmpeg'
+  try {
+    const output = execSync(`"${bin}" -filters -hide_banner`, {
+      encoding: 'utf-8',
+      timeout: 10_000,
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+    cachedHasScaleCuda = output.includes('scale_cuda')
+    console.log(`[FFmpeg] scale_cuda available: ${cachedHasScaleCuda}`)
+  } catch {
+    cachedHasScaleCuda = false
+  }
+  return cachedHasScaleCuda
 }
 
 export interface QualityParams {
@@ -193,13 +223,15 @@ export function getSoftwareEncoder(quality?: QualityParams): EncoderConfig {
   return { encoder: 'libx264', presetFlag: ['-preset', preset, '-crf', String(crf), '-threads', '0'] }
 }
 
-/** Check if an FFmpeg error is an NVENC session exhaustion failure */
+/** Check if an FFmpeg error is a GPU/NVENC/CUDA failure that should trigger software fallback */
 export function isGpuSessionError(errorMessage: string): boolean {
   return (
     errorMessage.includes('OpenEncodeSessionEx failed') ||
     errorMessage.includes('No capable devices found') ||
     errorMessage.includes('Cannot load nvcuda.dll') ||
-    errorMessage.includes('out of memory')
+    errorMessage.includes('out of memory') ||
+    errorMessage.includes('hwupload_cuda failed') ||
+    errorMessage.includes('CUDA')
   )
 }
 
@@ -270,6 +302,7 @@ export function trimVideo(
         // Fallback: re-encode if stream copy fails
         const { encoder, presetFlag } = getEncoder()
         ffmpeg(inputPath)
+          .inputOptions(['-hwaccel', 'auto'])
           .setStartTime(startTime)
           .setDuration(endTime - startTime)
           .outputOptions(['-y', '-c:v', encoder, ...presetFlag, '-c:a', 'aac'])
@@ -290,6 +323,7 @@ export function trimVideoReencode(
   const { encoder, presetFlag } = getEncoder()
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
+      .inputOptions(['-hwaccel', 'auto'])
       .setStartTime(startTime)
       .setDuration(endTime - startTime)
       .outputOptions(['-y', '-c:v', encoder, ...presetFlag, '-c:a', 'aac'])
@@ -324,6 +358,7 @@ export function cropAndExport(
 
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
+      .inputOptions(['-hwaccel', 'auto'])
       .videoFilters(videoFilter)
       .outputOptions(['-y', '-c:v', encoder, ...presetFlag, '-c:a', 'aac'])
       .on('end', () => resolve(outputPath))
@@ -332,6 +367,7 @@ export function cropAndExport(
           // Retry with software encoder
           const sw = getSoftwareEncoder()
           ffmpeg(inputPath)
+            .inputOptions(['-hwaccel', 'auto'])
             .videoFilters(videoFilter)
             .outputOptions(['-y', '-c:v', sw.encoder, ...sw.presetFlag, '-c:a', 'aac'])
             .on('end', () => resolve(outputPath))

@@ -6,6 +6,7 @@ import { promisify } from 'util'
 import { execFile } from 'child_process'
 import { IncomingMessage } from 'http'
 import type { WebContents } from 'electron'
+import { Ch } from '@shared/ipc-channels'
 
 const execFileAsync = promisify(execFile)
 
@@ -521,7 +522,7 @@ export async function runFullSetup(sender: WebContents): Promise<void> {
     currentPkg?: number,
     totalPkgs?: number
   ): void => {
-    sender.send('python:setupProgress', { stage, message, percent, package: pkg, currentPackage: currentPkg, totalPackages: totalPkgs })
+    sender.send(Ch.Send.PYTHON_SETUP_PROGRESS, { stage, message, percent, package: pkg, currentPackage: currentPkg, totalPackages: totalPkgs })
   }
 
   try {
@@ -545,11 +546,11 @@ export async function runFullSetup(sender: WebContents): Promise<void> {
     }
 
     sendProgress('verifying', 'Setup complete!', 100)
-    sender.send('python:setupDone', { success: true })
+    sender.send(Ch.Send.PYTHON_SETUP_DONE, { success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[PythonSetup] Setup failed:', message)
-    sender.send('python:setupDone', { success: false, error: message })
+    sender.send(Ch.Send.PYTHON_SETUP_DONE, { success: false, error: message })
   }
 }
 

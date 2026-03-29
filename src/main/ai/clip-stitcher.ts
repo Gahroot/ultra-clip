@@ -367,9 +367,9 @@ Short segments are PREFERRED for hooks and rehooks:
 OVERLAY TEXT
 ═══════════════════════════════════════════════════════
 
-For every "hook" and "rehook" segment, provide overlay_text (1-6 words) that will appear as bold on-screen text. Examples:
-- Hook: "They Lied To You", "Nobody Talks About This", "Watch What Happens"
-- Rehook: "But wait", "Here's the crazy part", "It gets worse"
+For every "hook" and "rehook" segment, provide overlay_text (5 words or less) as bold on-screen text. 80%+ viewers watch with sound off — text must work silently.
+- Hook examples: "This changes everything", "Nobody talks about this", "Did you know this?", "Unpopular opinion", "The truth about [thing]"
+- Rehook examples: "But here's the real issue", "Wait it gets worse", "Here's why it matters", "Nobody expected this part"
 
 ═══════════════════════════════════════════════════════
 PAYOFF ORDERING

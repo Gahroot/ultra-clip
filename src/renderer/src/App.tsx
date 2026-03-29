@@ -1,8 +1,18 @@
-import { Settings, AlertTriangle, Save, FolderOpen, Keyboard, Sun, Moon, Monitor, GraduationCap, Megaphone } from 'lucide-react'
+import { Settings, AlertTriangle, Save, FolderOpen, Keyboard, Sun, Moon, Monitor, GraduationCap, Megaphone, ShieldAlert } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog'
 import {
   Dialog,
   DialogContent,
@@ -28,21 +38,43 @@ import { OnboardingWizard } from './components/OnboardingWizard'
 import { KeyboardShortcutsDialog } from './components/KeyboardShortcutsDialog'
 import { RecentProjectsList, RecentProjectsDropdown, type RecentProjectEntry } from './components/RecentProjects'
 import { AiUsageIndicator } from './components/AiUsageIndicator'
+import { TemplateEditor } from './components/TemplateEditor'
 import { ResourceMonitor } from './components/ResourceMonitor'
 import { OfflineBanner } from './components/OfflineBanner'
 import { WhatsNew, APP_VERSION } from './components/WhatsNew'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useTheme } from './hooks/useTheme'
+import { useAutosave } from './hooks/useAutosave'
 import { useStore } from './store'
+import {
+  saveProject,
+  loadProject,
+  loadProjectFromPath,
+  loadRecovery,
+  clearRecovery
+} from './services/project-service'
+
+/** Parsed recovery project data pending user decision */
+interface RecoveryData {
+  project: {
+    sources?: unknown[]
+    transcriptions?: Record<string, unknown>
+    clips?: Record<string, unknown[]>
+    settings?: Record<string, unknown>
+    stitchedClips?: Record<string, unknown>
+    templateLayout?: unknown
+    targetPlatform?: string
+  }
+  clipCount: number
+  savedAt: Date
+}
 
 function App() {
   const activeSource = useStore((s) => s.getActiveSource())
   const activeSourceId = useStore((s) => s.activeSourceId)
   const pipeline = useStore((s) => s.pipeline)
   const errorCount = useStore((s) => s.errorLog.length)
-  const saveProject = useStore((s) => s.saveProject)
-  const loadProject = useStore((s) => s.loadProject)
-  const loadProjectFromPath = useStore((s) => s.loadProjectFromPath)
+  const isDirty = useStore((s) => s.isDirty)
   const pythonStatus = useStore((s) => s.pythonStatus)
   const setPythonStatus = useStore((s) => s.setPythonStatus)
   const undo = useStore((s) => s.undo)
@@ -61,8 +93,32 @@ function App() {
   const [helpOpen, setHelpOpen] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [previewClipIndex, setPreviewClipIndex] = useState<number | null>(null)
+  const [recoveryData, setRecoveryData] = useState<RecoveryData | null>(null)
 
   useTheme()
+  const { justSaved } = useAutosave()
+
+  // Check for recovery file on startup
+  useEffect(() => {
+    loadRecovery().then((data) => {
+      if (!data) return
+      try {
+        const project = JSON.parse(data) as RecoveryData['project']
+        const clipCount = Object.values(project.clips ?? {}).flat().length
+        if (clipCount === 0) {
+          clearRecovery()
+          return
+        }
+        // Show the recovery dialog — defer slightly so the app renders first
+        setTimeout(() => {
+          setRecoveryData({ project, clipCount, savedAt: new Date() })
+        }, 400)
+      } catch {
+        clearRecovery()
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Subscribe to AI token usage events from the main process
   useEffect(() => {
@@ -156,6 +212,28 @@ function App() {
     }
   }
 
+  function handleRestoreRecovery() {
+    if (!recoveryData) return
+    const { project } = recoveryData
+    useStore.setState({
+      sources: (project.sources ?? []) as ReturnType<typeof useStore.getState>['sources'],
+      transcriptions: (project.transcriptions ?? {}) as ReturnType<typeof useStore.getState>['transcriptions'],
+      clips: (project.clips ?? {}) as ReturnType<typeof useStore.getState>['clips'],
+      settings: { ...useStore.getState().settings, ...((project.settings ?? {}) as object) },
+      stitchedClips: (project.stitchedClips ?? {}) as ReturnType<typeof useStore.getState>['stitchedClips'],
+      templateLayout: (project.templateLayout ?? useStore.getState().templateLayout) as ReturnType<typeof useStore.getState>['templateLayout'],
+      targetPlatform: (project.targetPlatform ?? 'universal') as ReturnType<typeof useStore.getState>['targetPlatform'],
+      isDirty: true
+    })
+    clearRecovery()
+    setRecoveryData(null)
+  }
+
+  function handleDiscardRecovery() {
+    clearRecovery()
+    setRecoveryData(null)
+  }
+
   const showProcessingPanel =
     activeSource !== null &&
     pipeline.stage !== 'ready' &&
@@ -194,7 +272,15 @@ function App() {
 
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-border bg-card shrink-0">
-        <h1 className="text-lg font-semibold tracking-tight">BatchContent</h1>
+        <h1 className="text-lg font-semibold tracking-tight flex items-center gap-1.5">
+          BatchContent
+          {isDirty && (
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
+              title="Unsaved changes"
+            />
+          )}
+        </h1>
         <div className="flex items-center gap-2">
           {errorCount > 0 && (
             <div className="flex items-center gap-1 text-destructive">
@@ -227,6 +313,7 @@ function App() {
             Save
           </Button>
           <RecentProjectsDropdown onLoad={handleLoadFromRecent} />
+          <TemplateEditor />
           <AiUsageIndicator />
           <Button
             variant="ghost"
@@ -382,6 +469,52 @@ function App() {
       <WhatsNew open={whatsNewOpen} onOpenChange={(open) => {
         if (!open) handleWhatsNewClose()
       }} />
+
+      {/* Autosaved indicator — fades in/out at bottom-right */}
+      <AnimatePresence>
+        {justSaved && (
+          <motion.div
+            key="autosaved-toast"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-4 right-4 z-50 flex items-center gap-1.5 rounded-md bg-card border border-border px-3 py-1.5 shadow-sm text-xs text-muted-foreground pointer-events-none"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            Autosaved
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Crash recovery dialog */}
+      <AlertDialog open={recoveryData !== null}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-amber-500" />
+              Recover unsaved work
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {recoveryData && (
+                <>
+                  An autosave was found with{' '}
+                  <strong>{recoveryData.clipCount} clip{recoveryData.clipCount !== 1 ? 's' : ''}</strong>{' '}
+                  from your previous session. Would you like to restore it?
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDiscardRecovery}>
+              Discard
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleRestoreRecovery}>
+              Restore
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

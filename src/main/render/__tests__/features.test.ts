@@ -28,7 +28,7 @@ vi.mock('../../auto-zoom', () => ({
 
 vi.mock('../../overlays/progress-bar', () => ({
   buildProgressBarFilter: vi.fn(
-    () => "drawbox=x=0:y=ih-6:w='iw*t/30':h=6:color=white@0.8:t=fill"
+    () => "color=c=0xffffff@0.90:s=1080x6:d=30.000:r=30[_pbs0];[_pbs0]crop=w='(1+iw*(t/30.000+1-abs(t/30.000-1))/2+abs(1-iw*(t/30.000+1-abs(t/30.000-1))/2))/2':h=ih:x=0:y=0[_pbc0];[0:v][_pbc0]overlay=x=0:y=1914:shortest=1[outv]"
   )
 }))
 
@@ -494,7 +494,7 @@ describe('ProgressBarFeature', () => {
     expect(result.modified).toBe(false)
   })
 
-  it('overlayPass returns drawbox filter when config set', () => {
+  it('overlayPass returns filter_complex with overlay when config set', () => {
     const job = makeJob()
     job.progressBarConfig = {
       enabled: true,
@@ -511,7 +511,8 @@ describe('ProgressBarFeature', () => {
     })
     expect(result).not.toBeNull()
     expect(result!.name).toBe('progress-bar')
-    expect(result!.filter).toContain('drawbox')
+    expect(result!.filter).toContain('overlay')
+    expect(result!.filterComplex).toBe(true)
   })
 
   it('overlayPass returns null when no config', () => {

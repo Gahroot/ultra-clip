@@ -156,7 +156,7 @@ export type ClipEndMode = 'loop-first' | 'completion-first' | 'cliffhanger'
 // ---------------------------------------------------------------------------
 
 /** Animation style for word-level captions. */
-export type CaptionAnimation = 'karaoke-fill' | 'word-pop' | 'fade-in' | 'glow' | 'word-box'
+export type CaptionAnimation = 'karaoke-fill' | 'word-pop' | 'fade-in' | 'glow' | 'word-box' | 'elastic-bounce'
 
 // ---------------------------------------------------------------------------
 // Word Emphasis

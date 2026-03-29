@@ -7,8 +7,8 @@ import { app } from 'electron'
 // Types
 // ---------------------------------------------------------------------------
 
-/** Visual style for the hook title overlay. */
-export type HookTitleStyle = 'centered-bold' | 'top-bar' | 'slide-in'
+import type { HookTitleStyle } from '@shared/types'
+export type { HookTitleStyle }
 
 /**
  * Full configuration for the hook title overlay rendered in the first few

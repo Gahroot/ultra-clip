@@ -13,7 +13,8 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type ZoomIntensity = 'subtle' | 'medium' | 'dynamic'
+import type { ZoomIntensity } from '@shared/types'
+export type { ZoomIntensity }
 
 export interface ZoomSettings {
   /** Whether auto-zoom is applied to rendered clips */

@@ -6,26 +6,14 @@ import { extractAudio } from './ffmpeg'
 import { runPythonScript, resolvePythonPath, resolveScriptPath } from './python'
 
 // ---------------------------------------------------------------------------
-// Types
+// Types (canonical definitions live in @shared/types)
 // ---------------------------------------------------------------------------
 
-export interface WordTimestamp {
-  text: string
-  start: number
-  end: number
-}
+import type { WordTimestamp, SegmentTimestamp, TranscriptionResult } from '@shared/types'
+export type { WordTimestamp, SegmentTimestamp, TranscriptionResult }
 
-export interface SegmentTimestamp {
-  text: string
-  start: number
-  end: number
-}
-
-export interface TranscriptionResult {
-  text: string
-  words: WordTimestamp[]
-  segments: SegmentTimestamp[]
-}
+/** Transcription timeout: 3 hours. */
+const TRANSCRIPTION_TIMEOUT_MS = 3 * 60 * 60 * 1000
 
 export interface TranscriptionProgress {
   stage: 'extracting-audio' | 'downloading-model' | 'loading-model' | 'transcribing'
@@ -118,7 +106,7 @@ export async function transcribeVideo(
       'transcribe.py',
       ['--input', wavPath, '--output', jsonPath, '--model', model],
       {
-        timeoutMs: 3 * 60 * 60 * 1000, // 3 hours max
+        timeoutMs: TRANSCRIPTION_TIMEOUT_MS,
         onStdout: (line) => {
           let parsed: PythonLine
           try {

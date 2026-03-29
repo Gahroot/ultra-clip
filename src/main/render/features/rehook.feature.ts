@@ -6,9 +6,17 @@ import { writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { RenderFeature, PrepareResult, OverlayContext, OverlayPassResult } from './feature'
-import type { RenderClipJob, RenderBatchOptions, RehookConfig } from '../types'
+import type { RenderClipJob, RenderBatchOptions, RehookConfig, OverlayVisualSettings } from '../types'
 import { formatASSTimestamp, cssHexToASS, buildASSFilter } from '../helpers'
 import { getDefaultRehookPhrase } from '../../overlays/rehook'
+
+/** Default visual settings used when hook title overlay is not configured. */
+const DEFAULT_OVERLAY_VISUALS: OverlayVisualSettings = {
+  fontSize: 72,
+  textColor: '#FFFFFF',
+  outlineColor: '#000000',
+  outlineWidth: 4
+}
 
 // ---------------------------------------------------------------------------
 // ASS generation — self-contained within this feature
@@ -28,6 +36,7 @@ import { getDefaultRehookPhrase } from '../../overlays/rehook'
 function generateRehookASSFile(
   text: string,
   config: RehookConfig,
+  visuals: OverlayVisualSettings,
   appearTime: number,
   frameWidth = 1080,
   frameHeight = 1920,
@@ -36,11 +45,10 @@ function generateRehookASSFile(
   const {
     displayDuration,
     fadeIn,
-    fadeOut,
-    fontSize,
-    textColor,
-    outlineColor
+    fadeOut
   } = config
+
+  const { fontSize, textColor, outlineColor } = visuals
 
   const fadeInMs = Math.round(fadeIn * 1000)
   const fadeOutMs = Math.round(fadeOut * 1000)
@@ -141,10 +149,22 @@ export function createRehookFeature(): RenderFeature {
         ? Math.round((batchOptions.templateLayout.rehookText.y / 100) * frameHeight)
         : undefined
 
+      // Inherit visual settings from hook title config, falling back to defaults
+      const hookVisuals = batchOptions.hookTitleOverlay
+      const visuals: OverlayVisualSettings = hookVisuals
+        ? {
+            fontSize: hookVisuals.fontSize,
+            textColor: hookVisuals.textColor,
+            outlineColor: hookVisuals.outlineColor,
+            outlineWidth: hookVisuals.outlineWidth
+          }
+        : DEFAULT_OVERLAY_VISUALS
+
       // Generate the ASS overlay file
       const assPath = generateRehookASSFile(
         job.rehookText,
         job.rehookConfig,
+        visuals,
         job.rehookAppearTime,
         1080,
         frameHeight,

@@ -612,6 +612,12 @@ export function ProcessingPanel() {
   const setPipeline = useStore((s) => s.setPipeline)
   const enqueueSources = useStore((s) => s.enqueueSources)
   const isOnline = useStore((s) => s.isOnline)
+  const enablePerfectLoop = useStore((s) => s.processingConfig.enablePerfectLoop)
+  const enableMultiPart = useStore((s) => s.processingConfig.enableMultiPart)
+  const enableVariants = useStore((s) => s.processingConfig.enableVariants)
+  const enableClipStitching = useStore((s) => s.processingConfig.enableClipStitching)
+  const failedPipelineStage = useStore((s) => s.failedPipelineStage)
+  const clearPipelineCache = useStore((s) => s.clearPipelineCache)
 
   const { processVideo, cancelProcessing } = usePipeline()
   const { cancelQueue } = useQueueProcessor()
@@ -619,6 +625,7 @@ export function ProcessingPanel() {
 
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [showCancelQueueConfirm, setShowCancelQueueConfirm] = useState(false)
+  const [showReprocessConfirm, setShowReprocessConfirm] = useState(false)
 
   // Track which stage was active right before an error
   const lastActiveStageRef = useRef<PipelineStage>('idle')
@@ -658,10 +665,6 @@ export function ProcessingPanel() {
     stage === 'detecting-faces' ||
     stage === 'detecting-arcs'
 
-  const enablePerfectLoop = useStore((s) => s.processingConfig.enablePerfectLoop)
-  const enableMultiPart = useStore((s) => s.processingConfig.enableMultiPart)
-  const enableVariants = useStore((s) => s.processingConfig.enableVariants)
-  const enableClipStitching = useStore((s) => s.processingConfig.enableClipStitching)
   const needsGeminiKey = !settings.geminiApiKey
   const failedStage = isError ? lastActiveStageRef.current : null
 
@@ -674,13 +677,34 @@ export function ProcessingPanel() {
     return true
   })
 
+  // Human-readable labels for pipeline stages
+  const stageLabels: Partial<Record<PipelineStage, string>> = {
+    downloading: 'Download',
+    transcribing: 'Transcription',
+    scoring: 'Scoring',
+    'optimizing-loops': 'Loop Optimization',
+    'generating-variants': 'Variant Generation',
+    stitching: 'Clip Stitching',
+    'detecting-faces': 'Face Detection',
+    'detecting-arcs': 'Story Arcs'
+  }
+
   const handleStart = async () => {
+    console.log('[ProcessingPanel] handleStart called', { needsGeminiKey, isOnline, activeSourceId: activeSource.id })
     if (needsGeminiKey) return
     lastActiveStageRef.current = 'idle'
     await processVideo(activeSource)
+    console.log('[ProcessingPanel] processVideo returned')
+  }
+
+  const handleRetryFromStage = async () => {
+    if (!activeSource || !failedPipelineStage) return
+    lastActiveStageRef.current = 'idle'
+    await processVideo(activeSource, failedPipelineStage)
   }
 
   const handleReset = () => {
+    clearPipelineCache()
     setPipeline({ stage: 'idle', message: '', percent: 0 })
   }
 
@@ -775,10 +799,22 @@ export function ProcessingPanel() {
             <XCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0 space-y-2">
               <p className="text-sm text-destructive leading-snug">{pipeline.message}</p>
-              <Button variant="outline" size="sm" onClick={handleReset} className="gap-1.5 h-7 text-xs">
-                <RefreshCw className="w-3 h-3" />
-                Try Again
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                {failedPipelineStage && (
+                  <Button
+                    size="sm"
+                    onClick={handleRetryFromStage}
+                    className="gap-1.5 h-7 text-xs"
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                    Retry from {stageLabels[failedPipelineStage] ?? failedPipelineStage}
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={handleReset} className="gap-1.5 h-7 text-xs">
+                  <RefreshCw className="w-3 h-3" />
+                  Start Over
+                </Button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -813,9 +849,8 @@ export function ProcessingPanel() {
             <Button
               size="lg"
               onClick={handleStart}
-              disabled={needsGeminiKey || !isOnline}
+              disabled={needsGeminiKey}
               className="gap-2 px-10"
-              title={!isOnline ? 'Internet connection required' : undefined}
             >
               <Play className="w-4 h-4 fill-current" />
               Process Video
@@ -825,9 +860,9 @@ export function ProcessingPanel() {
                 size="lg"
                 variant="outline"
                 onClick={handleProcessAll}
-                disabled={needsGeminiKey || !isOnline}
+                disabled={needsGeminiKey}
                 className="gap-2 px-6"
-                title={!isOnline ? 'Internet connection required' : `Process all ${sources.length} sources sequentially`}
+                title={`Process all ${sources.length} sources sequentially`}
               >
                 <ListChecks className="w-4 h-4" />
                 Process All ({sources.length})
@@ -843,7 +878,7 @@ export function ProcessingPanel() {
         )}
 
         {isReady && !queueMode && (
-          <Button variant="outline" size="sm" onClick={handleReset} className="gap-1.5">
+          <Button variant="outline" size="sm" onClick={() => setShowReprocessConfirm(true)} className="gap-1.5">
             <RefreshCw className="w-3.5 h-3.5" />
             Reprocess
           </Button>
@@ -866,6 +901,14 @@ export function ProcessingPanel() {
         confirmText="Cancel Queue"
         onConfirm={() => { setShowCancelQueueConfirm(false); cancelQueue() }}
         onCancel={() => setShowCancelQueueConfirm(false)}
+      />
+      <ConfirmDialog
+        open={showReprocessConfirm}
+        title="Reprocess Video"
+        description="This will discard all clips and restart processing from scratch. Are you sure?"
+        confirmText="Reprocess"
+        onConfirm={() => { setShowReprocessConfirm(false); handleReset() }}
+        onCancel={() => setShowReprocessConfirm(false)}
       />
     </div>
   )

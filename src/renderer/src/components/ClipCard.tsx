@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Play, ChevronDown, ChevronUp, Clock, Check, X, Pencil, RefreshCw, BookOpen, Layers, SlidersHorizontal, Copy, Eye, FileText, RotateCcw, GitCompare, Loader2, FolderOpen } from 'lucide-react'
+import { Play, ChevronDown, ChevronUp, Clock, Check, X, Pencil, RefreshCw, BookOpen, Layers, SlidersHorizontal, Copy, Eye, FileText, RotateCcw, GitCompare, Loader2, FolderOpen, ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -198,7 +198,7 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
         captionsEnabled: settings.captionsEnabled,
         captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
-      } as Parameters<typeof window.api.startBatchRender>[0])
+      })
     } catch (err) {
       setSingleRenderState({ status: 'error', error: err instanceof Error ? err.message : String(err) })
       for (const cleanup of cleanups) cleanup()
@@ -406,12 +406,20 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
 
         {/* Thumbnail / Video Preview */}
         <div className="relative w-full aspect-video bg-black/40 overflow-hidden">
-          {clip.thumbnail && !showVideo && (
+          {(clip.customThumbnail || clip.thumbnail) && !showVideo && (
             <img
-              src={clip.thumbnail}
+              src={clip.customThumbnail ?? clip.thumbnail}
               alt="clip thumbnail"
               className="w-full h-full object-cover"
             />
+          )}
+
+          {/* Custom thumbnail badge */}
+          {clip.customThumbnail && !showVideo && (
+            <div className="absolute bottom-1.5 left-1.5 z-10 flex items-center gap-0.5 bg-black/60 text-white/80 px-1.5 py-0.5 rounded text-[9px] backdrop-blur-sm pointer-events-none">
+              <ImageIcon className="w-2.5 h-2.5" />
+              Custom
+            </div>
           )}
 
           {showVideo ? (
@@ -431,7 +439,7 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
               className={cn(
                 'absolute inset-0 flex items-center justify-center',
                 'bg-black/30 opacity-0 hover:opacity-100 transition-opacity duration-200',
-                !clip.thumbnail && 'opacity-100'
+                !clip.customThumbnail && !clip.thumbnail && 'opacity-100'
               )}
               aria-label="Preview clip"
             >

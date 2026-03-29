@@ -16,7 +16,12 @@ import {
   Sparkles,
   Info,
   Loader2,
-  FolderOpen
+  FolderOpen,
+  Monitor,
+  Smartphone,
+  Camera,
+  Eye,
+  RotateCw
 } from 'lucide-react'
 import {
   Dialog,
@@ -235,6 +240,7 @@ export function ClipPreview({
 }: ClipPreviewProps) {
   const updateClipTrim = useStore((s) => s.updateClipTrim)
   const updateClipHookText = useStore((s) => s.updateClipHookText)
+  const setClipCustomThumbnail = useStore((s) => s.setClipCustomThumbnail)
   const setClipOverride = useStore((s) => s.setClipOverride)
   const clearClipOverrides = useStore((s) => s.clearClipOverrides)
   const rescoreClip = useStore((s) => s.rescoreClip)
@@ -279,17 +285,30 @@ export function ClipPreview({
   const [currentTime, setCurrentTime] = useState(clip.startTime)
   const [showReasoning, setShowReasoning] = useState(false)
   const [showOverrides, setShowOverrides] = useState(false)
+  const [viewMode, setViewMode] = useState<'source' | 'output'>('output')
 
   // Re-score state
   const [isRescoring, setIsRescoring] = useState(false)
   const [rescoreError, setRescoreError] = useState<string | null>(null)
   const [lastRescoreResult, setLastRescoreResult] = useState<{ score: number; previousScore: number } | null>(null)
 
+  // Thumbnail capture feedback
+  const [thumbnailCaptured, setThumbnailCaptured] = useState(false)
+
+  // Preview with overlays state
+  const [previewPath, setPreviewPath] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
+
   // Original AI-selected boundaries (fixed for "Reset to Original")
   const [origStart] = useState(clip.startTime)
   const [origEnd] = useState(clip.endTime)
 
   const videoRef = useRef<HTMLVideoElement>(null)
+
+  // Source video native dimensions (set on loadedmetadata)
+  const [videoDims, setVideoDims] = useState<{ w: number; h: number } | null>(null)
 
   // Waveform state — keyed on the slider window (sliderMin..sliderMax)
   const [waveformData, setWaveformData] = useState<number[]>([])
@@ -349,16 +368,19 @@ export function ClipPreview({
     }
   }, [])
 
-  // Auto-pause when playback reaches endTime
+  // Auto-pause when playback reaches the end of the clip
+  // In preview mode: stop at clipDuration (video starts at 0)
+  // In source mode: stop at localEnd (video is the full source)
   const handleTimeUpdate = useCallback(() => {
     const vid = videoRef.current
     if (!vid) return
     setCurrentTime(vid.currentTime)
-    if (vid.currentTime >= localEnd) {
+    const stopPoint = showPreview ? clipDuration : localEnd
+    if (vid.currentTime >= stopPoint) {
       vid.pause()
       setIsPlaying(false)
     }
-  }, [localEnd])
+  }, [localEnd, showPreview, clipDuration])
 
   const handlePlayPause = useCallback(() => {
     const vid = videoRef.current
@@ -367,14 +389,16 @@ export function ClipPreview({
       vid.pause()
       setIsPlaying(false)
     } else {
-      // If we're past end, restart from localStart
-      if (vid.currentTime >= localEnd) {
-        vid.currentTime = localStart
+      // If we're past end, restart from the beginning of the clip
+      const stopPoint = showPreview ? clipDuration : localEnd
+      const startPoint = showPreview ? 0 : localStart
+      if (vid.currentTime >= stopPoint) {
+        vid.currentTime = startPoint
       }
       vid.play().catch(() => {})
       setIsPlaying(true)
     }
-  }, [isPlaying, localStart, localEnd])
+  }, [isPlaying, localStart, localEnd, showPreview, clipDuration])
 
   const handleVideoClick = useCallback(() => {
     handlePlayPause()
@@ -428,6 +452,22 @@ export function ClipPreview({
       setCurrentTime(wordStart)
     }
   }, [])
+
+  // Capture current video frame and save as custom thumbnail
+  const handleCaptureThumbnail = useCallback(() => {
+    const vid = videoRef.current
+    if (!vid) return
+    const canvas = document.createElement('canvas')
+    canvas.width = vid.videoWidth || 1280
+    canvas.height = vid.videoHeight || 720
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(vid, 0, 0, canvas.width, canvas.height)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    setClipCustomThumbnail(sourceId, clip.id, dataUrl)
+    setThumbnailCaptured(true)
+    setTimeout(() => setThumbnailCaptured(false), 2000)
+  }, [sourceId, clip.id, setClipCustomThumbnail])
 
   // Re-score handler
   const handleRescore = useCallback(async () => {
@@ -525,7 +565,7 @@ export function ClipPreview({
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
         captionsEnabled: settings.captionsEnabled,
         captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
-      } as Parameters<typeof window.api.startBatchRender>[0])
+      })
     } catch (err) {
       setSingleRenderState({ status: 'error', error: err instanceof Error ? err.message : String(err) })
       for (const cleanup of cleanups) cleanup()
@@ -587,15 +627,109 @@ export function ClipPreview({
 
   const hasOverrides = clip.overrides && Object.keys(clip.overrides).length > 0
 
+  // ── Effective overlay settings (global settings + per-clip overrides applied) ──
+  const effectiveCaptionsEnabled =
+    clip.overrides?.enableCaptions !== undefined
+      ? clip.overrides.enableCaptions
+      : settings.captionsEnabled
+  const effectiveHookTitleEnabled =
+    clip.overrides?.enableHookTitle !== undefined
+      ? clip.overrides.enableHookTitle
+      : settings.hookTitleOverlay?.enabled ?? false
+  const effectiveProgressBarEnabled =
+    clip.overrides?.enableProgressBar !== undefined
+      ? clip.overrides.enableProgressBar
+      : settings.progressBarOverlay?.enabled ?? false
+  const effectiveAutoZoomEnabled =
+    clip.overrides?.enableAutoZoom !== undefined
+      ? clip.overrides.enableAutoZoom
+      : settings.autoZoom?.enabled ?? false
+  const effectiveBrandKitEnabled =
+    clip.overrides?.enableBrandKit !== undefined
+      ? clip.overrides.enableBrandKit
+      : settings.brandKit?.enabled ?? false
+
+  // ── Preview cleanup — delete temp file when dialog closes ──────────────────
+  useEffect(() => {
+    if (!open && previewPath) {
+      window.api.cleanupPreview(previewPath)
+      setPreviewPath(null)
+      setShowPreview(false)
+      setPreviewError(null)
+    }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Preview with overlays handler ──────────────────────────────────────────
+  const handlePreviewWithOverlays = useCallback(async () => {
+    setPreviewLoading(true)
+    setPreviewError(null)
+
+    // Clean up any existing preview temp file
+    if (previewPath) {
+      await window.api.cleanupPreview(previewPath)
+      setPreviewPath(null)
+    }
+
+    try {
+      const result = await window.api.renderPreview({
+        sourceVideoPath: sourcePath,
+        startTime: localStart,
+        endTime: localEnd,
+        cropRegion: clip.cropRegion
+          ? { x: clip.cropRegion.x, y: clip.cropRegion.y, width: clip.cropRegion.width, height: clip.cropRegion.height }
+          : undefined,
+        wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
+        hookTitleText: localHook || undefined,
+        captionsEnabled: effectiveCaptionsEnabled,
+        captionStyle: effectiveCaptionsEnabled ? settings.captionStyle : undefined,
+        hookTitleOverlay: effectiveHookTitleEnabled ? settings.hookTitleOverlay : undefined,
+        progressBarOverlay: effectiveProgressBarEnabled ? settings.progressBarOverlay : undefined,
+        autoZoom: effectiveAutoZoomEnabled
+          ? { enabled: true, intensity: settings.autoZoom?.intensity, intervalSeconds: settings.autoZoom?.intervalSeconds }
+          : undefined,
+        brandKit:
+          effectiveBrandKitEnabled && settings.brandKit?.logoPath
+            ? {
+                logoPath: settings.brandKit.logoPath,
+                logoPosition: settings.brandKit.logoPosition,
+                logoScale: settings.brandKit.logoScale,
+                logoOpacity: settings.brandKit.logoOpacity
+              }
+            : undefined
+      })
+      setPreviewPath(result.previewPath)
+      setShowPreview(true)
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : 'Preview render failed')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }, [
+    sourcePath,
+    localStart,
+    localEnd,
+    localHook,
+    clip.cropRegion,
+    clip.wordTimestamps,
+    previewPath,
+    effectiveCaptionsEnabled,
+    effectiveHookTitleEnabled,
+    effectiveProgressBarEnabled,
+    effectiveAutoZoomEnabled,
+    effectiveBrandKitEnabled,
+    settings
+  ])
+
   // Current time relative to clip start
-  const relativeTime = Math.max(0, currentTime - localStart)
+  // In preview mode the video starts at 0, so currentTime IS the relative time
+  const relativeTime = showPreview ? currentTime : Math.max(0, currentTime - localStart)
   const clipDuration = localEnd - localStart
 
-  const videoSrc = `file://${sourcePath}`
+  const videoSrc = showPreview && previewPath ? `file://${previewPath}` : `file://${sourcePath}`
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-2xl w-full p-0 overflow-hidden gap-0">
+      <DialogContent className="max-w-2xl w-full p-0 overflow-hidden gap-0 max-h-[90vh] overflow-y-auto">
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
           <div className="flex items-center gap-3 pr-8">
             <div className="flex flex-col items-center shrink-0">
@@ -718,53 +852,352 @@ export function ClipPreview({
           </div>
         </DialogHeader>
 
-        {/* Video player */}
-        <div
-          className="relative w-full bg-black cursor-pointer"
-          style={{ aspectRatio: '16/9' }}
-          onClick={handleVideoClick}
-        >
-          <video
-            ref={videoRef}
-            src={videoSrc}
-            className="w-full h-full object-contain"
-            onTimeUpdate={handleTimeUpdate}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-            onLoadedMetadata={() => {
-              if (videoRef.current) {
-                videoRef.current.currentTime = localStart
+        {/* View mode toggle */}
+        <div className="flex items-center justify-center gap-1 px-5 py-2 bg-muted/30 border-b border-border">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => { setShowPreview(false); setViewMode('source') }}
+                  className={cn(
+                    'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-l-md border transition-colors',
+                    !showPreview && viewMode === 'source'
+                      ? 'bg-primary/15 border-primary/50 text-primary font-medium'
+                      : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  )}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  Source 16:9
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">Original source video (horizontal)</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => { setShowPreview(false); setViewMode('output') }}
+                  className={cn(
+                    'flex items-center gap-1.5 text-xs px-3 py-1.5 border border-l-0 transition-colors',
+                    !showPreview && viewMode === 'output'
+                      ? 'bg-primary/15 border-primary/50 text-primary font-medium'
+                      : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  )}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  Output 9:16
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                {clip.cropRegion ? 'Vertical output preview with face-centred crop' : 'Vertical output preview (centre crop)'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => {
+                    if (previewPath) {
+                      setShowPreview(true)
+                    } else {
+                      handlePreviewWithOverlays()
+                    }
+                  }}
+                  disabled={previewLoading}
+                  className={cn(
+                    'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-r-md border border-l-0 transition-colors',
+                    showPreview
+                      ? 'bg-violet-500/15 border-violet-500/50 text-violet-400 font-medium'
+                      : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                    previewLoading && 'opacity-60 cursor-wait'
+                  )}
+                >
+                  {previewLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Eye className="w-3.5 h-3.5" />
+                  )}
+                  {previewLoading ? 'Rendering…' : 'With Overlays'}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs max-w-52">
+                {previewLoading
+                  ? 'Rendering preview at 540×960…'
+                  : showPreview
+                    ? 'Showing rendered preview with all overlays applied'
+                    : previewPath
+                      ? 'Switch to rendered overlay preview'
+                      : 'Render a fast preview at 540×960 with all overlays applied (~3–5 seconds)'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        {/* Video player — single <video> element, CSS-cropped per view mode */}
+        {(() => {
+          // In preview mode: always show as 9:16 without CSS crop (video is pre-rendered)
+          // In source/output mode: apply CSS crop or centre-crop as normal
+          const isOutputView = showPreview || viewMode === 'output'
+
+          // Compute crop percentages from pixel-based cropRegion + video native dims
+          // (only used in non-preview modes)
+          const crop = !showPreview && clip.cropRegion && videoDims && videoDims.w > 0 && videoDims.h > 0
+            ? {
+                xPct: (clip.cropRegion.x / videoDims.w) * 100,
+                yPct: (clip.cropRegion.y / videoDims.h) * 100,
+                wPct: (clip.cropRegion.width / videoDims.w) * 100,
+                hPct: (clip.cropRegion.height / videoDims.h) * 100,
               }
-            }}
-          />
+            : null
 
-          {/* Play/Pause overlay button */}
-          <div
-            className={cn(
-              'absolute inset-0 flex items-center justify-center',
-              'bg-black/0 hover:bg-black/20 transition-colors duration-200',
-              !isPlaying && 'bg-black/10'
-            )}
-          >
+          return (
             <div
-              className={cn(
-                'w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm border border-white/30 flex items-center justify-center',
-                'transition-opacity duration-200',
-                isPlaying ? 'opacity-0 hover:opacity-100' : 'opacity-100'
-              )}
+              className="relative w-full bg-black flex items-center justify-center cursor-pointer"
+              style={{ minHeight: isOutputView ? 340 : undefined }}
+              onClick={handleVideoClick}
             >
-              {isPlaying ? (
-                <Pause className="w-5 h-5 text-white" />
-              ) : (
-                <Play className="w-5 h-5 text-white fill-white ml-0.5" />
-              )}
-            </div>
-          </div>
+              {/* Outer wrapper controls the visible shape */}
+              <div
+                className={cn(
+                  'relative overflow-hidden',
+                  isOutputView ? 'mx-auto rounded-sm border border-border/30' : 'w-full'
+                )}
+                style={isOutputView
+                  ? { aspectRatio: '9/16', height: 340 }
+                  : { aspectRatio: '16/9' }
+                }
+              >
+                <video
+                  ref={videoRef}
+                  src={videoSrc}
+                  className={cn(
+                    // Preview mode: fill the 9:16 box (video is already the right dimensions)
+                    showPreview
+                      ? 'w-full h-full object-contain'
+                      : isOutputView
+                        ? (crop
+                            // Crop region: scale video up so the crop fills the container
+                            ? 'absolute'
+                            // No crop data: centre-crop via object-cover
+                            : 'w-full h-full object-cover')
+                        : 'w-full h-full object-contain'
+                  )}
+                  style={!showPreview && isOutputView && crop ? {
+                    width: `${100 / (crop.wPct / 100)}%`,
+                    height: `${100 / (crop.hPct / 100)}%`,
+                    left: `${-(crop.xPct / crop.wPct) * 100}%`,
+                    top: `${-(crop.yPct / crop.hPct) * 100}%`,
+                  } : undefined}
+                  onTimeUpdate={handleTimeUpdate}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  onLoadedMetadata={() => {
+                    if (videoRef.current) {
+                      // In preview mode: video starts at 0 (pre-rendered clip)
+                      // In source mode: seek to localStart
+                      const seekTo = showPreview ? 0 : localStart
+                      videoRef.current.currentTime = seekTo
+                      setCurrentTime(seekTo)
+                      if (!showPreview) {
+                        setVideoDims({ w: videoRef.current.videoWidth, h: videoRef.current.videoHeight })
+                      }
+                    }
+                  }}
+                />
 
-          {/* Time overlay */}
-          <div className="absolute bottom-2 right-3 text-xs font-mono text-white/80 bg-black/50 px-1.5 py-0.5 rounded tabular-nums">
-            {formatTime(relativeTime)} / {formatTime(clipDuration)}
+                {/* Source view: crop region overlay */}
+                {!showPreview && !isOutputView && crop && (
+                  <>
+                    {/* Dim mask: top, bottom, left, right around the crop */}
+                    <div className="absolute inset-0 pointer-events-none">
+                      {/* Top */}
+                      <div className="absolute left-0 right-0 top-0 bg-black/50" style={{ height: `${crop.yPct}%` }} />
+                      {/* Bottom */}
+                      <div className="absolute left-0 right-0 bottom-0 bg-black/50" style={{ height: `${100 - crop.yPct - crop.hPct}%` }} />
+                      {/* Left (between top and bottom) */}
+                      <div className="absolute bg-black/50" style={{ top: `${crop.yPct}%`, height: `${crop.hPct}%`, left: 0, width: `${crop.xPct}%` }} />
+                      {/* Right (between top and bottom) */}
+                      <div className="absolute bg-black/50" style={{ top: `${crop.yPct}%`, height: `${crop.hPct}%`, right: 0, width: `${100 - crop.xPct - crop.wPct}%` }} />
+                    </div>
+                    {/* Crop rectangle outline */}
+                    <div
+                      className="absolute border-2 border-primary/70 rounded-sm pointer-events-none"
+                      style={{ left: `${crop.xPct}%`, top: `${crop.yPct}%`, width: `${crop.wPct}%`, height: `${crop.hPct}%` }}
+                    >
+                      <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[9px] text-primary bg-black/60 px-1.5 py-0.5 rounded whitespace-nowrap">
+                        9:16 crop
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {/* Output view: no crop data hint */}
+                {!showPreview && isOutputView && !crop && (
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[9px] text-amber-400 bg-black/60 px-2 py-0.5 rounded whitespace-nowrap pointer-events-none z-10">
+                    Centre crop (no face detection data)
+                  </div>
+                )}
+
+                {/* Preview mode badge */}
+                {showPreview && (
+                  <div className="absolute top-2 left-2 flex items-center gap-1 text-[9px] text-violet-300 bg-violet-900/70 px-1.5 py-0.5 rounded pointer-events-none z-10 backdrop-blur-sm">
+                    <Eye className="w-2.5 h-2.5" />
+                    Preview · 540×960
+                  </div>
+                )}
+
+                {/* Preview loading overlay (while rendering) */}
+                {previewLoading && (
+                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 pointer-events-none z-20">
+                    <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
+                    <span className="text-[11px] text-white/80">Rendering overlay preview…</span>
+                    <span className="text-[10px] text-white/50">540×960 · ultrafast · ~3–5 sec</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Play/Pause overlay button */}
+              <div
+                className={cn(
+                  'absolute inset-0 flex items-center justify-center pointer-events-none',
+                  'bg-black/0 transition-colors duration-200',
+                  !isPlaying && 'bg-black/10'
+                )}
+              >
+                <div
+                  className={cn(
+                    isOutputView ? 'w-10 h-10' : 'w-12 h-12',
+                    'rounded-full bg-black/40 backdrop-blur-sm border border-white/30 flex items-center justify-center',
+                    'transition-opacity duration-200',
+                    isPlaying ? 'opacity-0' : 'opacity-100'
+                  )}
+                >
+                  {isPlaying ? (
+                    <Pause className={cn(isOutputView ? 'w-4 h-4' : 'w-5 h-5', 'text-white')} />
+                  ) : (
+                    <Play className={cn(isOutputView ? 'w-4 h-4' : 'w-5 h-5', 'text-white fill-white ml-0.5')} />
+                  )}
+                </div>
+              </div>
+
+              {/* Time overlay */}
+              <div className={cn(
+                'absolute font-mono text-white/80 bg-black/50 px-1.5 py-0.5 rounded tabular-nums',
+                isOutputView ? 'bottom-2 right-2 text-[10px]' : 'bottom-2 right-3 text-xs'
+              )}>
+                {formatTime(relativeTime)} / {formatTime(clipDuration)}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Preview: active overlay pills + error */}
+        {(showPreview || previewError) && (
+          <div className="border-b border-border/50">
+            {/* Overlay pills — shown when preview is active */}
+            {showPreview && (
+              <div className="flex flex-wrap items-center gap-1.5 px-4 py-2 bg-violet-500/5">
+                <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wide mr-0.5">
+                  Applied:
+                </span>
+                {effectiveCaptionsEnabled && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/40 text-violet-400 bg-violet-500/10">
+                    Captions
+                  </Badge>
+                )}
+                {effectiveHookTitleEnabled && localHook && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/40 text-violet-400 bg-violet-500/10">
+                    Hook Title
+                  </Badge>
+                )}
+                {effectiveProgressBarEnabled && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/40 text-violet-400 bg-violet-500/10">
+                    Progress Bar
+                  </Badge>
+                )}
+                {effectiveAutoZoomEnabled && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/40 text-violet-400 bg-violet-500/10">
+                    Auto-Zoom
+                  </Badge>
+                )}
+                {effectiveBrandKitEnabled && settings.brandKit?.logoPath && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/40 text-violet-400 bg-violet-500/10">
+                    Logo
+                  </Badge>
+                )}
+                {!effectiveCaptionsEnabled && !effectiveHookTitleEnabled && !effectiveProgressBarEnabled && !effectiveAutoZoomEnabled && !effectiveBrandKitEnabled && (
+                  <span className="text-[10px] text-muted-foreground/50 italic">no overlays enabled</span>
+                )}
+                <button
+                  onClick={handlePreviewWithOverlays}
+                  disabled={previewLoading}
+                  className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-violet-400 transition-colors"
+                  title="Re-render preview (picks up any overlay setting changes)"
+                >
+                  <RotateCw className="w-3 h-3" />
+                  Re-render
+                </button>
+              </div>
+            )}
+            {/* Preview render error */}
+            {previewError && (
+              <div className="flex items-start gap-2 px-4 py-2 bg-destructive/10">
+                <X className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
+                <span className="text-[11px] text-destructive leading-relaxed">
+                  Preview failed: {previewError}
+                </span>
+              </div>
+            )}
           </div>
+        )}
+
+        {/* Thumbnail capture toolbar */}
+        <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border/50">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCaptureThumbnail}
+                  className={cn(
+                    'gap-1.5 text-xs h-7',
+                    thumbnailCaptured && 'border-green-500/50 text-green-500 bg-green-500/10'
+                  )}
+                >
+                  {thumbnailCaptured ? (
+                    <Check className="w-3 h-3" />
+                  ) : (
+                    <Camera className="w-3 h-3" />
+                  )}
+                  {thumbnailCaptured ? 'Thumbnail set!' : 'Set as Thumbnail'}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                Capture the current frame as the clip thumbnail shown in the grid
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          {clip.customThumbnail && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setClipCustomThumbnail(sourceId, clip.id, null)}
+                    className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-destructive transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                    Reset thumbnail
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  Revert to the auto-generated thumbnail
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
         {/* Trim controls */}

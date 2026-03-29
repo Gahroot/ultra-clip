@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   useStore,
+  selectActiveClips,
   CAPTION_PRESETS,
   type SourceVideo,
   type ClipCandidate,
@@ -361,6 +362,68 @@ describe('useStore', () => {
 
       useStore.getState().getActiveClips()
       // Original order preserved in store
+      expect(useStore.getState().clips['src-1'][0].id).toBe('c1')
+    })
+  })
+
+  describe('selectActiveClips (memoized selector)', () => {
+    it('returns clips sorted by score descending', () => {
+      useStore.getState().setActiveSource('src-1')
+      useStore.getState().setClips('src-1', [
+        makeClip({ id: 'c1', score: 50 }),
+        makeClip({ id: 'c2', score: 90 }),
+        makeClip({ id: 'c3', score: 70 })
+      ])
+
+      const result = selectActiveClips(useStore.getState())
+      expect(result.map((c) => c.score)).toEqual([90, 70, 50])
+    })
+
+    it('returns empty array when no active source', () => {
+      expect(selectActiveClips(useStore.getState())).toHaveLength(0)
+    })
+
+    it('returns empty array when active source has no clips', () => {
+      useStore.getState().setActiveSource('src-1')
+      expect(selectActiveClips(useStore.getState())).toHaveLength(0)
+    })
+
+    it('returns the same array reference when clips have not changed', () => {
+      useStore.getState().setActiveSource('src-1')
+      useStore.getState().setClips('src-1', [
+        makeClip({ id: 'c1', score: 50 }),
+        makeClip({ id: 'c2', score: 90 })
+      ])
+
+      const first = selectActiveClips(useStore.getState())
+      const second = selectActiveClips(useStore.getState())
+      expect(first).toBe(second)
+    })
+
+    it('returns a new array reference when clips change', () => {
+      useStore.getState().setActiveSource('src-1')
+      useStore.getState().setClips('src-1', [
+        makeClip({ id: 'c1', score: 50 })
+      ])
+      const first = selectActiveClips(useStore.getState())
+
+      useStore.getState().setClips('src-1', [
+        makeClip({ id: 'c1', score: 50 }),
+        makeClip({ id: 'c2', score: 90 })
+      ])
+      const second = selectActiveClips(useStore.getState())
+      expect(first).not.toBe(second)
+      expect(second.map((c) => c.score)).toEqual([90, 50])
+    })
+
+    it('does not mutate the original clips array', () => {
+      useStore.getState().setActiveSource('src-1')
+      useStore.getState().setClips('src-1', [
+        makeClip({ id: 'c1', score: 50 }),
+        makeClip({ id: 'c2', score: 90 })
+      ])
+
+      selectActiveClips(useStore.getState())
       expect(useStore.getState().clips['src-1'][0].id).toBe('c1')
     })
   })

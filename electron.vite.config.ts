@@ -7,6 +7,11 @@ const __dirname_esm = dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   main: {
+    resolve: {
+      alias: [
+        { find: '@shared', replacement: resolve(__dirname_esm, 'src/shared') }
+      ]
+    },
     plugins: [
       externalizeDepsPlugin({
         exclude: ['fluent-ffmpeg', 'uuid', '@google/generative-ai']
@@ -14,6 +19,11 @@ export default defineConfig({
     ]
   },
   preload: {
+    resolve: {
+      alias: [
+        { find: '@shared', replacement: resolve(__dirname_esm, 'src/shared') }
+      ]
+    },
     plugins: [externalizeDepsPlugin()]
   },
   renderer: {
@@ -22,6 +32,7 @@ export default defineConfig({
     },
     resolve: {
       alias: [
+        { find: '@shared', replacement: resolve(__dirname_esm, 'src/shared') },
         { find: '@', replacement: resolve(__dirname_esm, 'src/renderer/src') }
       ]
     },

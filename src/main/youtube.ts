@@ -1,6 +1,7 @@
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { runPythonScript } from './python'
+import { YOUTUBE_DOWNLOAD_TIMEOUT_MS } from '@shared/constants'
 
 // ---------------------------------------------------------------------------
 // URL utilities
@@ -15,13 +16,6 @@ const YT_PATTERNS = [
   /youtube\.com\/shorts\/([A-Za-z0-9_-]{11})/i,
   /m\.youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})/i
 ]
-
-/**
- * Return true if the given string is a recognisable YouTube URL.
- */
-export function isYouTubeUrl(url: string): boolean {
-  return getYouTubeVideoId(url) !== null
-}
 
 /**
  * Extract the 11-character video ID from a YouTube URL, or return null.

@@ -10,7 +10,8 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export type OutputAspectRatio = '9:16' | '1:1' | '4:5' | '16:9'
+import type { OutputAspectRatio } from '@shared/types'
+export type { OutputAspectRatio }
 
 export interface AspectRatioConfig {
   /** Canonical ratio identifier */

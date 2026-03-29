@@ -33,7 +33,8 @@ import {
   Download,
   RefreshCw,
   GitCompare,
-  CheckSquare
+  CheckSquare,
+  ShieldAlert
 } from 'lucide-react'
 import {
   DndContext,
@@ -52,6 +53,15 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel
+} from '@/components/ui/alert-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -254,6 +264,11 @@ export function ClipGrid() {
   const toggleClipSelection = useStore((s) => s.toggleClipSelection)
   const batchUpdateClips = useStore((s) => s.batchUpdateClips)
 
+  // Settings lock — detect changes between processing and render
+  const settingsChanged = useStore((s) => s.settingsChanged)
+  const revertToSnapshot = useStore((s) => s.revertToSnapshot)
+  const getSettingsDiff = useStore((s) => s.getSettingsDiff)
+
   const [filter, setFilter] = useState<FilterTab>('all')
   const [sortMode, setSortMode] = useState<SortMode>('score')
   const [localMinScore, setLocalMinScore] = useState(minScore)
@@ -282,6 +297,7 @@ export function ClipGrid() {
   // Confirmation dialog state
   const [showRejectAllConfirm, setShowRejectAllConfirm] = useState(false)
   const [showCancelRenderConfirm, setShowCancelRenderConfirm] = useState(false)
+  const [showSettingsWarning, setShowSettingsWarning] = useState(false)
 
   // Batch toolbar state
   const [batchTrimOffset, setBatchTrimOffset] = useState<string>('0')
@@ -771,7 +787,7 @@ export function ClipGrid() {
           subtitles: templateLayout.subtitles,
           rehookText: templateLayout.rehookText
         }
-      } as Parameters<typeof window.api.startBatchRender>[0])
+      })
     } catch (err) {
       setIsRendering(false)
       detachListeners()
@@ -1006,9 +1022,9 @@ export function ClipGrid() {
         templateLayout: {
           titleText: templateLayout.titleText,
           subtitles: templateLayout.subtitles,
-          rehookText: templateLayout.titleText
+          rehookText: templateLayout.rehookText
         }
-      } as Parameters<typeof window.api.startBatchRender>[0])
+      })
     } catch (err) {
       setIsRendering(false)
       detachListeners()
@@ -1639,7 +1655,13 @@ export function ClipGrid() {
             ) : (
               <Button
                 size="sm"
-                onClick={handleStartRender}
+                onClick={() => {
+                  if (settingsChanged) {
+                    setShowSettingsWarning(true)
+                  } else {
+                    handleStartRender()
+                  }
+                }}
                 disabled={approved === 0}
                 className={cn(
                   'gap-1.5 text-xs',
@@ -2531,6 +2553,53 @@ export function ClipGrid() {
         onConfirm={() => { setShowCancelRenderConfirm(false); handleCancelRender() }}
         onCancel={() => setShowCancelRenderConfirm(false)}
       />
+
+      {/* Settings changed warning dialog */}
+      <AlertDialog open={showSettingsWarning} onOpenChange={setShowSettingsWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-amber-500" />
+              Settings have changed since processing
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>The following settings were modified:</p>
+                <ul className="list-disc list-inside text-sm text-amber-500/90">
+                  {getSettingsDiff().map((name) => (
+                    <li key={name}>{name}</li>
+                  ))}
+                </ul>
+                <p className="text-muted-foreground text-xs">
+                  These changes will affect the rendered output.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                revertToSnapshot()
+                setShowSettingsWarning(false)
+                handleStartRender()
+              }}
+            >
+              Revert &amp; Render
+            </Button>
+            <Button
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+              onClick={() => {
+                setShowSettingsWarning(false)
+                handleStartRender()
+              }}
+            >
+              Render with New Settings
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Clip comparison dialog */}
       {compareDialogClips && (() => {

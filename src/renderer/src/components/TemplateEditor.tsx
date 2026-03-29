@@ -11,18 +11,10 @@ import {
   DialogTitle,
   DialogTrigger
 } from '@/components/ui/dialog'
+import { CANVAS_WIDTH, CANVAS_HEIGHT, PLATFORM_SAFE_ZONES } from '@shared/safe-zones'
 
-/** Canvas constants matching safe-zones.ts */
-const CANVAS_W = 1080
-const CANVAS_H = 1920
-
-/** Platform dead zone definitions (mirrors safe-zones.ts — kept inline to avoid IPC round-trip) */
-const PLATFORM_DEAD_ZONES: Record<Platform, { top: number; bottom: number; left: number; right: number; name: string; engagementRight: number }> = {
-  tiktok:    { top: 108, bottom: 320, left: 60,  right: 120, name: 'TikTok',    engagementRight: 120 },
-  reels:     { top: 210, bottom: 310, left: 0,   right: 84,  name: 'Reels',     engagementRight: 84 },
-  shorts:    { top: 120, bottom: 300, left: 0,   right: 96,  name: 'Shorts',    engagementRight: 96 },
-  universal: { top: 210, bottom: 320, left: 60,  right: 120, name: 'Universal', engagementRight: 120 },
-}
+const CANVAS_W = CANVAS_WIDTH
+const CANVAS_H = CANVAS_HEIGHT
 
 const PLATFORMS: { value: Platform; label: string }[] = [
   { value: 'universal', label: 'Universal' },
@@ -76,7 +68,8 @@ export function TemplateEditor() {
   const canvasHeight = 420
   const canvasWidth = Math.round(canvasHeight * (9 / 16))
 
-  const deadZone = PLATFORM_DEAD_ZONES[targetPlatform]
+  const platformData = PLATFORM_SAFE_ZONES[targetPlatform]
+  const deadZone = platformData.deadZones
 
   /** Convert a pixel value on the 1080×1920 canvas to preview-canvas pixels */
   const scaleX = canvasWidth / CANVAS_W
@@ -320,14 +313,6 @@ export function TemplateEditor() {
                 </div>
               </DraggableElement>
 
-              {/* Re-hook Text */}
-              <DraggableElement id="rehookText" position={templateLayout.rehookText}>
-                <div className="flex items-center gap-1.5 bg-orange-500 rounded-full px-4 py-1.5 text-white text-sm font-semibold whitespace-nowrap select-none">
-                  <Type className="w-3.5 h-3.5" />
-                  Re-hook Text
-                </div>
-              </DraggableElement>
-
               {/* Subtitles */}
               <DraggableElement id="subtitles" position={templateLayout.subtitles}>
                 <div className="flex items-center gap-1.5 text-white font-bold text-lg whitespace-nowrap select-none drop-shadow-lg">
@@ -348,7 +333,7 @@ export function TemplateEditor() {
 
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <span>Drag elements to reposition</span>
-            <span className="text-green-500/70 font-medium">{deadZone.name}</span>
+            <span className="text-green-500/70 font-medium">{platformData.name}</span>
             <span className="font-mono">
               Safe: {CANVAS_W - deadZone.left - deadZone.right}&times;{CANVAS_H - deadZone.top - deadZone.bottom}
             </span>

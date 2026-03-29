@@ -308,7 +308,7 @@ const CSV_HEADERS = [
   'Best Shorts Times'
 ]
 
-export function generateManifestCSV(manifest: RenderManifest): string {
+function generateManifestCSV(manifest: RenderManifest): string {
   const rows: string[][] = [CSV_HEADERS]
 
   for (const clip of manifest.clips) {

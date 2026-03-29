@@ -42,7 +42,7 @@ export const DEFAULT_FILLER_WORDS: string[] = [
   'basically', 'actually', 'literally', 'right', 'okay so'
 ]
 
-export const DEFAULT_FILLER_DETECTION_SETTINGS: FillerDetectionSettings = {
+const DEFAULT_FILLER_DETECTION_SETTINGS: FillerDetectionSettings = {
   removeFillerWords: true,
   trimSilences: true,
   removeRepeats: true,

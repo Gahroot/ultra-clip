@@ -6,21 +6,11 @@ import type { OutputAspectRatio } from './aspect-ratios'
 import { computeCenterCropForRatio } from './aspect-ratios'
 
 // ---------------------------------------------------------------------------
-// Types
+// Types (canonical definitions live in @shared/types)
 // ---------------------------------------------------------------------------
 
-export interface CropRegion {
-  x: number
-  y: number
-  width: number
-  height: number
-  faceDetected: boolean
-}
-
-export interface FaceDetectionProgress {
-  segment: number
-  total: number
-}
+import type { CropRegion, FaceDetectionProgress } from '@shared/types'
+export type { CropRegion, FaceDetectionProgress }
 
 interface Segment {
   start: number
@@ -80,7 +70,7 @@ export async function detectFaceCrops(
       'face_detect.py',
       ['--input', videoPath, '--segments', segmentsJson, '--output', outputJson],
       {
-        timeoutMs: 5 * 60 * 1000, // 5 minutes max
+        timeoutMs: FACE_DETECTION_TIMEOUT_MS,
         onStdout: (line: string) => {
           try {
             const parsed = JSON.parse(line) as PythonOutputLine
