@@ -9,8 +9,10 @@ import { buildSplitScreenFilter } from '../layouts/split-screen'
 import type { SplitScreenLayout, VideoSource, SplitScreenConfig } from '../layouts/split-screen'
 import { extractBRollKeywords } from '../broll-keywords'
 import type { WordTimestamp as BRollWordTimestamp } from '../broll-keywords'
-import { fetchBRollClips } from '../broll-pexels'
+import { fetchBRollClips, type BRollVideoResult } from '../broll-pexels'
 import { buildBRollPlacements } from '../broll-placement'
+import { generateBRollImage } from '../broll-image-gen'
+import { imageToVideoClip } from '../broll-image-overlay'
 import type { BRollSettings as BRollSettingsConfig } from '../broll-placement'
 import {
   analyzeLoopPotential,
@@ -56,7 +58,7 @@ export function registerRenderHandlers(): void {
     // When B-Roll is enabled, generate placements for each clip. This runs
     // BEFORE sound design so that B-Roll transition edit events are available
     // for the sound design placement engine to consume.
-    if (options.broll?.enabled && options.broll.pexelsApiKey) {
+    if (options.broll?.enabled && (options.broll.pexelsApiKey || options.broll.sourceMode === 'ai-generated')) {
       for (const job of options.jobs) {
         // Skip clips that already have pre-computed placements
         if (job.brollPlacements && job.brollPlacements.length > 0) continue

@@ -206,6 +206,8 @@ export interface RenderClipJob {
     keyword: string
     displayMode: BRollDisplayMode
     transition: BRollTransition
+    /** Suggested source for this B-Roll moment (from AI edit plan) */
+    suggestedSource?: 'stock' | 'ai-generated'
   }>
   /**
    * Pre-computed emphasis data for this clip.
@@ -363,7 +365,13 @@ export interface RenderBatchOptions {
     transition: BRollTransition
     pipSize: number
     pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+    /** B-Roll source preference: 'stock' (Pexels), 'ai-generated' (Gemini), or 'auto' (per-moment). Default: 'auto' */
+    sourceMode?: 'stock' | 'ai-generated' | 'auto'
   }
+  /** Gemini API key — used for AI-generated B-Roll images and other AI features */
+  geminiApiKey?: string
+  /** Style category hint for AI image generation (e.g. 'custom', 'cinematic', 'anime') */
+  styleCategory?: string
   /**
    * Source video metadata for the export manifest. When provided, the render
    * pipeline writes manifest.json + manifest.csv to the output directory at

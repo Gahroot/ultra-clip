@@ -2452,6 +2452,1206 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 21. CORVUS — Warm serif typewriter, cream tones, classic film feel
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'corvus',
+    name: 'Corvus',
+    description: 'Warm cream serif with typewriter reveal — like captions pulled from a vintage film print.',
+    thumbnail: '🪶',
+    category: 'cinematic',
+    tags: ['serif', 'typewriter', 'warm', 'cream', 'cinematic', 'lora', 'retro', 'film'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'corvus-caption',
+        label: 'Corvus',
+        fontName: 'Lora',
+        fontFile: 'Lora.ttf',
+        fontSize: 0.058,
+        primaryColor: '#FDF6E3',
+        highlightColor: '#E8D5A3',
+        outlineColor: '#1A1409',
+        backColor: '#00000000',
+        outline: 2,
+        shadow: 1,
+        borderStyle: 1,
+        wordsPerLine: 4,
+        animation: 'typewriter',
+        emphasisColor: '#F5C542',
+        supersizeColor: '#FFFFFF',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'ken-burns',
+      intensity: 'subtle',
+      intervalSeconds: 8,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'crossfade',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 8,
+      clipDuration: 5,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'minimal',
+      backgroundMusicTrack: 'cinematic-ambient',
+      sfxVolume: 0.2,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.2,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'slide-in',
+        displayDuration: 3.0,
+        fontSize: 64,
+        textColor: '#FDF6E3',
+        outlineColor: '#1A1409',
+        outlineWidth: 3,
+      },
+      rehook: {
+        enabled: false,
+        style: 'text-only',
+        displayDuration: 2.0,
+      },
+      progressBar: {
+        enabled: false,
+        style: 'solid',
+        position: 'bottom',
+        height: 2,
+        color: '#E8D5A3',
+        opacity: 0.5,
+      },
+    },
+
+    variants: [
+      {
+        id: 'corvus-classic',
+        name: 'Classic',
+        description: 'Warm cream typewriter on dark serif — the original Corvus look.',
+        thumbnail: '🪶',
+      },
+      {
+        id: 'corvus-parchment',
+        name: 'Parchment',
+        description: 'Deeper amber highlights on aged-paper cream — old manuscript warmth.',
+        thumbnail: '📜',
+        captions: { style: { primaryColor: '#F5E6C8', highlightColor: '#D4A056', emphasisColor: '#D4A056' } },
+        overlays: { hookTitle: { textColor: '#F5E6C8' } },
+      },
+      {
+        id: 'corvus-moonlit',
+        name: 'Moonlit',
+        description: 'Cool silver-white on deep blue-black — typewriter under moonlight.',
+        thumbnail: '🌙',
+        captions: { style: { primaryColor: '#E8EDF2', highlightColor: '#A8C4E0', emphasisColor: '#A8C4E0', outlineColor: '#0A0F1A' } },
+        overlays: { hookTitle: { textColor: '#E8EDF2', outlineColor: '#0A0F1A' } },
+      },
+      {
+        id: 'corvus-sepia',
+        name: 'Sepia',
+        description: 'Full sepia treatment — brown-toned text like faded cinema subtitles.',
+        thumbnail: '🟤',
+        captions: { style: { primaryColor: '#D4C5A9', highlightColor: '#8B7355', emphasisColor: '#8B7355', outlineColor: '#2C2016' } },
+        overlays: { hookTitle: { textColor: '#D4C5A9', outlineColor: '#2C2016' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 22. DRACO — Thin-outlined serif with elegant fade animation
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'draco',
+    name: 'Draco',
+    description: 'Thin-outlined serif with slow fade reveal — delicate, airy, effortlessly refined.',
+    thumbnail: '🐉',
+    category: 'cinematic',
+    tags: ['serif', 'thin', 'outline', 'fade', 'elegant', 'playfair', 'refined', 'subtle'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'draco-caption',
+        label: 'Draco',
+        fontName: 'Playfair Display',
+        fontFile: 'PlayfairDisplay.ttf',
+        fontSize: 0.06,
+        primaryColor: '#FFFFFF',
+        highlightColor: '#D4C5A9',
+        outlineColor: '#3D3529',
+        backColor: '#00000000',
+        outline: 1,
+        shadow: 0,
+        borderStyle: 1,
+        wordsPerLine: 3,
+        animation: 'fade-in',
+        emphasisColor: '#E8D5A3',
+        supersizeColor: '#FFFFFF',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'ken-burns',
+      intensity: 'subtle',
+      intervalSeconds: 9,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'crossfade',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 9,
+      clipDuration: 5,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'minimal',
+      backgroundMusicTrack: 'cinematic-ambient',
+      sfxVolume: 0.15,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.25,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'slide-in',
+        displayDuration: 3.5,
+        fontSize: 62,
+        textColor: '#FFFFFF',
+        outlineColor: '#3D3529',
+        outlineWidth: 2,
+      },
+      rehook: {
+        enabled: false,
+        style: 'text-only',
+        displayDuration: 2.0,
+      },
+      progressBar: {
+        enabled: false,
+        style: 'solid',
+        position: 'bottom',
+        height: 2,
+        color: '#D4C5A9',
+        opacity: 0.4,
+      },
+    },
+
+    variants: [
+      {
+        id: 'draco-classic',
+        name: 'Classic',
+        description: 'White Playfair with thin warm outline and fade — the original Draco.',
+        thumbnail: '🐉',
+      },
+      {
+        id: 'draco-mist',
+        name: 'Mist',
+        description: 'Soft lavender-grey text with whisper-thin outline — barely there, fully elegant.',
+        thumbnail: '🌫️',
+        captions: { style: { primaryColor: '#D6D0E8', highlightColor: '#B8A9D4', emphasisColor: '#B8A9D4', outlineColor: '#2A2535' } },
+        overlays: { hookTitle: { textColor: '#D6D0E8', outlineColor: '#2A2535' } },
+      },
+      {
+        id: 'draco-rose',
+        name: 'Rosé',
+        description: 'Blush pink serif with warm rose highlights — soft, luxurious, editorial.',
+        thumbnail: '🌸',
+        captions: { style: { primaryColor: '#F5E1E0', highlightColor: '#D4878F', emphasisColor: '#D4878F', outlineColor: '#3D2529' } },
+        overlays: { hookTitle: { textColor: '#F5E1E0', outlineColor: '#3D2529' } },
+      },
+      {
+        id: 'draco-ivory',
+        name: 'Ivory',
+        description: 'Warm ivory with no outline at all — pure minimalist serif floating on screen.',
+        thumbnail: '🤍',
+        captions: { style: { primaryColor: '#FFFFF0', highlightColor: '#D4AF37', emphasisColor: '#D4AF37', outline: 0, shadow: 1, outlineColor: '#000000' } },
+        overlays: { hookTitle: { textColor: '#FFFFF0', outlineWidth: 0 } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 23. CARINA — Serif italic with elegant emphasis scaling
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'carina',
+    name: 'Carina',
+    description: 'Elegant italic serif with emphasis that scales gracefully — words that breathe and bloom.',
+    thumbnail: '✨',
+    category: 'cinematic',
+    tags: ['serif', 'italic', 'elegant', 'scaling', 'playfair', 'refined', 'emphasis', 'bloom'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'carina-caption',
+        label: 'Carina',
+        fontName: 'Playfair Display',
+        fontFile: 'PlayfairDisplay.ttf',
+        fontSize: 0.062,
+        primaryColor: '#F1EDE4',
+        highlightColor: '#D4AF37',
+        outlineColor: '#1A1610',
+        backColor: '#00000000',
+        outline: 2,
+        shadow: 1,
+        borderStyle: 1,
+        wordsPerLine: 3,
+        animation: 'elastic-bounce',
+        emphasisColor: '#D4AF37',
+        supersizeColor: '#F5E6C8',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'ken-burns',
+      intensity: 'subtle',
+      intervalSeconds: 7,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'crossfade',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 8,
+      clipDuration: 5,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'minimal',
+      backgroundMusicTrack: 'cinematic-ambient',
+      sfxVolume: 0.2,
+      musicVolume: 0.12,
+      musicDucking: true,
+      musicDuckLevel: 0.22,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'slide-in',
+        displayDuration: 3.0,
+        fontSize: 66,
+        textColor: '#F1EDE4',
+        outlineColor: '#1A1610',
+        outlineWidth: 3,
+      },
+      rehook: {
+        enabled: false,
+        style: 'text-only',
+        displayDuration: 2.0,
+      },
+      progressBar: {
+        enabled: false,
+        style: 'solid',
+        position: 'bottom',
+        height: 2,
+        color: '#D4AF37',
+        opacity: 0.5,
+      },
+    },
+
+    variants: [
+      {
+        id: 'carina-classic',
+        name: 'Classic',
+        description: 'Gold-accented italic Playfair with bloom emphasis — the original Carina.',
+        thumbnail: '✨',
+      },
+      {
+        id: 'carina-champagne',
+        name: 'Champagne',
+        description: 'Pale gold on warm cream — champagne-toast elegance.',
+        thumbnail: '🥂',
+        captions: { style: { primaryColor: '#FAF0DC', highlightColor: '#C9A959', emphasisColor: '#C9A959', supersizeColor: '#FFFFFF' } },
+        overlays: { hookTitle: { textColor: '#FAF0DC' } },
+      },
+      {
+        id: 'carina-pearl',
+        name: 'Pearl',
+        description: 'White with pearlescent rose-gold emphasis — soft luxury.',
+        thumbnail: '🦪',
+        captions: { style: { primaryColor: '#FFFFFF', highlightColor: '#C9A4A0', emphasisColor: '#C9A4A0', outlineColor: '#1A1215' } },
+        overlays: { hookTitle: { textColor: '#FFFFFF', outlineColor: '#1A1215' } },
+      },
+      {
+        id: 'carina-obsidian',
+        name: 'Obsidian',
+        description: 'Crisp white with bold gold supersize on jet-black — high-contrast elegance.',
+        thumbnail: '🖤',
+        captions: { style: { primaryColor: '#FFFFFF', highlightColor: '#FFD700', emphasisColor: '#FFD700', supersizeColor: '#FFD700', outlineColor: '#000000', outline: 3 } },
+        overlays: { hookTitle: { textColor: '#FFD700', outlineColor: '#000000' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 24. FORNAX — Retro serif with hard offset shadow (letterpress)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'fornax',
+    name: 'Fornax',
+    description: 'Heavy drop-shadow serif like ink stamped on paper — bold retro letterpress energy.',
+    thumbnail: '🖨️',
+    category: 'cinematic',
+    tags: ['retro', 'serif', 'shadow', 'letterpress', 'lora', 'bold', 'vintage', 'stamped'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'fornax-caption',
+        label: 'Fornax',
+        fontName: 'Lora',
+        fontFile: 'Lora.ttf',
+        fontSize: 0.07,
+        primaryColor: '#FDF6E3',
+        highlightColor: '#E07A3A',
+        outlineColor: '#1A1409',
+        backColor: '#00000000',
+        outline: 3,
+        shadow: 5,
+        borderStyle: 1,
+        wordsPerLine: 2,
+        animation: 'word-pop',
+        emphasisColor: '#E07A3A',
+        supersizeColor: '#FFD166',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'reactive',
+      intensity: 'moderate',
+      intervalSeconds: 5,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'hard-cut',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 6,
+      clipDuration: 4,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'balanced',
+      backgroundMusicTrack: 'cinematic-ambient',
+      sfxVolume: 0.4,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.18,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'centered-bold',
+        displayDuration: 2.5,
+        fontSize: 72,
+        textColor: '#FDF6E3',
+        outlineColor: '#1A1409',
+        outlineWidth: 4,
+      },
+      rehook: {
+        enabled: false,
+        style: 'text-only',
+        displayDuration: 1.5,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'solid',
+        position: 'bottom',
+        height: 4,
+        color: '#E07A3A',
+        opacity: 0.8,
+      },
+    },
+
+    variants: [
+      {
+        id: 'fornax-classic',
+        name: 'Classic',
+        description: 'Cream serif with heavy shadow and burnt-orange highlight — the original Fornax.',
+        thumbnail: '🖨️',
+      },
+      {
+        id: 'fornax-rust',
+        name: 'Rust',
+        description: 'Deep rust-red highlights on aged cream — industrial letterpress warmth.',
+        thumbnail: '🧱',
+        captions: { style: { primaryColor: '#F0E6D2', highlightColor: '#A0522D', emphasisColor: '#A0522D', supersizeColor: '#E07A3A' } },
+        overlays: { progressBar: { color: '#A0522D' }, hookTitle: { textColor: '#F0E6D2' } },
+      },
+      {
+        id: 'fornax-ink',
+        name: 'Ink',
+        description: 'Blue-black ink on off-white — old broadsheet printing press feel.',
+        thumbnail: '🖋️',
+        captions: { style: { primaryColor: '#F5F0E8', highlightColor: '#2C3E6B', emphasisColor: '#2C3E6B', outlineColor: '#0A0A14', supersizeColor: '#4A6FA5' } },
+        overlays: { progressBar: { color: '#2C3E6B' }, hookTitle: { textColor: '#F5F0E8', outlineColor: '#0A0A14' } },
+      },
+      {
+        id: 'fornax-copper',
+        name: 'Copper',
+        description: 'Warm copper-gold accents with extra-heavy shadow — premium stamped feel.',
+        thumbnail: '🪙',
+        captions: { style: { highlightColor: '#B87333', emphasisColor: '#B87333', supersizeColor: '#D4AF37', shadow: 6 } },
+        overlays: { progressBar: { color: '#B87333' }, hookTitle: { textColor: '#FDF6E3' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 25. HYDRA — Editorial mixed-case with subtle emphasis color shift
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'hydra',
+    name: 'Hydra',
+    description: 'Editorial serif with understated emphasis color shifts — the quiet confidence of a magazine spread.',
+    thumbnail: '📰',
+    category: 'minimal',
+    tags: ['editorial', 'serif', 'mixed-case', 'subtle', 'playfair', 'magazine', 'refined', 'shift'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'hydra-caption',
+        label: 'Hydra',
+        fontName: 'Playfair Display',
+        fontFile: 'PlayfairDisplay.ttf',
+        fontSize: 0.055,
+        primaryColor: '#E8E2D8',
+        highlightColor: '#C4A97D',
+        outlineColor: '#1A1814',
+        backColor: '#00000000',
+        outline: 2,
+        shadow: 1,
+        borderStyle: 1,
+        wordsPerLine: 4,
+        animation: 'fade-in',
+        emphasisColor: '#B89B6A',
+        supersizeColor: '#E8D5A3',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'ken-burns',
+      intensity: 'subtle',
+      intervalSeconds: 10,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'crossfade',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 10,
+      clipDuration: 5,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'minimal',
+      backgroundMusicTrack: 'cinematic-ambient',
+      sfxVolume: 0.15,
+      musicVolume: 0.08,
+      musicDucking: true,
+      musicDuckLevel: 0.2,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'slide-in',
+        displayDuration: 3.5,
+        fontSize: 60,
+        textColor: '#E8E2D8',
+        outlineColor: '#1A1814',
+        outlineWidth: 2,
+      },
+      rehook: {
+        enabled: false,
+        style: 'text-only',
+        displayDuration: 2.0,
+      },
+      progressBar: {
+        enabled: false,
+        style: 'solid',
+        position: 'bottom',
+        height: 2,
+        color: '#C4A97D',
+        opacity: 0.35,
+      },
+    },
+
+    variants: [
+      {
+        id: 'hydra-classic',
+        name: 'Classic',
+        description: 'Warm linen with tonal gold shift emphasis — the original editorial Hydra.',
+        thumbnail: '📰',
+      },
+      {
+        id: 'hydra-slate',
+        name: 'Slate',
+        description: 'Cool grey text with steel-blue emphasis shift — modern editorial restraint.',
+        thumbnail: '📋',
+        captions: { style: { primaryColor: '#D0CCC5', highlightColor: '#7A8EA0', emphasisColor: '#7A8EA0', supersizeColor: '#B0C4DE', outlineColor: '#14181A' } },
+        overlays: { hookTitle: { textColor: '#D0CCC5', outlineColor: '#14181A' } },
+      },
+      {
+        id: 'hydra-burgundy',
+        name: 'Burgundy',
+        description: 'Deep wine-red emphasis on warm cream — editorial luxury.',
+        thumbnail: '🍷',
+        captions: { style: { primaryColor: '#F0E8DC', highlightColor: '#8B2252', emphasisColor: '#8B2252', supersizeColor: '#C4556A' } },
+        overlays: { hookTitle: { textColor: '#F0E8DC' } },
+      },
+      {
+        id: 'hydra-forest',
+        name: 'Forest',
+        description: 'Sage-green emphasis on natural cream — editorial earth tones.',
+        thumbnail: '🌿',
+        captions: { style: { primaryColor: '#F0EDE4', highlightColor: '#5B7A5E', emphasisColor: '#5B7A5E', supersizeColor: '#8FB390' } },
+        overlays: { hookTitle: { textColor: '#F0EDE4' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 26. AQUILA — Cinematic wide-spaced with slow fade
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'aquila',
+    name: 'Aquila',
+    description: 'Wide-tracked serif with glacial fade — spacious, cinematic, every letter deliberate.',
+    thumbnail: '🦅',
+    category: 'cinematic',
+    tags: ['cinematic', 'wide', 'spaced', 'fade', 'slow', 'playfair', 'tracked', 'deliberate'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'aquila-caption',
+        label: 'Aquila',
+        fontName: 'Playfair Display',
+        fontFile: 'PlayfairDisplay.ttf',
+        fontSize: 0.052,
+        primaryColor: '#F1F4F9',
+        highlightColor: '#A8B8CC',
+        outlineColor: '#0F1115',
+        backColor: '#00000000',
+        outline: 1,
+        shadow: 1,
+        borderStyle: 1,
+        wordsPerLine: 3,
+        animation: 'fade-in',
+        emphasisColor: '#C8D4E4',
+        supersizeColor: '#FFFFFF',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'ken-burns',
+      intensity: 'subtle',
+      intervalSeconds: 10,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'crossfade',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 10,
+      clipDuration: 6,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'minimal',
+      backgroundMusicTrack: 'cinematic-ambient',
+      sfxVolume: 0.1,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.25,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'slide-in',
+        displayDuration: 4.0,
+        fontSize: 58,
+        textColor: '#F1F4F9',
+        outlineColor: '#0F1115',
+        outlineWidth: 2,
+      },
+      rehook: {
+        enabled: false,
+        style: 'text-only',
+        displayDuration: 2.0,
+      },
+      progressBar: {
+        enabled: false,
+        style: 'solid',
+        position: 'bottom',
+        height: 2,
+        color: '#A8B8CC',
+        opacity: 0.3,
+      },
+    },
+
+    variants: [
+      {
+        id: 'aquila-classic',
+        name: 'Classic',
+        description: 'Cool off-white with steel-blue emphasis — the original wide-tracked Aquila.',
+        thumbnail: '🦅',
+      },
+      {
+        id: 'aquila-golden',
+        name: 'Golden',
+        description: 'Warm gold emphasis on cream — wide-spaced prestige.',
+        thumbnail: '🌟',
+        captions: { style: { primaryColor: '#FDF6E3', highlightColor: '#C9A959', emphasisColor: '#C9A959', outlineColor: '#1A1409' } },
+        overlays: { hookTitle: { textColor: '#FDF6E3', outlineColor: '#1A1409' } },
+      },
+      {
+        id: 'aquila-midnight',
+        name: 'Midnight',
+        description: 'Pure white on deep blue-black — cold cinema wide-tracking.',
+        thumbnail: '🌌',
+        captions: { style: { primaryColor: '#FFFFFF', highlightColor: '#6B7FA0', emphasisColor: '#6B7FA0', outlineColor: '#060810' } },
+        overlays: { hookTitle: { textColor: '#FFFFFF', outlineColor: '#060810' } },
+      },
+      {
+        id: 'aquila-ember',
+        name: 'Ember',
+        description: 'Warm amber on dark — slow-burning wide-spaced warmth.',
+        thumbnail: '🔥',
+        captions: { style: { primaryColor: '#F5E6C8', highlightColor: '#D4763A', emphasisColor: '#D4763A', outlineColor: '#140A04' } },
+        overlays: { hookTitle: { textColor: '#F5E6C8', outlineColor: '#140A04' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 27. TUCANA — Vintage serif with sepia-toned color palette
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'tucana',
+    name: 'Tucana',
+    description: 'Full sepia serif — aged film tones, warm browns, and vintage warmth in every word.',
+    thumbnail: '📽️',
+    category: 'cinematic',
+    tags: ['vintage', 'sepia', 'serif', 'warm', 'brown', 'lora', 'aged', 'nostalgic'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'tucana-caption',
+        label: 'Tucana',
+        fontName: 'Lora',
+        fontFile: 'Lora.ttf',
+        fontSize: 0.06,
+        primaryColor: '#D4C5A9',
+        highlightColor: '#8B6F47',
+        outlineColor: '#2C2016',
+        backColor: '#00000000',
+        outline: 2,
+        shadow: 2,
+        borderStyle: 1,
+        wordsPerLine: 3,
+        animation: 'captions-ai',
+        emphasisColor: '#A67C52',
+        supersizeColor: '#F5E6C8',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'ken-burns',
+      intensity: 'subtle',
+      intervalSeconds: 8,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'crossfade',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 8,
+      clipDuration: 5,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'minimal',
+      backgroundMusicTrack: 'cinematic-ambient',
+      sfxVolume: 0.2,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.2,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'slide-in',
+        displayDuration: 3.0,
+        fontSize: 64,
+        textColor: '#D4C5A9',
+        outlineColor: '#2C2016',
+        outlineWidth: 3,
+      },
+      rehook: {
+        enabled: false,
+        style: 'text-only',
+        displayDuration: 2.0,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'solid',
+        position: 'bottom',
+        height: 3,
+        color: '#8B6F47',
+        opacity: 0.6,
+      },
+    },
+
+    variants: [
+      {
+        id: 'tucana-classic',
+        name: 'Classic',
+        description: 'Full sepia palette — warm browns on aged parchment cream.',
+        thumbnail: '📽️',
+      },
+      {
+        id: 'tucana-daguerreotype',
+        name: 'Daguerreotype',
+        description: 'Cool silver-brown tones — early photography desaturation.',
+        thumbnail: '🪞',
+        captions: { style: { primaryColor: '#C4BEB4', highlightColor: '#7A7265', emphasisColor: '#7A7265', supersizeColor: '#D4CCC0', outlineColor: '#1A1818' } },
+        overlays: { hookTitle: { textColor: '#C4BEB4', outlineColor: '#1A1818' }, progressBar: { color: '#7A7265' } },
+      },
+      {
+        id: 'tucana-amber',
+        name: 'Amber',
+        description: 'Deeper amber-orange sepia — like looking through aged glass.',
+        thumbnail: '🟠',
+        captions: { style: { primaryColor: '#E0C896', highlightColor: '#B8741A', emphasisColor: '#B8741A', supersizeColor: '#FFD166' } },
+        overlays: { hookTitle: { textColor: '#E0C896' }, progressBar: { color: '#B8741A' } },
+      },
+      {
+        id: 'tucana-faded',
+        name: 'Faded',
+        description: 'Ultra-washed-out sepia — maximum aged-film effect.',
+        thumbnail: '🌅',
+        captions: { style: { primaryColor: '#B8AFA0', highlightColor: '#8B8070', emphasisColor: '#8B8070', supersizeColor: '#C4B8A4', outline: 1, shadow: 1 } },
+        overlays: { hookTitle: { textColor: '#B8AFA0' }, progressBar: { color: '#8B8070', opacity: 0.4 } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 28. COLUMBA — Old-school serif with box backgrounds
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'columba',
+    name: 'Columba',
+    description: 'Serif captions on solid box backgrounds — classic broadcast subtitle style, warm and readable.',
+    thumbnail: '🕊️',
+    category: 'cinematic',
+    tags: ['box', 'background', 'serif', 'broadcast', 'lora', 'classic', 'readable', 'solid'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'columba-caption',
+        label: 'Columba',
+        fontName: 'Lora',
+        fontFile: 'Lora.ttf',
+        fontSize: 0.055,
+        primaryColor: '#FDF6E3',
+        highlightColor: '#E8D5A3',
+        outlineColor: '#F5E6C8',
+        backColor: '#CC1A1409',
+        outline: 0,
+        shadow: 0,
+        borderStyle: 3,
+        wordsPerLine: 4,
+        animation: 'word-box',
+        emphasisColor: '#F5C542',
+        supersizeColor: '#FFFFFF',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'ken-burns',
+      intensity: 'subtle',
+      intervalSeconds: 7,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'crossfade',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 8,
+      clipDuration: 5,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'minimal',
+      backgroundMusicTrack: 'cinematic-ambient',
+      sfxVolume: 0.2,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.2,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'slide-in',
+        displayDuration: 3.0,
+        fontSize: 64,
+        textColor: '#FDF6E3',
+        outlineColor: '#1A1409',
+        outlineWidth: 3,
+      },
+      rehook: {
+        enabled: false,
+        style: 'text-only',
+        displayDuration: 2.0,
+      },
+      progressBar: {
+        enabled: false,
+        style: 'solid',
+        position: 'bottom',
+        height: 3,
+        color: '#E8D5A3',
+        opacity: 0.5,
+      },
+    },
+
+    variants: [
+      {
+        id: 'columba-classic',
+        name: 'Classic',
+        description: 'Cream serif on warm dark box — the original broadcast Columba.',
+        thumbnail: '🕊️',
+      },
+      {
+        id: 'columba-noir',
+        name: 'Noir',
+        description: 'White text on pure black box — stark classic subtitle look.',
+        thumbnail: '⬛',
+        captions: { style: { primaryColor: '#FFFFFF', highlightColor: '#FFFFFF', emphasisColor: '#FFD700', backColor: '#E6000000', outlineColor: '#000000' } },
+        overlays: { hookTitle: { textColor: '#FFFFFF', outlineColor: '#000000' } },
+      },
+      {
+        id: 'columba-navy',
+        name: 'Navy',
+        description: 'Cream text on deep navy box — upscale broadcast feel.',
+        thumbnail: '🔵',
+        captions: { style: { primaryColor: '#F5F0E8', highlightColor: '#C8D4E4', emphasisColor: '#C8D4E4', backColor: '#CC0A1628', outlineColor: '#0A1628' } },
+        overlays: { hookTitle: { textColor: '#F5F0E8', outlineColor: '#0A1628' } },
+      },
+      {
+        id: 'columba-burgundy',
+        name: 'Burgundy',
+        description: 'Cream text on deep wine-red box — rich vintage broadcast.',
+        thumbnail: '🍷',
+        captions: { style: { primaryColor: '#FDF6E3', highlightColor: '#F5C542', emphasisColor: '#F5C542', backColor: '#CC3D1520', outlineColor: '#3D1520' } },
+        overlays: { hookTitle: { textColor: '#FDF6E3', outlineColor: '#3D1520' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 29. GEMINI — Classic serif with bold emphasis and thin normal weight
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'gemini',
+    name: 'Gemini',
+    description: 'Thin serif that snaps to bold on emphasis — a dual-weight system for smart visual hierarchy.',
+    thumbnail: '♊',
+    category: 'minimal',
+    tags: ['serif', 'dual-weight', 'thin', 'bold', 'emphasis', 'lora', 'hierarchy', 'smart'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'gemini-caption',
+        label: 'Gemini',
+        fontName: 'Lora',
+        fontFile: 'Lora.ttf',
+        fontSize: 0.06,
+        primaryColor: '#D8D4CC',
+        highlightColor: '#FFFFFF',
+        outlineColor: '#14120E',
+        backColor: '#00000000',
+        outline: 2,
+        shadow: 1,
+        borderStyle: 1,
+        wordsPerLine: 3,
+        animation: 'captions-ai',
+        emphasisColor: '#FFFFFF',
+        supersizeColor: '#FFD700',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'ken-burns',
+      intensity: 'subtle',
+      intervalSeconds: 8,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'crossfade',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 8,
+      clipDuration: 5,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'minimal',
+      backgroundMusicTrack: 'cinematic-ambient',
+      sfxVolume: 0.2,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.22,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'slide-in',
+        displayDuration: 3.0,
+        fontSize: 66,
+        textColor: '#FFFFFF',
+        outlineColor: '#14120E',
+        outlineWidth: 3,
+      },
+      rehook: {
+        enabled: false,
+        style: 'text-only',
+        displayDuration: 2.0,
+      },
+      progressBar: {
+        enabled: false,
+        style: 'solid',
+        position: 'bottom',
+        height: 2,
+        color: '#D8D4CC',
+        opacity: 0.4,
+      },
+    },
+
+    variants: [
+      {
+        id: 'gemini-classic',
+        name: 'Classic',
+        description: 'Muted grey to bright white emphasis — the original dual-weight Gemini.',
+        thumbnail: '♊',
+      },
+      {
+        id: 'gemini-gold',
+        name: 'Gold',
+        description: 'Warm grey with gold emphasis — editorial luxury hierarchy.',
+        thumbnail: '🏆',
+        captions: { style: { primaryColor: '#C4BEB4', highlightColor: '#D4AF37', emphasisColor: '#D4AF37', supersizeColor: '#FFD700' } },
+        overlays: { hookTitle: { textColor: '#D4AF37' } },
+      },
+      {
+        id: 'gemini-ice',
+        name: 'Ice',
+        description: 'Cool blue-grey to pure white — icy serif precision.',
+        thumbnail: '🧊',
+        captions: { style: { primaryColor: '#B0BCC8', highlightColor: '#FFFFFF', emphasisColor: '#FFFFFF', outlineColor: '#0A1018' } },
+        overlays: { hookTitle: { textColor: '#FFFFFF', outlineColor: '#0A1018' } },
+      },
+      {
+        id: 'gemini-copper',
+        name: 'Copper',
+        description: 'Muted taupe with warm copper emphasis — understated metallic warmth.',
+        thumbnail: '🪙',
+        captions: { style: { primaryColor: '#C0B8A8', highlightColor: '#B87333', emphasisColor: '#B87333', supersizeColor: '#D4A056' } },
+        overlays: { hookTitle: { textColor: '#B87333' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 30. ERIDANUS — Art-deco inspired with geometric gold tones
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'eridanus',
+    name: 'Eridanus',
+    description: 'Art-deco serif with gold on black — geometric precision, Gatsby-era glamour, bold cascade.',
+    thumbnail: '🏛️',
+    category: 'cinematic',
+    tags: ['art-deco', 'gold', 'geometric', 'glamour', 'playfair', 'gatsby', 'bold', 'cascade'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'eridanus-caption',
+        label: 'Eridanus',
+        fontName: 'Playfair Display',
+        fontFile: 'PlayfairDisplay.ttf',
+        fontSize: 0.065,
+        primaryColor: '#D4AF37',
+        highlightColor: '#F4E4BC',
+        outlineColor: '#1A1A1A',
+        backColor: '#00000000',
+        outline: 3,
+        shadow: 2,
+        borderStyle: 1,
+        wordsPerLine: 2,
+        animation: 'cascade',
+        emphasisColor: '#FFD700',
+        supersizeColor: '#FFFFFF',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'ken-burns',
+      intensity: 'subtle',
+      intervalSeconds: 7,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'crossfade',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 7,
+      clipDuration: 5,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'balanced',
+      backgroundMusicTrack: 'cinematic-ambient',
+      sfxVolume: 0.3,
+      musicVolume: 0.12,
+      musicDucking: true,
+      musicDuckLevel: 0.2,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'centered-bold',
+        displayDuration: 3.0,
+        fontSize: 70,
+        textColor: '#D4AF37',
+        outlineColor: '#1A1A1A',
+        outlineWidth: 4,
+      },
+      rehook: {
+        enabled: false,
+        style: 'text-only',
+        displayDuration: 2.0,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'glow',
+        position: 'bottom',
+        height: 3,
+        color: '#D4AF37',
+        opacity: 0.8,
+      },
+    },
+
+    variants: [
+      {
+        id: 'eridanus-classic',
+        name: 'Classic',
+        description: 'Gold on black with geometric cascade — the original art-deco Eridanus.',
+        thumbnail: '🏛️',
+      },
+      {
+        id: 'eridanus-platinum',
+        name: 'Platinum',
+        description: 'Silver-white on charcoal — cool deco platinum elegance.',
+        thumbnail: '🪙',
+        captions: { style: { primaryColor: '#C0C0C0', highlightColor: '#E8E8E8', emphasisColor: '#FFFFFF', supersizeColor: '#FFFFFF', outlineColor: '#1A1A1A' } },
+        overlays: { progressBar: { color: '#C0C0C0' }, hookTitle: { textColor: '#C0C0C0' } },
+      },
+      {
+        id: 'eridanus-emerald',
+        name: 'Emerald',
+        description: 'Rich emerald green on black — jewel-toned art-deco opulence.',
+        thumbnail: '💚',
+        captions: { style: { primaryColor: '#50C878', highlightColor: '#A8E6C0', emphasisColor: '#98FB98', supersizeColor: '#FFFFFF', outlineColor: '#0A1A10' } },
+        overlays: { progressBar: { color: '#50C878' }, hookTitle: { textColor: '#50C878', outlineColor: '#0A1A10' } },
+      },
+      {
+        id: 'eridanus-rose-gold',
+        name: 'Rose Gold',
+        description: 'Rose-gold tones on deep plum — warm deco luxury.',
+        thumbnail: '🌹',
+        captions: { style: { primaryColor: '#C9A4A0', highlightColor: '#F0D0CC', emphasisColor: '#F5E1E0', supersizeColor: '#FFFFFF', outlineColor: '#1A1018' } },
+        overlays: { progressBar: { color: '#C9A4A0' }, hookTitle: { textColor: '#C9A4A0', outlineColor: '#1A1018' } },
+      },
+    ],
+  },
 ]
 
 /** IDs of all built-in edit style presets, in display order. */
@@ -2463,12 +3663,6 @@ export const BUILT_IN_EDIT_STYLE_PRESET_IDS = EDIT_STYLE_PRESETS.filter(p => p.b
  */
 export function getEditStylePreset(id: string): EditStylePreset | undefined {
   return EDIT_STYLE_PRESETS.find(p => p.id === id)
-}
-
-)
-}
-
-
 }
 
 
