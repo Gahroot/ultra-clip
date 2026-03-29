@@ -213,7 +213,9 @@ export const DEFAULT_SOUND_DESIGN: SoundDesignSettings = {
   enabled: false,
   backgroundMusicTrack: 'ambient-tech',
   sfxVolume: 0.5,
-  musicVolume: 0.1
+  musicVolume: 0.1,
+  musicDucking: true,
+  musicDuckLevel: 0.2
 }
 
 export const DEFAULT_AUTO_ZOOM: ZoomSettings = {

@@ -78,6 +78,8 @@ interface SoundDesignSettings {
   backgroundMusicTrack: 'ambient-tech' | 'ambient-motivational' | 'ambient-chill'
   sfxVolume: number
   musicVolume: number
+  musicDucking: boolean
+  musicDuckLevel: number
 }
 
 interface AutoZoomSettings {

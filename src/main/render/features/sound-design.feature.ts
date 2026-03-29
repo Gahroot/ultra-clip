@@ -53,11 +53,17 @@ export function buildSoundFilterComplex(
     const vol = p.volume.toFixed(3)
 
     if (p.type === 'music') {
-      // Loop the entire music file (size=0), trim to clip duration, apply volume
+      // Loop the entire music file (size=0), trim to clip duration, apply volume.
+      // When a time-varying expression is present (music ducking), use eval=frame
+      // so FFmpeg re-evaluates the volume expression for every audio frame.
+      // The expression uses comma-free infix operators (t>=s, t<=e) for Windows safety.
+      const volPart = p.volumeExpr
+        ? `volume=${p.volumeExpr}:eval=frame`
+        : `volume=${vol}`
       segments.push(
         `[${inputIdx}:a]aloop=loop=1000:size=0,` +
           `atrim=0:${clipDuration.toFixed(3)},` +
-          `volume=${vol}${label}`
+          `${volPart}${label}`
       )
     } else {
       // SFX: delay to target timestamp, apply volume.

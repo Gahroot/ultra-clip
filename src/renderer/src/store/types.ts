@@ -245,6 +245,10 @@ export interface SoundDesignSettings {
   backgroundMusicTrack: MusicTrack
   sfxVolume: number
   musicVolume: number
+  /** Duck music volume during speech segments. Default: true */
+  musicDucking: boolean
+  /** Volume fraction to apply during speech (0–1). 0.2 = drop to 20% of full music volume. Default: 0.2 */
+  musicDuckLevel: number
 }
 
 export interface BrandKit {
