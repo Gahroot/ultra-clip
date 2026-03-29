@@ -564,6 +564,89 @@ function buildTypewriterLines(
   return [`Dialogue: 0,${start},${end},Default,,0,0,0,,${charBlocks.join('')}`]
 }
 
+/**
+ * Captions.AI — the signature animation style.
+ *
+ * The contrast between word types is what defines this look:
+ *   • Normal words: gentle fade-in (alpha ramp over ~150ms), stay at 100% scale.
+ *   • Emphasis words: POP — snap to visible at 130% scale, fast settle to 100%.
+ *     Uses the emphasisColor, bold weight, and a slight blur-to-sharp transition.
+ *   • Supersize words: MASSIVE — appear instantly at 220% scale, settle to 200%
+ *     and HOLD there. Standout color (supersizeColor), extra-bold, thick outline.
+ *
+ * The quiet gentleness of normal words makes the emphasis pops feel explosive.
+ */
+function buildCaptionsAILines(
+  group: WordGroup,
+  style: CaptionStyleInput,
+  baseFontSize: number
+): string[] {
+  const primaryASS = hexToASS(style.primaryColor)
+  const emphasisASS = hexToASS(style.emphasisColor ?? style.highlightColor)
+  const supersizeASS = hexToASS(style.supersizeColor ?? '#FFD700')
+
+  const start = formatASSTime(group.start)
+  const end = formatASSTime(group.end)
+
+  const parts = group.words.map((w, idx) => {
+    const wordStartCs = Math.round((w.start - group.start) * 100)
+    const wordDurCs = Math.round((w.end - w.start) * 100)
+    const isLast = idx === group.words.length - 1
+    const suffix = isLast ? '' : ' '
+    const level = w.emphasis ?? 'normal'
+
+    if (level === 'supersize') {
+      // SUPERSIZE: massive, held at 200%+, standout color.
+      // Snap to 220% then ease down to 200% and HOLD there.
+      const bigSize = Math.round(baseFontSize * 2.0)
+      const snapScale = 220
+      const holdScale = 200
+      const snapDur = Math.min(6, wordDurCs) // 60ms snap-in
+      const settleDur = Math.min(10, wordDurCs) // 100ms settle
+
+      return (
+        `{\\fs${bigSize}\\b1\\1c${supersizeASS}\\bord${Math.round(style.outline * 1.5)}` +
+        `\\alpha&HFF&\\fscx${snapScale}\\fscy${snapScale}` +
+        // Snap to visible at overshoot scale
+        `\\t(${wordStartCs},${wordStartCs + snapDur},\\alpha&H00&)` +
+        // Settle from 220% → 200% with deceleration
+        `\\t(${wordStartCs + snapDur},${wordStartCs + snapDur + settleDur},0.4,\\fscx${holdScale}\\fscy${holdScale})}` +
+        `${w.text}{\\r}${suffix}`
+      )
+    }
+
+    if (level === 'emphasis') {
+      // EMPHASIS: pop — snap to visible at 130%, fast settle to 100%.
+      const empSize = Math.round(baseFontSize * EMPHASIS_SCALE)
+      const popScale = 130
+      const snapDur = Math.min(4, wordDurCs) // 40ms instant snap
+      const settleDur = Math.min(10, wordDurCs) // 100ms spring settle
+
+      return (
+        `{\\fs${empSize}\\1c${emphasisASS}\\b1` +
+        `\\alpha&HFF&\\fscx${popScale}\\fscy${popScale}` +
+        // Instant snap to visible
+        `\\t(${wordStartCs},${wordStartCs + snapDur},\\alpha&H00&)` +
+        // Spring settle: overshoot → 95% → 100%
+        `\\t(${wordStartCs + snapDur},${wordStartCs + snapDur + Math.round(settleDur * 0.6)},\\fscx95\\fscy95)` +
+        `\\t(${wordStartCs + snapDur + Math.round(settleDur * 0.6)},${wordStartCs + snapDur + settleDur},\\fscx100\\fscy100)}` +
+        `${w.text}{\\r}${suffix}`
+      )
+    }
+
+    // NORMAL: gentle fade-in. Quiet, unobtrusive.
+    const fadeDur = Math.min(15, wordDurCs) // 150ms gentle fade
+
+    return (
+      `{\\1c${primaryASS}\\alpha&HFF&` +
+      `\\t(${wordStartCs},${wordStartCs + fadeDur},\\alpha&H00&)}` +
+      `${w.text}${suffix}`
+    )
+  })
+
+  return [`Dialogue: 0,${start},${end},Default,,0,0,0,,${parts.join('')}`]
+}
+
 // ---------------------------------------------------------------------------
 // ASS document generator
 // ---------------------------------------------------------------------------
@@ -612,6 +695,9 @@ function buildASSDocument(
     if (group.words.length === 0) continue
 
     switch (style.animation) {
+      case 'captions-ai':
+        dialogueLines.push(...buildCaptionsAILines(group, style, fontSize))
+        break
       case 'karaoke-fill':
         dialogueLines.push(buildKaraokeLine(group, style, fontSize))
         break

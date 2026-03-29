@@ -62,6 +62,7 @@ import { cn, formatFileSize } from '@/lib/utils'
 import { DropZone } from './DropZone'
 
 const ANIMATION_OPTIONS: { value: CaptionAnimation; label: string }[] = [
+  { value: 'captions-ai', label: 'Captions.AI' },
   { value: 'word-pop', label: 'Word Pop' },
   { value: 'karaoke-fill', label: 'Karaoke Fill' },
   { value: 'fade-in', label: 'Fade In' },
@@ -159,19 +160,57 @@ function CaptionPhonePreview({ captionStyle }: { captionStyle: CaptionStyle }) {
   const line2Arr = [...words.slice(wordsPerLine), ...words2]
   const line2Words = line2Arr.slice(0, wordsPerLine)
 
-  // Show highlight on the second word
-  const renderLine = (text: string, highlightIdx: number) => {
+  const isCaptionsAI = captionStyle.animation === 'captions-ai'
+
+  /**
+   * Render a line of words. For captions-ai, emphasisIdx gets a pop (bigger +
+   * emphasisColor) and supersizeIdx gets the massive standout treatment.
+   * For other animations, highlightIdx just gets the highlight color.
+   */
+  const renderLine = (text: string, highlightIdx: number, emphasisIdx = -1, supersizeIdx = -1) => {
     const tokens = text.split(' ')
-    return tokens.map((word, i) => (
-      <span
-        key={i}
-        style={{
-          color: i === highlightIdx ? captionStyle.highlightColor : captionStyle.primaryColor
-        }}
-      >
-        {word}{i < tokens.length - 1 ? ' ' : ''}
-      </span>
-    ))
+    return tokens.map((word, i) => {
+      if (isCaptionsAI && i === supersizeIdx) {
+        return (
+          <span
+            key={i}
+            style={{
+              color: captionStyle.supersizeColor ?? '#FFD700',
+              fontSize: `${Math.max(10, Math.round(scaledFontSize * 2.0))}px`,
+              fontWeight: 900,
+              display: 'inline'
+            }}
+          >
+            {word}{i < tokens.length - 1 ? ' ' : ''}
+          </span>
+        )
+      }
+      if (isCaptionsAI && i === emphasisIdx) {
+        return (
+          <span
+            key={i}
+            style={{
+              color: captionStyle.emphasisColor ?? captionStyle.highlightColor,
+              fontSize: `${Math.max(9, Math.round(scaledFontSize * 1.25))}px`,
+              fontWeight: 800,
+              display: 'inline'
+            }}
+          >
+            {word}{i < tokens.length - 1 ? ' ' : ''}
+          </span>
+        )
+      }
+      return (
+        <span
+          key={i}
+          style={{
+            color: i === highlightIdx ? captionStyle.highlightColor : captionStyle.primaryColor
+          }}
+        >
+          {word}{i < tokens.length - 1 ? ' ' : ''}
+        </span>
+      )
+    })
   }
 
   /**
@@ -264,9 +303,9 @@ function CaptionPhonePreview({ captionStyle }: { captionStyle: CaptionStyle }) {
             </>
           ) : (
             <>
-              <div style={textStyle}>{renderLine(line1Words.join(' '), 1)}</div>
+              <div style={textStyle}>{renderLine(line1Words.join(' '), 1, isCaptionsAI ? 0 : -1, -1)}</div>
               {line2Words.length > 0 && (
-                <div style={textStyle}>{renderLine(line2Words.join(' '), 0)}</div>
+                <div style={textStyle}>{renderLine(line2Words.join(' '), 0, -1, isCaptionsAI ? 0 : -1)}</div>
               )}
             </>
           )}
