@@ -1243,6 +1243,1215 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       },
     ],
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BATCH 2 — BOLD / LOUD / HIGH-ENERGY
+  // All-caps, thick outlines, heavy fonts, punchy pop/bounce animations.
+  // Star & constellation names.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 11. ORION — All-caps thick outline with snap/pop animation
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'orion',
+    name: 'Orion',
+    description: 'Thick black outlines and single-word snap pops — each word hits like a punch.',
+    thumbnail: '⭐',
+    category: 'viral',
+    tags: ['bold', 'loud', 'thick-outline', 'snap', 'uppercase', 'anton', 'all-caps'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'orion-caption',
+        label: 'Orion',
+        fontName: 'Anton',
+        fontFile: 'Anton-Regular.ttf',
+        fontSize: 0.085,
+        primaryColor: '#FFFFFF',
+        highlightColor: '#FF2D2D',
+        outlineColor: '#000000',
+        backColor: '#00000000',
+        outline: 7,
+        shadow: 0,
+        borderStyle: 1,
+        wordsPerLine: 1,
+        animation: 'word-pop',
+        emphasisColor: '#FF2D2D',
+        supersizeColor: '#FFD700',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'jump-cut',
+      intensity: 'dynamic',
+      intervalSeconds: 2,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'hard-cut',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 4,
+      clipDuration: 2,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'energetic',
+      backgroundMusicTrack: 'impact-hype',
+      sfxVolume: 0.85,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.1,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'centered-bold',
+        displayDuration: 2.0,
+        fontSize: 88,
+        textColor: '#FFFFFF',
+        outlineColor: '#000000',
+        outlineWidth: 6,
+      },
+      rehook: {
+        enabled: true,
+        style: 'slide-up',
+        displayDuration: 1.2,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'solid',
+        position: 'top',
+        height: 6,
+        color: '#FF2D2D',
+        opacity: 1.0,
+      },
+    },
+
+    variants: [
+      {
+        id: 'orion-classic',
+        name: 'Classic',
+        description: 'White text, red highlight, thick black outline — the original Orion snap.',
+        thumbnail: '⭐',
+      },
+      {
+        id: 'orion-blaze',
+        name: 'Blaze',
+        description: 'Orange-yellow fire highlight — Orion at maximum heat.',
+        thumbnail: '🔥',
+        captions: { style: { highlightColor: '#FF6B35', emphasisColor: '#FF6B35', supersizeColor: '#FFFFFF' } },
+        overlays: { progressBar: { color: '#FF6B35' }, hookTitle: { textColor: '#FF6B35' } },
+      },
+      {
+        id: 'orion-frost',
+        name: 'Frost',
+        description: 'Ice-blue snap on deep black — cold, sharp, clinical.',
+        thumbnail: '🧊',
+        captions: { style: { highlightColor: '#00BFFF', emphasisColor: '#00BFFF', supersizeColor: '#E0F2FE' } },
+        overlays: { progressBar: { color: '#00BFFF' }, hookTitle: { textColor: '#00BFFF' } },
+      },
+      {
+        id: 'orion-gold',
+        name: 'Gold',
+        description: 'Gold highlight with heavyweight presence — championship energy.',
+        thumbnail: '🏆',
+        captions: { style: { highlightColor: '#FFD700', emphasisColor: '#FFD700', supersizeColor: '#FFFFFF' } },
+        overlays: { progressBar: { color: '#FFD700' }, hookTitle: { textColor: '#FFD700' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 12. SIRIUS — All-caps colored text with thick black outline
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'sirius',
+    name: 'Sirius',
+    description: 'Colored text with thick black outlines — bright, bold, and impossible to ignore.',
+    thumbnail: '💛',
+    category: 'viral',
+    tags: ['bold', 'loud', 'colored-text', 'all-caps', 'bangers', 'punchy'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'sirius-caption',
+        label: 'Sirius',
+        fontName: 'Bangers',
+        fontFile: 'Bangers-Regular.ttf',
+        fontSize: 0.08,
+        primaryColor: '#FFE600',
+        highlightColor: '#00FFFF',
+        outlineColor: '#000000',
+        backColor: '#00000000',
+        outline: 6,
+        shadow: 2,
+        borderStyle: 1,
+        wordsPerLine: 2,
+        animation: 'captions-ai',
+        emphasisColor: '#00FFFF',
+        supersizeColor: '#FF6B35',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'reactive',
+      intensity: 'dynamic',
+      intervalSeconds: 2.5,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'hard-cut',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 5,
+      clipDuration: 3,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'energetic',
+      backgroundMusicTrack: 'high-energy-beats',
+      sfxVolume: 0.75,
+      musicVolume: 0.11,
+      musicDucking: true,
+      musicDuckLevel: 0.12,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'centered-bold',
+        displayDuration: 2.5,
+        fontSize: 80,
+        textColor: '#FFE600',
+        outlineColor: '#000000',
+        outlineWidth: 5,
+      },
+      rehook: {
+        enabled: true,
+        style: 'bar',
+        displayDuration: 1.5,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'glow',
+        position: 'bottom',
+        height: 5,
+        color: '#FFE600',
+        opacity: 1.0,
+      },
+    },
+
+    variants: [
+      {
+        id: 'sirius-classic',
+        name: 'Classic',
+        description: 'Yellow text, cyan emphasis, orange supersize — the original Sirius.',
+        thumbnail: '💛',
+      },
+      {
+        id: 'sirius-electric',
+        name: 'Electric',
+        description: 'Hot pink primary with green pops — maximum color energy.',
+        thumbnail: '⚡',
+        captions: { style: { primaryColor: '#FF00FF', highlightColor: '#00FF66', emphasisColor: '#00FF66', supersizeColor: '#FFFFFF' } },
+        overlays: { progressBar: { color: '#FF00FF' }, hookTitle: { textColor: '#FF00FF' } },
+      },
+      {
+        id: 'sirius-arctic',
+        name: 'Arctic',
+        description: 'Bright cyan text with white pops — ice-cold color blast.',
+        thumbnail: '❄️',
+        captions: { style: { primaryColor: '#00FFFF', highlightColor: '#FFFFFF', emphasisColor: '#FFFFFF', supersizeColor: '#FFE600' } },
+        overlays: { progressBar: { color: '#00FFFF' }, hookTitle: { textColor: '#00FFFF' } },
+      },
+      {
+        id: 'sirius-lava',
+        name: 'Lava',
+        description: 'Orange text with red emphasis — molten energy on dark.',
+        thumbnail: '🌋',
+        captions: { style: { primaryColor: '#FF6B35', highlightColor: '#FF2D2D', emphasisColor: '#FF2D2D', supersizeColor: '#FFD700' } },
+        overlays: { progressBar: { color: '#FF6B35' }, hookTitle: { textColor: '#FF6B35' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 13. VEGA — Bold display font (Bebas Neue) with slide-up cascade
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'vega',
+    name: 'Vega',
+    description: 'Tall condensed display type that rises into frame — theatrical, commanding, unmissable.',
+    thumbnail: '🌟',
+    category: 'viral',
+    tags: ['bold', 'loud', 'display', 'bebas-neue', 'slide-up', 'condensed', 'tall'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'vega-caption',
+        label: 'Vega',
+        fontName: 'Bebas Neue',
+        fontFile: 'BebasNeue-Regular.ttf',
+        fontSize: 0.09,
+        primaryColor: '#FFFFFF',
+        highlightColor: '#FF00FF',
+        outlineColor: '#000000',
+        backColor: '#00000000',
+        outline: 5,
+        shadow: 0,
+        borderStyle: 1,
+        wordsPerLine: 2,
+        animation: 'cascade',
+        emphasisColor: '#FF00FF',
+        supersizeColor: '#00FFFF',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'reactive',
+      intensity: 'dynamic',
+      intervalSeconds: 3,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'swipe-up',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 5,
+      clipDuration: 3,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'energetic',
+      backgroundMusicTrack: 'impact-hype',
+      sfxVolume: 0.7,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.12,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'centered-bold',
+        displayDuration: 2.5,
+        fontSize: 84,
+        textColor: '#FFFFFF',
+        outlineColor: '#000000',
+        outlineWidth: 5,
+      },
+      rehook: {
+        enabled: true,
+        style: 'slide-up',
+        displayDuration: 1.5,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'glow',
+        position: 'bottom',
+        height: 5,
+        color: '#FF00FF',
+        opacity: 0.95,
+      },
+    },
+
+    variants: [
+      {
+        id: 'vega-classic',
+        name: 'Classic',
+        description: 'White text with magenta cascade rise — the original Vega.',
+        thumbnail: '🌟',
+      },
+      {
+        id: 'vega-sunrise',
+        name: 'Sunrise',
+        description: 'Warm amber highlights rising into frame — dawn energy.',
+        thumbnail: '🌅',
+        captions: { style: { highlightColor: '#FF9B21', emphasisColor: '#FF9B21', supersizeColor: '#FFD700' } },
+        overlays: { progressBar: { color: '#FF9B21' }, hookTitle: { textColor: '#FF9B21' } },
+      },
+      {
+        id: 'vega-ultraviolet',
+        name: 'Ultraviolet',
+        description: 'Purple-violet cascade — deep, electric, hypnotic.',
+        thumbnail: '🔮',
+        captions: { style: { highlightColor: '#A855F7', emphasisColor: '#A855F7', supersizeColor: '#E879F9', outlineColor: '#1A0033' } },
+        overlays: { progressBar: { color: '#A855F7' }, hookTitle: { textColor: '#A855F7' } },
+      },
+      {
+        id: 'vega-whiteout',
+        name: 'Whiteout',
+        description: 'Pure white, zero color, maximum contrast — text as architecture.',
+        thumbnail: '⬜',
+        captions: { style: { highlightColor: '#FFFFFF', emphasisColor: '#FFFFFF', supersizeColor: '#FFFFFF', outline: 6 } },
+        overlays: { progressBar: { color: '#FFFFFF' }, hookTitle: { textColor: '#FFFFFF' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 14. RIGEL — Impact-style stacked text with hard drop shadow
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'rigel',
+    name: 'Rigel',
+    description: 'Massive stacked key-word with heavy drop shadow — words that slam into the screen.',
+    thumbnail: '💀',
+    category: 'viral',
+    tags: ['bold', 'loud', 'impact', 'drop-shadow', 'stacked', 'anton', 'heavy'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'rigel-caption',
+        label: 'Rigel',
+        fontName: 'Anton',
+        fontFile: 'Anton-Regular.ttf',
+        fontSize: 0.075,
+        primaryColor: '#FFFFFF',
+        highlightColor: '#C8FF00',
+        outlineColor: '#000000',
+        backColor: '#00000000',
+        outline: 5,
+        shadow: 5,
+        borderStyle: 1,
+        wordsPerLine: 3,
+        animation: 'impact-two',
+        emphasisColor: '#C8FF00',
+        supersizeColor: '#FF2D2D',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'jump-cut',
+      intensity: 'dynamic',
+      intervalSeconds: 1.5,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'hard-cut',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 4,
+      clipDuration: 2,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'energetic',
+      backgroundMusicTrack: 'volt-electric',
+      sfxVolume: 0.9,
+      musicVolume: 0.08,
+      musicDucking: true,
+      musicDuckLevel: 0.1,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'top-bar',
+        displayDuration: 2.0,
+        fontSize: 80,
+        textColor: '#C8FF00',
+        outlineColor: '#000000',
+        outlineWidth: 6,
+      },
+      rehook: {
+        enabled: true,
+        style: 'slide-up',
+        displayDuration: 1.0,
+      },
+      progressBar: {
+        enabled: false,
+        style: 'solid',
+        position: 'top',
+        height: 6,
+        color: '#C8FF00',
+        opacity: 1.0,
+      },
+    },
+
+    variants: [
+      {
+        id: 'rigel-classic',
+        name: 'Classic',
+        description: 'Lime-green highlight with heavy shadow — the original Rigel slam.',
+        thumbnail: '💀',
+      },
+      {
+        id: 'rigel-bloodmoon',
+        name: 'Blood Moon',
+        description: 'Deep red highlight with crushing shadow — maximum menace.',
+        thumbnail: '🔴',
+        captions: { style: { highlightColor: '#FF2D2D', emphasisColor: '#FF2D2D', supersizeColor: '#FFE600' } },
+        overlays: { hookTitle: { textColor: '#FF2D2D' } },
+      },
+      {
+        id: 'rigel-supernova',
+        name: 'Supernova',
+        description: 'White-hot highlight with gold supersize — blinding impact.',
+        thumbnail: '💫',
+        captions: { style: { highlightColor: '#FFFFFF', emphasisColor: '#FFFFFF', supersizeColor: '#FFD700', shadow: 6 } },
+        overlays: { hookTitle: { textColor: '#FFFFFF' } },
+      },
+      {
+        id: 'rigel-toxic',
+        name: 'Toxic',
+        description: 'Acid green with purple supersize — hazardous energy.',
+        thumbnail: '☢️',
+        captions: { style: { highlightColor: '#84CC16', emphasisColor: '#84CC16', supersizeColor: '#A855F7' } },
+        overlays: { hookTitle: { textColor: '#84CC16' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 15. POLARIS — Heavy weight with colored background boxes
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'polaris',
+    name: 'Polaris',
+    description: 'Bold condensed text in chunky colored boxes — impossible to miss, easy to read.',
+    thumbnail: '📦',
+    category: 'viral',
+    tags: ['bold', 'loud', 'boxes', 'background', 'oswald', 'chunky', 'all-caps'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'polaris-caption',
+        label: 'Polaris',
+        fontName: 'Oswald',
+        fontFile: 'Oswald.ttf',
+        fontSize: 0.075,
+        primaryColor: '#FFFFFF',
+        highlightColor: '#FF2D2D',
+        outlineColor: '#FF2D2D',
+        backColor: '#FF2D2D',
+        outline: 0,
+        shadow: 0,
+        borderStyle: 3,
+        wordsPerLine: 2,
+        animation: 'word-box',
+        emphasisColor: '#FFE600',
+        supersizeColor: '#00FFFF',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'reactive',
+      intensity: 'dynamic',
+      intervalSeconds: 2.5,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'hard-cut',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 5,
+      clipDuration: 3,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'energetic',
+      backgroundMusicTrack: 'impact-hype',
+      sfxVolume: 0.8,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.12,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'centered-bold',
+        displayDuration: 2.5,
+        fontSize: 76,
+        textColor: '#FFFFFF',
+        outlineColor: '#FF2D2D',
+        outlineWidth: 0,
+      },
+      rehook: {
+        enabled: true,
+        style: 'bar',
+        displayDuration: 1.5,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'solid',
+        position: 'bottom',
+        height: 6,
+        color: '#FF2D2D',
+        opacity: 1.0,
+      },
+    },
+
+    variants: [
+      {
+        id: 'polaris-classic',
+        name: 'Classic',
+        description: 'Red boxes, white text, yellow emphasis — the original Polaris.',
+        thumbnail: '📦',
+      },
+      {
+        id: 'polaris-midnight',
+        name: 'Midnight',
+        description: 'Deep navy boxes with electric blue emphasis — dark authority.',
+        thumbnail: '🌃',
+        captions: { style: { outlineColor: '#1E293B', backColor: '#1E293B', highlightColor: '#3B82F6', emphasisColor: '#3B82F6', supersizeColor: '#60A5FA' } },
+        overlays: { progressBar: { color: '#1E293B' } },
+      },
+      {
+        id: 'polaris-solar',
+        name: 'Solar',
+        description: 'Bright yellow boxes with dark text — maximum visibility.',
+        thumbnail: '☀️',
+        captions: { style: { primaryColor: '#1A1A1A', outlineColor: '#FFE600', backColor: '#FFE600', highlightColor: '#FF2D2D', emphasisColor: '#FF2D2D', supersizeColor: '#FF6B35' } },
+        overlays: { progressBar: { color: '#FFE600' }, hookTitle: { textColor: '#1A1A1A', outlineColor: '#FFE600' } },
+      },
+      {
+        id: 'polaris-emerald',
+        name: 'Emerald',
+        description: 'Green boxes with white text — bold, fresh, unmistakable.',
+        thumbnail: '💚',
+        captions: { style: { outlineColor: '#16A34A', backColor: '#16A34A', highlightColor: '#FFE600', emphasisColor: '#FFE600', supersizeColor: '#FFFFFF' } },
+        overlays: { progressBar: { color: '#16A34A' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 16. ALTAIR — All-caps with double stroke (outline on outline)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'altair',
+    name: 'Altair',
+    description: 'Ultra-thick double-stroke outlines with elastic bounce — text that owns the frame.',
+    thumbnail: '🔷',
+    category: 'viral',
+    tags: ['bold', 'loud', 'double-stroke', 'thick', 'bounce', 'montserrat', 'all-caps'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'altair-caption',
+        label: 'Altair',
+        fontName: 'Montserrat',
+        fontFile: 'Montserrat-Bold.ttf',
+        fontSize: 0.08,
+        primaryColor: '#FFFFFF',
+        highlightColor: '#FF00FF',
+        outlineColor: '#000000',
+        backColor: '#00000000',
+        outline: 8,
+        shadow: 4,
+        borderStyle: 1,
+        wordsPerLine: 1,
+        animation: 'elastic-bounce',
+        emphasisColor: '#FF00FF',
+        supersizeColor: '#00FFFF',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'jump-cut',
+      intensity: 'dynamic',
+      intervalSeconds: 2,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'hard-cut',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 4,
+      clipDuration: 2,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'energetic',
+      backgroundMusicTrack: 'volt-electric',
+      sfxVolume: 0.85,
+      musicVolume: 0.09,
+      musicDucking: true,
+      musicDuckLevel: 0.1,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'centered-bold',
+        displayDuration: 2.0,
+        fontSize: 84,
+        textColor: '#FFFFFF',
+        outlineColor: '#000000',
+        outlineWidth: 7,
+      },
+      rehook: {
+        enabled: true,
+        style: 'slide-up',
+        displayDuration: 1.2,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'glow',
+        position: 'bottom',
+        height: 6,
+        color: '#FF00FF',
+        opacity: 1.0,
+      },
+    },
+
+    variants: [
+      {
+        id: 'altair-classic',
+        name: 'Classic',
+        description: 'Hot pink highlight, ultra-thick outlines, elastic bounce — the original Altair.',
+        thumbnail: '🔷',
+      },
+      {
+        id: 'altair-plasma',
+        name: 'Plasma',
+        description: 'Electric cyan on purple stroke — plasma arc energy.',
+        thumbnail: '🟣',
+        captions: { style: { highlightColor: '#00FFFF', emphasisColor: '#00FFFF', supersizeColor: '#FF00FF', outlineColor: '#2D004D' } },
+        overlays: { progressBar: { color: '#00FFFF' }, hookTitle: { textColor: '#00FFFF', outlineColor: '#2D004D' } },
+      },
+      {
+        id: 'altair-fire',
+        name: 'Fire',
+        description: 'Red-orange highlight with maximum outline mass — heavyweight.',
+        thumbnail: '🔥',
+        captions: { style: { highlightColor: '#FF6B35', emphasisColor: '#FF6B35', supersizeColor: '#FFD700', outline: 9 } },
+        overlays: { progressBar: { color: '#FF6B35' }, hookTitle: { textColor: '#FF6B35' } },
+      },
+      {
+        id: 'altair-monochrome',
+        name: 'Monochrome',
+        description: 'White double-stroke, zero color — pure typographic force.',
+        thumbnail: '⬛',
+        captions: { style: { highlightColor: '#FFFFFF', emphasisColor: '#FFFFFF', supersizeColor: '#FFFFFF', outline: 9, shadow: 5 } },
+        overlays: { progressBar: { color: '#FFFFFF' }, hookTitle: { textColor: '#FFFFFF' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 17. DENEB — Bold with neon glow shadow
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'deneb',
+    name: 'Deneb',
+    description: 'Neon glow pulsing around every word — bold text that radiates light.',
+    thumbnail: '💜',
+    category: 'viral',
+    tags: ['bold', 'loud', 'neon', 'glow', 'purple', 'poppins', 'radiant'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'deneb-caption',
+        label: 'Deneb',
+        fontName: 'Poppins',
+        fontFile: 'Poppins-Bold.ttf',
+        fontSize: 0.075,
+        primaryColor: '#FFFFFF',
+        highlightColor: '#BF5AF2',
+        outlineColor: '#7B2FBE',
+        backColor: '#00000000',
+        outline: 4,
+        shadow: 0,
+        borderStyle: 1,
+        wordsPerLine: 2,
+        animation: 'glow',
+        emphasisColor: '#BF5AF2',
+        supersizeColor: '#FF2D78',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'reactive',
+      intensity: 'medium',
+      intervalSeconds: 3,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'pip',
+      transition: 'crossfade',
+      pipSize: 0.28,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 5,
+      clipDuration: 3,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'energetic',
+      backgroundMusicTrack: 'synthwave-neon',
+      sfxVolume: 0.65,
+      musicVolume: 0.12,
+      musicDucking: true,
+      musicDuckLevel: 0.15,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'top-bar',
+        displayDuration: 2.5,
+        fontSize: 76,
+        textColor: '#BF5AF2',
+        outlineColor: '#000000',
+        outlineWidth: 4,
+      },
+      rehook: {
+        enabled: true,
+        style: 'slide-up',
+        displayDuration: 1.5,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'glow',
+        position: 'bottom',
+        height: 5,
+        color: '#BF5AF2',
+        opacity: 0.95,
+      },
+    },
+
+    variants: [
+      {
+        id: 'deneb-classic',
+        name: 'Classic',
+        description: 'Purple neon glow with pink supersize — the original Deneb.',
+        thumbnail: '💜',
+      },
+      {
+        id: 'deneb-bubblegum',
+        name: 'Bubblegum',
+        description: 'Hot pink glow with cyan bursts — candy-colored neon.',
+        thumbnail: '🩷',
+        captions: { style: { highlightColor: '#FF2D78', emphasisColor: '#FF2D78', supersizeColor: '#00FFFF', outlineColor: '#8B0040' } },
+        overlays: { progressBar: { color: '#FF2D78' }, hookTitle: { textColor: '#FF2D78' } },
+      },
+      {
+        id: 'deneb-lazuli',
+        name: 'Lazuli',
+        description: 'Deep blue neon with white flare — cool, commanding glow.',
+        thumbnail: '💙',
+        captions: { style: { highlightColor: '#4F8AFF', emphasisColor: '#4F8AFF', supersizeColor: '#FFFFFF', outlineColor: '#1E3A5F' } },
+        overlays: { progressBar: { color: '#4F8AFF' }, hookTitle: { textColor: '#4F8AFF' } },
+      },
+      {
+        id: 'deneb-solar',
+        name: 'Solar',
+        description: 'Gold neon glow with warm amber edges — premium radiance.',
+        thumbnail: '🌟',
+        captions: { style: { highlightColor: '#FFD700', emphasisColor: '#FFD700', supersizeColor: '#FFFFFF', outlineColor: '#5C4100' } },
+        overlays: { progressBar: { color: '#FFD700' }, hookTitle: { textColor: '#FFD700' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 18. CASTOR — Chunky hand-drawn with bounce-in and emphasis scale
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'castor',
+    name: 'Castor',
+    description: 'Chunky hand-drawn marker text that bounces in with spring overshoot — raw, expressive, loud.',
+    thumbnail: '🎪',
+    category: 'viral',
+    tags: ['bold', 'loud', 'chunky', 'bounce', 'marker', 'permanent-marker', 'hand-drawn'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'castor-caption',
+        label: 'Castor',
+        fontName: 'Permanent Marker',
+        fontFile: 'PermanentMarker-Regular.ttf',
+        fontSize: 0.078,
+        primaryColor: '#FFFFFF',
+        highlightColor: '#FF6B35',
+        outlineColor: '#000000',
+        backColor: '#00000000',
+        outline: 5,
+        shadow: 3,
+        borderStyle: 1,
+        wordsPerLine: 2,
+        animation: 'elastic-bounce',
+        emphasisColor: '#FF6B35',
+        supersizeColor: '#FFE600',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'reactive',
+      intensity: 'dynamic',
+      intervalSeconds: 2,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'swipe-up',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 5,
+      clipDuration: 3,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'energetic',
+      backgroundMusicTrack: 'gritty-lofi',
+      sfxVolume: 0.8,
+      musicVolume: 0.09,
+      musicDucking: true,
+      musicDuckLevel: 0.12,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'centered-bold',
+        displayDuration: 2.5,
+        fontSize: 80,
+        textColor: '#FFFFFF',
+        outlineColor: '#000000',
+        outlineWidth: 5,
+      },
+      rehook: {
+        enabled: true,
+        style: 'slide-up',
+        displayDuration: 1.2,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'solid',
+        position: 'bottom',
+        height: 5,
+        color: '#FF6B35',
+        opacity: 1.0,
+      },
+    },
+
+    variants: [
+      {
+        id: 'castor-classic',
+        name: 'Classic',
+        description: 'Orange bounce with yellow supersize — the original Castor.',
+        thumbnail: '🎪',
+      },
+      {
+        id: 'castor-rage',
+        name: 'Rage',
+        description: 'Blood-red marker bounce — raw, unfiltered aggression.',
+        thumbnail: '🤬',
+        captions: { style: { highlightColor: '#FF2D2D', emphasisColor: '#FF2D2D', supersizeColor: '#FFFFFF' } },
+        sound: { sfxVolume: 0.95 },
+        overlays: { progressBar: { color: '#FF2D2D' } },
+      },
+      {
+        id: 'castor-jungle',
+        name: 'Jungle',
+        description: 'Lime-green marker on dark — wild, untamed bounce energy.',
+        thumbnail: '🌴',
+        captions: { style: { highlightColor: '#84CC16', emphasisColor: '#84CC16', supersizeColor: '#FACC15' } },
+        overlays: { progressBar: { color: '#84CC16' } },
+      },
+      {
+        id: 'castor-graffiti',
+        name: 'Graffiti',
+        description: 'Purple marker with cyan pops — street art bounce.',
+        thumbnail: '🎨',
+        captions: { style: { highlightColor: '#A855F7', emphasisColor: '#A855F7', supersizeColor: '#00FFFF' } },
+        overlays: { progressBar: { color: '#A855F7' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 19. PERSEUS — Uppercase monospace with green highlight (hacker vibe)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'perseus',
+    name: 'Perseus',
+    description: 'Terminal monospace with green-on-dark typewriter reveal — hacker energy, one character at a time.',
+    thumbnail: '🖥️',
+    category: 'viral',
+    tags: ['bold', 'loud', 'hacker', 'monospace', 'green', 'terminal', 'jetbrains-mono', 'matrix'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'perseus-caption',
+        label: 'Perseus',
+        fontName: 'JetBrains Mono',
+        fontFile: 'JetBrainsMono.ttf',
+        fontSize: 0.065,
+        primaryColor: '#00FF66',
+        highlightColor: '#FFFFFF',
+        outlineColor: '#001A00',
+        backColor: '#CC001A00',
+        outline: 2,
+        shadow: 0,
+        borderStyle: 1,
+        wordsPerLine: 2,
+        animation: 'typewriter',
+        emphasisColor: '#FFFFFF',
+        supersizeColor: '#00FFFF',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'jump-cut',
+      intensity: 'medium',
+      intervalSeconds: 3,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'hard-cut',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 5,
+      clipDuration: 3,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'standard',
+      backgroundMusicTrack: 'synthwave-neon',
+      sfxVolume: 0.55,
+      musicVolume: 0.1,
+      musicDucking: true,
+      musicDuckLevel: 0.15,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'top-bar',
+        displayDuration: 2.5,
+        fontSize: 64,
+        textColor: '#00FF66',
+        outlineColor: '#001A00',
+        outlineWidth: 3,
+      },
+      rehook: {
+        enabled: true,
+        style: 'text-only',
+        displayDuration: 1.5,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'glow',
+        position: 'top',
+        height: 4,
+        color: '#00FF66',
+        opacity: 0.9,
+      },
+    },
+
+    variants: [
+      {
+        id: 'perseus-classic',
+        name: 'Classic',
+        description: 'Green terminal text, white emphasis — the original Perseus hacker look.',
+        thumbnail: '🖥️',
+      },
+      {
+        id: 'perseus-amber',
+        name: 'Amber',
+        description: 'Retro amber terminal — old-school CRT monitor vibes.',
+        thumbnail: '🟠',
+        captions: { style: { primaryColor: '#FFB000', highlightColor: '#FFFFFF', emphasisColor: '#FFFFFF', supersizeColor: '#FFE600', outlineColor: '#1A0E00', backColor: '#CC1A0E00' } },
+        overlays: { progressBar: { color: '#FFB000' }, hookTitle: { textColor: '#FFB000', outlineColor: '#1A0E00' } },
+      },
+      {
+        id: 'perseus-cypher',
+        name: 'Cypher',
+        description: 'Cyan text on deep blue — encrypted transmission aesthetic.',
+        thumbnail: '🔐',
+        captions: { style: { primaryColor: '#00FFFF', highlightColor: '#FFFFFF', emphasisColor: '#FFFFFF', supersizeColor: '#FF00FF', outlineColor: '#001A33', backColor: '#CC001A33' } },
+        overlays: { progressBar: { color: '#00FFFF' }, hookTitle: { textColor: '#00FFFF', outlineColor: '#001A33' } },
+      },
+      {
+        id: 'perseus-redpill',
+        name: 'Red Pill',
+        description: 'Red terminal with green bursts — choose your reality.',
+        thumbnail: '💊',
+        captions: { style: { primaryColor: '#FF2D2D', highlightColor: '#00FF66', emphasisColor: '#00FF66', supersizeColor: '#FFFFFF', outlineColor: '#1A0000', backColor: '#CC1A0000' } },
+        overlays: { progressBar: { color: '#FF2D2D' }, hookTitle: { textColor: '#FF2D2D', outlineColor: '#1A0000' } },
+      },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 20. LYRA — Bold condensed with swipe/cascade reveal
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'lyra',
+    name: 'Lyra',
+    description: 'Bold condensed type sweeping in word by word — fast, tight, relentless forward motion.',
+    thumbnail: '🎵',
+    category: 'viral',
+    tags: ['bold', 'loud', 'condensed', 'swipe', 'oswald', 'reveal', 'fast'],
+    builtIn: true,
+
+    captions: {
+      enabled: true,
+      style: {
+        id: 'lyra-caption',
+        label: 'Lyra',
+        fontName: 'Oswald',
+        fontFile: 'Oswald.ttf',
+        fontSize: 0.08,
+        primaryColor: '#FFFFFF',
+        highlightColor: '#FF4D6A',
+        outlineColor: '#000000',
+        backColor: '#00000000',
+        outline: 5,
+        shadow: 2,
+        borderStyle: 1,
+        wordsPerLine: 2,
+        animation: 'cascade',
+        emphasisColor: '#FF4D6A',
+        supersizeColor: '#FFD700',
+      },
+    },
+
+    zoom: {
+      enabled: true,
+      mode: 'reactive',
+      intensity: 'dynamic',
+      intervalSeconds: 2.5,
+    },
+
+    broll: {
+      enabled: false,
+      displayMode: 'fullscreen',
+      transition: 'swipe-up',
+      pipSize: 0.25,
+      pipPosition: 'bottom-right',
+      intervalSeconds: 5,
+      clipDuration: 3,
+    },
+
+    sound: {
+      enabled: true,
+      sfxStyle: 'energetic',
+      backgroundMusicTrack: 'high-energy-beats',
+      sfxVolume: 0.75,
+      musicVolume: 0.11,
+      musicDucking: true,
+      musicDuckLevel: 0.12,
+    },
+
+    overlays: {
+      hookTitle: {
+        enabled: true,
+        style: 'centered-bold',
+        displayDuration: 2.0,
+        fontSize: 80,
+        textColor: '#FFFFFF',
+        outlineColor: '#000000',
+        outlineWidth: 5,
+      },
+      rehook: {
+        enabled: true,
+        style: 'slide-up',
+        displayDuration: 1.2,
+      },
+      progressBar: {
+        enabled: true,
+        style: 'glow',
+        position: 'bottom',
+        height: 5,
+        color: '#FF4D6A',
+        opacity: 1.0,
+      },
+    },
+
+    variants: [
+      {
+        id: 'lyra-classic',
+        name: 'Classic',
+        description: 'Coral-pink cascade on condensed type — the original Lyra sweep.',
+        thumbnail: '🎵',
+      },
+      {
+        id: 'lyra-voltage',
+        name: 'Voltage',
+        description: 'Electric yellow sweep with cyan supersize — high-voltage condensed.',
+        thumbnail: '⚡',
+        captions: { style: { highlightColor: '#FFE600', emphasisColor: '#FFE600', supersizeColor: '#00FFFF' } },
+        overlays: { progressBar: { color: '#FFE600' }, hookTitle: { textColor: '#FFE600' } },
+      },
+      {
+        id: 'lyra-phantom',
+        name: 'Phantom',
+        description: 'Grey text with white emphasis — stealth cascade, understated power.',
+        thumbnail: '👻',
+        captions: { style: { primaryColor: '#94A3B8', highlightColor: '#FFFFFF', emphasisColor: '#FFFFFF', supersizeColor: '#FFFFFF', outline: 4 } },
+        overlays: { progressBar: { color: '#94A3B8', opacity: 0.7 }, hookTitle: { textColor: '#94A3B8' } },
+      },
+      {
+        id: 'lyra-inferno',
+        name: 'Inferno',
+        description: 'Red-orange sweep with maximum zoom aggression — full-throttle Lyra.',
+        thumbnail: '🔥',
+        captions: { style: { highlightColor: '#FF2D2D', emphasisColor: '#FF2D2D', supersizeColor: '#FF6B35' } },
+        zoom: { mode: 'jump-cut', intervalSeconds: 1.5 },
+        sound: { sfxVolume: 0.9 },
+        overlays: { progressBar: { color: '#FF2D2D' } },
+      },
+    ],
+  },
 ]
 
 /** IDs of all built-in edit style presets, in display order. */
