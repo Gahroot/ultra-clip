@@ -184,6 +184,16 @@ interface RenderClipJob {
   emphasisKeyframesInput?: Array<{ time: number; end: number; level: 'emphasis' | 'supersize' }>
   /** Pre-computed edit events for sound design sync. Merged with internally derived events. */
   editEvents?: Array<{ type: 'broll-transition' | 'jump-cut'; time: number; transition?: string }>
+  /** AI edit plan SFX suggestions — injected as edit events for sound design. */
+  aiSfxSuggestions?: Array<{ timestamp: number; type: string }>
+  /** AI edit plan B-Roll suggestions — seeds keyword search for B-Roll placement engine. */
+  brollSuggestions?: Array<{
+    timestamp: number
+    duration: number
+    keyword: string
+    displayMode: 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
+    transition: 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
+  }>
   /** ID of the active edit style preset (informational, not consumed by render features). */
   stylePresetId?: string
 }
@@ -235,6 +245,17 @@ interface RenderBatchOptions {
     silenceThreshold: number
     silenceTargetGap: number
     fillerWords: string[]
+  }
+  /** B-Roll overlay settings — when enabled, generates stock footage placements */
+  broll?: {
+    enabled: boolean
+    pexelsApiKey: string
+    intervalSeconds: number
+    clipDuration: number
+    displayMode: 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
+    transition: 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
+    pipSize: number
+    pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   }
   /** Source video metadata for auto-manifest generation */
   sourceMeta?: {
@@ -778,6 +799,35 @@ interface StitchingProgress {
 }
 
 // ---------------------------------------------------------------------------
+// Shot Segmentation types
+// ---------------------------------------------------------------------------
+
+type ShotBreakReason =
+  | 'sentence-end'
+  | 'pause'
+  | 'clause-boundary'
+  | 'topic-shift'
+  | 'max-duration'
+  | 'start'
+  | 'end'
+
+interface ShotSegment {
+  startTime: number
+  endTime: number
+  text: string
+  startWordIndex: number
+  endWordIndex: number
+  breakReason: ShotBreakReason
+  confidence: number
+}
+
+interface ShotSegmentationResult {
+  shots: ShotSegment[]
+  shotCount: number
+  avgDuration: number
+}
+
+// ---------------------------------------------------------------------------
 // Recent Projects types
 // ---------------------------------------------------------------------------
 
@@ -1096,6 +1146,13 @@ interface Api {
     model: string
     timestamp: number
   }) => void) => () => void
+  // Shot Segmentation — segment a clip's transcript into natural 4-6 second "shots"
+  segmentClipIntoShots: (
+    words: WordTimestamp[],
+    clipStart: number,
+    clipEnd: number,
+    config?: { targetDuration?: number; minDuration?: number; maxDuration?: number }
+  ) => Promise<ShotSegmentationResult>
 }
 
 declare global {

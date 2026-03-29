@@ -50,7 +50,10 @@ export type {
   FaceDetectionProgress,
   CuriosityGap,
   ClipBoundary,
-  CuriosityClipCandidate
+  CuriosityClipCandidate,
+  ShotBreakReason,
+  ShotSegment,
+  ShotSegmentationResult
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +196,12 @@ export interface ClipCandidate {
    * When present, word emphasis is used at render time instead of the heuristic.
    */
   aiEditPlan?: import('@shared/types').AIEditPlan
+  /**
+   * Shot segmentation — breaks this clip into 4-6 second "shots" at natural
+   * break points (sentence endings, pauses, topic shifts).
+   * Each shot is a coherent thought that can receive independent styling.
+   */
+  shots?: import('@shared/types').ShotSegment[]
 }
 
 export type PipelineStage =
@@ -903,6 +912,10 @@ export interface AppState {
   setClipAIEditPlan: (sourceId: string, clipId: string, plan: import('@shared/types').AIEditPlan) => void
   /** Remove the AI Edit Plan from a clip (e.g., to regenerate). */
   clearClipAIEditPlan: (sourceId: string, clipId: string) => void
+  /** Store shot segmentation results for a clip. */
+  setClipShots: (sourceId: string, clipId: string, shots: import('@shared/types').ShotSegment[]) => void
+  /** Remove shot segmentation from a clip. */
+  clearClipShots: (sourceId: string, clipId: string) => void
   approveAll: (sourceId: string) => void
   approveClipsAboveScore: (sourceId: string, minScore: number) => { approved: number; rejected: number }
   rejectAll: (sourceId: string) => void
