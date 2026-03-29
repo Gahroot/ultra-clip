@@ -215,7 +215,8 @@ export const DEFAULT_SOUND_DESIGN: SoundDesignSettings = {
   sfxVolume: 0.5,
   musicVolume: 0.1,
   musicDucking: true,
-  musicDuckLevel: 0.2
+  musicDuckLevel: 0.2,
+  sfxStyle: 'standard',
 }
 
 export const DEFAULT_AUTO_ZOOM: ZoomSettings = {
