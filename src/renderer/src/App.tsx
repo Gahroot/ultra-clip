@@ -78,8 +78,6 @@ function App() {
   const isDirty = useStore((s) => s.isDirty)
   const pythonStatus = useStore((s) => s.pythonStatus)
   const setPythonStatus = useStore((s) => s.setPythonStatus)
-  const undo = useStore((s) => s.undo)
-  const redo = useStore((s) => s.redo)
   const theme = useStore((s) => s.theme)
   const setTheme = useStore((s) => s.setTheme)
   const hasCompletedOnboarding = useStore((s) => s.hasCompletedOnboarding)
@@ -131,22 +129,38 @@ function App() {
     return unsubscribe
   }, [trackTokenUsage])
 
-  // Undo/Redo keyboard shortcuts
+  // Undo/Redo keyboard shortcuts — per-clip when editing, global fallback
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
       if (e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
-        undo()
+        const state = useStore.getState()
+        // Prefer per-clip undo for the last edited clip
+        const clipId = state._lastEditedClipId
+        const sourceId = state._lastEditedSourceId
+        if (clipId && sourceId && state.canUndoClip(clipId)) {
+          state.undoClip(sourceId, clipId)
+        } else if (state.canUndo) {
+          state.undo()
+        }
       } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
         e.preventDefault()
-        redo()
+        const state = useStore.getState()
+        // Prefer per-clip redo for the last edited clip
+        const clipId = state._lastEditedClipId
+        const sourceId = state._lastEditedSourceId
+        if (clipId && sourceId && state.canRedoClip(clipId)) {
+          state.redoClip(sourceId, clipId)
+        } else if (state.canRedo) {
+          state.redo()
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undo, redo])
+  }, [])
 
   const shortcutCallbacks = useMemo(() => ({
     onOpenSettings: () => setSettingsOpen(true),

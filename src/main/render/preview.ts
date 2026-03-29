@@ -30,6 +30,22 @@ import type { RenderClipJob, RenderBatchOptions, CaptionStyleInput, HookTitleCon
 const PREVIEW_WIDTH = 540
 const PREVIEW_HEIGHT = 960
 
+/**
+ * Derive a lighter tint from a hex color for the supersize word color.
+ * Blends the input color toward white by the given amount.
+ * (Mirrored from accent-color.feature.ts to avoid import coupling.)
+ */
+function lightenColor(hex: string, amount = 0.4): string {
+  const clean = hex.replace('#', '')
+  const r = parseInt(clean.substring(0, 2), 16)
+  const g = parseInt(clean.substring(2, 4), 16)
+  const b = parseInt(clean.substring(4, 6), 16)
+  const lr = Math.round(r + (255 - r) * amount)
+  const lg = Math.round(g + (255 - g) * amount)
+  const lb = Math.round(b + (255 - b) * amount)
+  return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`
+}
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -50,6 +66,12 @@ export interface PreviewRenderConfig {
   progressBarOverlay?: ProgressBarConfig
   /** Auto-zoom (Ken Burns) — applied when enabled=true */
   autoZoom?: ZoomSettings
+  /**
+   * Per-clip accent color (CSS hex, e.g. '#FF6B35').
+   * When set, overrides highlight/emphasis/supersize colors in captions,
+   * hook title text color, rehook text color, and progress bar color.
+   */
+  accentColor?: string
   /**
    * Brand kit logo only (no bumpers for preview).
    * Set logoPath=null to skip logo even if brandKit object is present.
@@ -109,6 +131,33 @@ export async function renderPreview(config: PreviewRenderConfig): Promise<string
     progressBarOverlay: config.progressBarOverlay,
     autoZoom: config.autoZoom
     // soundDesign, fillerRemoval, broll intentionally omitted
+  }
+
+  // ── Apply accent color to batch options (same logic as accent-color.feature) ──
+  if (config.accentColor) {
+    const accent = config.accentColor
+    if (batchOptions.captionStyle) {
+      batchOptions.captionStyle = {
+        ...batchOptions.captionStyle,
+        highlightColor: accent,
+        emphasisColor: accent,
+        // Lighten 40% toward white for supersize (same as accent-color.feature)
+        supersizeColor: lightenColor(accent, 0.4)
+      }
+    }
+    if (batchOptions.hookTitleOverlay) {
+      batchOptions.hookTitleOverlay = {
+        ...batchOptions.hookTitleOverlay,
+        textColor: accent
+      }
+    }
+    if (batchOptions.progressBarOverlay) {
+      batchOptions.progressBarOverlay = {
+        ...batchOptions.progressBarOverlay,
+        color: accent
+      }
+    }
+    console.log(`[Preview] Applying accent color: ${accent}`)
   }
 
   // ── Get source metadata ───────────────────────────────────────────────────

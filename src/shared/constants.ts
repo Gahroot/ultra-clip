@@ -36,8 +36,11 @@ export const THUMB_CONCURRENCY = 3
 /** Max AI usage call-history entries kept in the store. */
 export const MAX_AI_USAGE_HISTORY = 200
 
-/** Max undo snapshots kept in the history stack. */
+/** Max undo snapshots kept in the global history stack. */
 export const MAX_UNDO = 50
+
+/** Max undo snapshots kept per-clip (switching clips preserves history). */
+export const MAX_CLIP_UNDO = 30
 
 /** Max recent-project entries persisted to disk. */
 export const MAX_RECENT_PROJECTS = 10

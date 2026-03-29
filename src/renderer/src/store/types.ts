@@ -972,15 +972,25 @@ export interface AppState {
   searchQuery: string
   setSearchQuery: (query: string) => void
 
-  // Undo / Redo
+  // Undo / Redo — global (batch operations)
   _undoStack: import('./history-slice').UndoableSnapshot[]
   _redoStack: import('./history-slice').UndoableSnapshot[]
   canUndo: boolean
   canRedo: boolean
-
-  // Actions — Undo / Redo
   undo: () => void
   redo: () => void
+
+  // Undo / Redo — per-clip (edit actions)
+  _clipUndoStacks: Record<string, import('./history-slice').ClipUndoEntry[]>
+  _clipRedoStacks: Record<string, import('./history-slice').ClipUndoEntry[]>
+  /** ID of the most recently edited clip — used to target keyboard undo/redo. */
+  _lastEditedClipId: string | null
+  _lastEditedSourceId: string | null
+  canUndoClip: (clipId: string) => boolean
+  canRedoClip: (clipId: string) => boolean
+  undoClip: (sourceId: string, clipId: string) => void
+  redoClip: (sourceId: string, clipId: string) => void
+  clearClipUndoHistory: (clipId: string) => void
 
   // Actions — Sources
   addSource: (source: SourceVideo) => void

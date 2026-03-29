@@ -85,7 +85,7 @@ import { brandKitFeature } from '../features/brand-kit.feature'
 import { soundDesignFeature } from '../features/sound-design.feature'
 import { wordEmphasisFeature } from '../features/word-emphasis.feature'
 import { brollFeature } from '../features/broll.feature'
-import { accentColorFeature } from '../features/accent-color.feature'
+import { accentColorFeature, restoreBatchOptions } from '../features/accent-color.feature'
 import type { RenderClipJob, RenderBatchOptions } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -975,6 +975,46 @@ describe('AccentColorFeature', () => {
     })
     const result = await accentColorFeature.prepare!(job, options)
     expect(result.modified).toBe(false)
+    expect(options.captionStyle!.highlightColor).toBe('#00FF00')
+  })
+
+  it('restores batch options so clip B does not inherit clip A accent color', async () => {
+    // Clip A has accent color
+    const originalCaptionStyle = {
+      fontName: 'Arial', fontSize: 0.07, primaryColor: '#FFFFFF',
+      highlightColor: '#00FF00', outlineColor: '#000000', backColor: '#80000000',
+      outline: 4, shadow: 0, borderStyle: 4, wordsPerLine: 3, animation: 'word-pop' as const
+    }
+    const originalHookTitle = {
+      enabled: true, style: 'centered-bold' as const, textColor: '#FFFFFF',
+      outlineColor: '#000000', fontSize: 64, outlineWidth: 3,
+      displayDuration: 2, fadeIn: 0.3, fadeOut: 0.3, position: 'center' as const
+    }
+    const options = makeOptions({
+      captionStyle: { ...originalCaptionStyle },
+      hookTitleOverlay: { ...originalHookTitle }
+    })
+
+    // Process clip A with accent color
+    const jobA = makeJob({ clipId: 'clip-a', clipOverrides: { accentColor: '#FF6B35' } })
+    await accentColorFeature.prepare!(jobA, options)
+
+    // Verify accent color was applied
+    expect(options.captionStyle!.highlightColor).toBe('#FF6B35')
+    expect(options.hookTitleOverlay!.textColor).toBe('#FF6B35')
+
+    // Restore (simulates pipeline calling restoreBatchOptions after clip A finishes)
+    restoreBatchOptions(jobA, options)
+
+    // Verify originals are restored
+    expect(options.captionStyle!.highlightColor).toBe('#00FF00')
+    expect(options.captionStyle!.emphasisColor).toBeUndefined()
+    expect(options.hookTitleOverlay!.textColor).toBe('#FFFFFF')
+
+    // Process clip B with no accent color
+    const jobB = makeJob({ clipId: 'clip-b', clipOverrides: {} })
+    const resultB = await accentColorFeature.prepare!(jobB, options)
+    expect(resultB.modified).toBe(false)
     expect(options.captionStyle!.highlightColor).toBe('#00FF00')
   })
 })

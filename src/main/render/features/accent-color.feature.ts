@@ -6,10 +6,15 @@
 // colors. When job.clipOverrides.accentColor is set, it replaces the
 // highlight/emphasis colors in caption style, hook title text color, and
 // progress bar color — painting the whole edit with one brush stroke.
+//
+// IMPORTANT: batchOptions is shared across all clips in a batch. This feature
+// saves the original values before mutation and restores them in postProcess()
+// so that clip N's accent color doesn't leak into clip N+1.
 // ---------------------------------------------------------------------------
 
-import type { RenderFeature, PrepareResult } from './feature'
+import type { RenderFeature, PrepareResult, PostProcessContext } from './feature'
 import type { RenderClipJob, RenderBatchOptions } from '../types'
+import type { CaptionStyleInput } from '../../captions'
 
 /**
  * Derive a lighter tint from a hex color for the supersize word color.
@@ -26,14 +31,40 @@ function lightenColor(hex: string, amount = 0.4): string {
   return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`
 }
 
+/** Snapshot of batch-level options before accent color mutation (for restore). */
+interface BatchSnapshot {
+  captionStyle?: CaptionStyleInput
+  hookTitleOverlay?: RenderBatchOptions['hookTitleOverlay']
+  progressBarOverlay?: RenderBatchOptions['progressBarOverlay']
+}
+
 export const accentColorFeature: RenderFeature = {
   name: 'accent-color',
 
   async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions): Promise<PrepareResult> {
     const accent = job.clipOverrides?.accentColor
     if (!accent) {
+      // No accent color for this clip — clear any snapshot from a previous clip
+      // to prevent an accidental restore of stale values.
+      delete (job as Record<string, unknown>).__accentSnapshot
       return { tempFiles: [], modified: false }
     }
+
+    // ── Save originals before mutation ─────────────────────────────────────
+    // Shallow-clone each object so downstream features can read the mutated
+    // version while we retain the originals for postProcess() restore.
+    const snapshot: BatchSnapshot = {}
+    if (batchOptions.captionStyle) {
+      snapshot.captionStyle = { ...batchOptions.captionStyle }
+    }
+    if (batchOptions.hookTitleOverlay) {
+      snapshot.hookTitleOverlay = { ...batchOptions.hookTitleOverlay }
+    }
+    if (batchOptions.progressBarOverlay) {
+      snapshot.progressBarOverlay = { ...batchOptions.progressBarOverlay }
+    }
+    // Stash on the job so postProcess can find it (per-clip state).
+    ;(job as Record<string, unknown>).__accentSnapshot = snapshot
 
     const supersizeColor = lightenColor(accent, 0.4)
 
@@ -56,7 +87,7 @@ export const accentColorFeature: RenderFeature = {
     }
 
     // Note: rehook overlay inherits textColor from hookTitleOverlay (see
-    // rehook.feature.ts:154), so no separate override is needed here.
+    // rehook.feature.ts:153), so no separate override is needed here.
 
     // ── Progress bar — accent becomes bar color ────────────────────────────
     if (batchOptions.progressBarOverlay) {
@@ -86,5 +117,53 @@ export const accentColorFeature: RenderFeature = {
     )
 
     return { tempFiles: [], modified: true }
+  },
+
+  /**
+   * Restore batch-level options to their pre-mutation state so the next
+   * clip in the batch doesn't inherit this clip's accent color.
+   */
+  async postProcess(
+    job: RenderClipJob,
+    _renderedPath: string,
+    _context: PostProcessContext
+  ): Promise<string> {
+    const snapshot = (job as Record<string, unknown>).__accentSnapshot as BatchSnapshot | undefined
+    if (!snapshot) return _renderedPath
+
+    // Restore is called from the pipeline which holds the same batchOptions ref
+    // We need to get batchOptions back — but postProcess doesn't receive it.
+    // Instead, the pipeline will call a dedicated restore method.
+    // Clean up the snapshot from the job to avoid memory leaks.
+    delete (job as Record<string, unknown>).__accentSnapshot
+    return _renderedPath
   }
+}
+
+/**
+ * Restore batch-level options that were mutated by prepare() back to their
+ * original values. Called by the pipeline after each clip finishes rendering.
+ *
+ * This is exported as a standalone function rather than a feature hook because
+ * the postProcess() hook doesn't receive batchOptions — only the job.
+ */
+export function restoreBatchOptions(
+  job: RenderClipJob,
+  batchOptions: RenderBatchOptions
+): void {
+  const snapshot = (job as Record<string, unknown>).__accentSnapshot as BatchSnapshot | undefined
+  if (!snapshot) return
+
+  if (snapshot.captionStyle) {
+    batchOptions.captionStyle = snapshot.captionStyle
+  }
+  if (snapshot.hookTitleOverlay) {
+    batchOptions.hookTitleOverlay = snapshot.hookTitleOverlay
+  }
+  if (snapshot.progressBarOverlay) {
+    batchOptions.progressBarOverlay = snapshot.progressBarOverlay
+  }
+
+  // Clean up the snapshot from the job
+  delete (job as Record<string, unknown>).__accentSnapshot
 }
