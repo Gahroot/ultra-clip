@@ -22,7 +22,8 @@ import {
   SkipForward,
   X,
   AlertCircle,
-  Brain
+  Brain,
+  Wand2
 } from 'lucide-react'
 import { useStore } from '../store'
 import type { PipelineStage } from '../store'
@@ -53,6 +54,8 @@ interface PipelineStepDef {
   variantsOnly?: boolean
   /** Only show this step when Clip Stitching is enabled */
   stitchingOnly?: boolean
+  /** Only show this step when AI Edit is enabled */
+  aiEditOnly?: boolean
 }
 
 const STEPS: PipelineStepDef[] = [
@@ -110,6 +113,13 @@ const STEPS: PipelineStepDef[] = [
     multiPartOnly: true
   },
   {
+    id: 'ai-editing',
+    label: 'AI Edit',
+    description: 'Orchestrating word emphasis, B-Roll & SFX for every clip',
+    icon: <Wand2 className="w-4 h-4" />,
+    aiEditOnly: true
+  },
+  {
     id: 'ready',
     label: 'Ready',
     description: 'Clips ready for review',
@@ -127,6 +137,7 @@ const STAGE_ORDER: PipelineStage[] = [
   'stitching',
   'detecting-faces',
   'detecting-arcs',
+  'ai-editing',
   'ready',
   'rendering',
   'done'
@@ -616,6 +627,7 @@ export function ProcessingPanel() {
   const enableMultiPart = useStore((s) => s.processingConfig.enableMultiPart)
   const enableVariants = useStore((s) => s.processingConfig.enableVariants)
   const enableClipStitching = useStore((s) => s.processingConfig.enableClipStitching)
+  const enableAiEdit = useStore((s) => s.processingConfig.enableAiEdit)
   const failedPipelineStage = useStore((s) => s.failedPipelineStage)
   const clearPipelineCache = useStore((s) => s.clearPipelineCache)
 
@@ -663,7 +675,8 @@ export function ProcessingPanel() {
     stage === 'generating-variants' ||
     stage === 'stitching' ||
     stage === 'detecting-faces' ||
-    stage === 'detecting-arcs'
+    stage === 'detecting-arcs' ||
+    stage === 'ai-editing'
 
   const needsGeminiKey = !settings.geminiApiKey
   const failedStage = isError ? lastActiveStageRef.current : null
@@ -674,6 +687,7 @@ export function ProcessingPanel() {
     if (s.multiPartOnly && !enableMultiPart) return false
     if (s.variantsOnly && !enableVariants) return false
     if (s.stitchingOnly && !enableClipStitching) return false
+    if (s.aiEditOnly && !enableAiEdit) return false
     return true
   })
 
@@ -686,7 +700,8 @@ export function ProcessingPanel() {
     'generating-variants': 'Variant Generation',
     stitching: 'Clip Stitching',
     'detecting-faces': 'Face Detection',
-    'detecting-arcs': 'Story Arcs'
+    'detecting-arcs': 'Story Arcs',
+    'ai-editing': 'AI Edit'
   }
 
   const handleStart = async () => {

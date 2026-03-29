@@ -77,11 +77,21 @@ export function createCaptionsFeature(): RenderFeature {
         end: w.end - job.startTime
       }))
 
-      // Run heuristic emphasis analysis to tag words as normal/emphasis/supersize
-      const emphasized = analyzeEmphasisHeuristic(localWordsBase)
+      // Resolve emphasis: use AI Edit Plan override when available, otherwise
+      // fall back to the heuristic analysis so render time stays deterministic.
+      const emphasized = job.wordEmphasisOverride && job.wordEmphasisOverride.length > 0
+        ? localWordsBase.map((w) => {
+            // Match by clip-relative start time (within 50ms tolerance)
+            const override = job.wordEmphasisOverride!.find(
+              (ov) => Math.abs(ov.start - w.start) < 0.05
+            )
+            return { ...w, emphasis: override?.emphasis ?? ('normal' as const) }
+          })
+        : analyzeEmphasisHeuristic(localWordsBase)
+
       const localWords = localWordsBase.map((w, i) => ({
         ...w,
-        emphasis: emphasized[i]?.emphasis ?? ('normal' as const)
+        emphasis: (emphasized as Array<{ emphasis?: string }>)[i]?.emphasis ?? ('normal' as const) as 'normal' | 'emphasis' | 'supersize'
       }))
 
       // Store emphasis keyframes on the job so other features (e.g., reactive

@@ -45,6 +45,8 @@ export const InvokeChannels = {
   AI_GENERATE_CLIP_DESCRIPTION: 'ai:generateClipDescription',
   AI_GENERATE_BATCH_DESCRIPTIONS: 'ai:generateBatchDescriptions',
   AI_ANALYZE_WORD_EMPHASIS: 'ai:analyzeWordEmphasis',
+  AI_GENERATE_EDIT_PLAN: 'ai:generateEditPlan',
+  AI_GENERATE_BATCH_EDIT_PLANS: 'ai:generateBatchEditPlans',
 
   // Face detection
   FACE_DETECT_CROPS: 'face:detectCrops',
@@ -164,6 +166,7 @@ export const SendChannels = {
   PYTHON_SETUP_PROGRESS: 'python:setupProgress',
   PYTHON_SETUP_DONE: 'python:setupDone',
   AI_TOKEN_USAGE: 'ai:tokenUsage',
+  AI_EDIT_PROGRESS: 'ai:editProgress',
 } as const
 
 // ---- Combined shorthand -------------------------------------------------
@@ -256,6 +259,13 @@ export interface IpcSendChannelMap {
     totalTokens: number
     model: string
     timestamp: number
+  }
+  [SendChannels.AI_EDIT_PROGRESS]: {
+    clipIndex: number
+    totalClips: number
+    clipId: string
+    stage: 'generating' | 'done' | 'error'
+    message: string
   }
 }
 

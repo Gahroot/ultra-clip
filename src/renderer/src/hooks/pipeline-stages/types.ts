@@ -44,6 +44,7 @@ export interface PipelineContext {
     setStoryArcs: (sourceId: string, arcs: StoryArcUI[]) => void
     setClipPartInfo: (sourceId: string, clipId: string, info: PartInfoUI) => void
     setCachedSourcePath: (path: string) => void
+    setClipAIEditPlan: (sourceId: string, clipId: string, plan: import('@shared/types').AIEditPlan) => void
   }
   /** Settings snapshot — read once at pipeline start. */
   geminiApiKey: string
@@ -55,6 +56,7 @@ export interface PipelineContext {
     enableVariants: boolean
     enableClipStitching: boolean
     enableMultiPart: boolean
+    enableAiEdit: boolean
   }
 }
 

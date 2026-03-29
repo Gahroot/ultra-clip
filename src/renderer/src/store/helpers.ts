@@ -327,7 +327,8 @@ export const DEFAULT_PROCESSING_CONFIG: ProcessingConfig = {
   clipEndMode: 'loop-first',
   enableVariants: false,
   enableMultiPart: false,
-  enableClipStitching: false
+  enableClipStitching: false,
+  enableAiEdit: false
 }
 
 export const DEFAULT_PIPELINE = {
