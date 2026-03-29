@@ -281,7 +281,8 @@ export function registerRenderHandlers(): void {
           localWords,
           options.soundDesign,
           emphasized,
-          editEvents.length > 0 ? editEvents : undefined
+          editEvents.length > 0 ? editEvents : undefined,
+          job.shotStyleConfigs
         )
 
         const counts = {
