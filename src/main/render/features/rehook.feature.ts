@@ -143,36 +143,41 @@ export function createRehookFeature(): RenderFeature {
         `[Rehook] Clip ${job.clipId}: appear at ${job.rehookAppearTime.toFixed(2)}s (after hook) — "${job.rehookText}"`
       )
 
-      // Compute Y position from template layout
-      const frameHeight = 1920
-      const yPositionPx = batchOptions.templateLayout?.rehookText
-        ? Math.round((batchOptions.templateLayout.rehookText.y / 100) * frameHeight)
-        : undefined
+      try {
+        // Compute Y position from template layout
+        const frameHeight = 1920
+        const yPositionPx = batchOptions.templateLayout?.rehookText
+          ? Math.round((batchOptions.templateLayout.rehookText.y / 100) * frameHeight)
+          : undefined
 
-      // Inherit visual settings from hook title config, falling back to defaults
-      const hookVisuals = batchOptions.hookTitleOverlay
-      const visuals: OverlayVisualSettings = hookVisuals
-        ? {
-            fontSize: hookVisuals.fontSize,
-            textColor: hookVisuals.textColor,
-            outlineColor: hookVisuals.outlineColor,
-            outlineWidth: hookVisuals.outlineWidth
-          }
-        : DEFAULT_OVERLAY_VISUALS
+        // Inherit visual settings from hook title config, falling back to defaults
+        const hookVisuals = batchOptions.hookTitleOverlay
+        const visuals: OverlayVisualSettings = hookVisuals
+          ? {
+              fontSize: hookVisuals.fontSize,
+              textColor: hookVisuals.textColor,
+              outlineColor: hookVisuals.outlineColor,
+              outlineWidth: hookVisuals.outlineWidth
+            }
+          : DEFAULT_OVERLAY_VISUALS
 
-      // Generate the ASS overlay file
-      const assPath = generateRehookASSFile(
-        job.rehookText,
-        job.rehookConfig,
-        visuals,
-        job.rehookAppearTime,
-        1080,
-        frameHeight,
-        yPositionPx
-      )
-      assPathMap.set(job.clipId, assPath)
+        // Generate the ASS overlay file
+        const assPath = generateRehookASSFile(
+          job.rehookText,
+          job.rehookConfig,
+          visuals,
+          job.rehookAppearTime,
+          1080,
+          frameHeight,
+          yPositionPx
+        )
+        assPathMap.set(job.clipId, assPath)
 
-      return { tempFiles: [assPath], modified: true }
+        return { tempFiles: [assPath], modified: true }
+      } catch (err) {
+        console.error(`[Rehook] Failed to generate ASS overlay for clip ${job.clipId}:`, err)
+        return { tempFiles: [], modified: false }
+      }
     },
 
     overlayPass(job: RenderClipJob, _context: OverlayContext): OverlayPassResult | null {

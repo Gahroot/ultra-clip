@@ -50,7 +50,12 @@ export const colorGradeFeature: RenderFeature = {
     )
     if (shotsWithGrade.length === 0) return null
 
-    const filter = buildPiecewiseColorGradeFilter(job.shotStyleConfigs)
-    return filter || null
+    try {
+      const filter = buildPiecewiseColorGradeFilter(job.shotStyleConfigs)
+      return filter || null
+    } catch (err) {
+      console.error(`[ColorGrade] Filter generation failed for clip ${job.clipId}, skipping:`, err)
+      return null
+    }
   }
 }

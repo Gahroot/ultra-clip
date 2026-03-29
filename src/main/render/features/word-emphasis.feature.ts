@@ -30,55 +30,64 @@ export const wordEmphasisFeature: RenderFeature = {
       return { tempFiles: [], modified: false }
     }
 
-    // Shift to 0-based clip-relative timestamps
-    const localWords = words.map((w) => ({
-      text: w.text,
-      start: w.start - job.startTime,
-      end: w.end - job.startTime
-    }))
+    try {
+      // Shift to 0-based clip-relative timestamps
+      const localWords = words.map((w) => ({
+        text: w.text,
+        start: w.start - job.startTime,
+        end: w.end - job.startTime
+      }))
 
-    // Resolve emphasis: prefer pre-computed > override > heuristic
-    if (!job.wordEmphasis || job.wordEmphasis.length === 0) {
-      if (job.wordEmphasisOverride && job.wordEmphasisOverride.length > 0) {
-        job.wordEmphasis = localWords.map((w) => {
-          const override = job.wordEmphasisOverride!.find(
-            (ov) => Math.abs(ov.start - w.start) < 0.05
-          )
-          return {
-            ...w,
-            emphasis: (override?.emphasis ?? 'normal') as 'normal' | 'emphasis' | 'supersize'
-          }
-        })
-      } else {
-        job.wordEmphasis = analyzeEmphasisHeuristic(localWords)
+      // Resolve emphasis: prefer pre-computed > override > heuristic
+      if (!job.wordEmphasis || job.wordEmphasis.length === 0) {
+        if (job.wordEmphasisOverride && job.wordEmphasisOverride.length > 0) {
+          job.wordEmphasis = localWords.map((w) => {
+            const override = job.wordEmphasisOverride!.find(
+              (ov) => Math.abs(ov.start - w.start) < 0.05
+            )
+            return {
+              ...w,
+              emphasis: (override?.emphasis ?? 'normal') as 'normal' | 'emphasis' | 'supersize'
+            }
+          })
+        } else {
+          job.wordEmphasis = analyzeEmphasisHeuristic(localWords)
+        }
       }
-    }
 
-    // Compute emphasis keyframes for reactive zoom (if not already provided)
-    if (!job.emphasisKeyframes || job.emphasisKeyframes.length === 0) {
-      if (job.emphasisKeyframesInput && job.emphasisKeyframesInput.length > 0) {
-        job.emphasisKeyframes = job.emphasisKeyframesInput
-      } else {
-        job.emphasisKeyframes = job.wordEmphasis
-          .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize' || w.emphasis === 'box')
-          .map((w) => ({
-            time: w.start,
-            end: w.end,
-            level: w.emphasis as 'emphasis' | 'supersize' | 'box'
-          }))
+      // Compute emphasis keyframes for reactive zoom (if not already provided)
+      if (!job.emphasisKeyframes || job.emphasisKeyframes.length === 0) {
+        if (job.emphasisKeyframesInput && job.emphasisKeyframesInput.length > 0) {
+          job.emphasisKeyframes = job.emphasisKeyframesInput
+        } else {
+          job.emphasisKeyframes = job.wordEmphasis
+            .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize' || w.emphasis === 'box')
+            .map((w) => ({
+              time: w.start,
+              end: w.end,
+              level: w.emphasis as 'emphasis' | 'supersize' | 'box'
+            }))
+        }
       }
-    }
 
-    const emphCount = job.wordEmphasis.filter((w) => w.emphasis === 'emphasis').length
-    const superCount = job.wordEmphasis.filter((w) => w.emphasis === 'supersize').length
+      const emphCount = job.wordEmphasis.filter((w) => w.emphasis === 'emphasis').length
+      const superCount = job.wordEmphasis.filter((w) => w.emphasis === 'supersize').length
 
-    if (emphCount > 0 || superCount > 0) {
-      console.log(
-        `[WordEmphasis] Clip ${job.clipId}: ${emphCount} emphasis, ${superCount} supersize, ` +
-          `${job.emphasisKeyframes.length} keyframes`
+      if (emphCount > 0 || superCount > 0) {
+        console.log(
+          `[WordEmphasis] Clip ${job.clipId}: ${emphCount} emphasis, ${superCount} supersize, ` +
+            `${job.emphasisKeyframes.length} keyframes`
+        )
+      }
+
+      return { tempFiles: [], modified: emphCount > 0 || superCount > 0 }
+    } catch (err) {
+      console.error(
+        `[WordEmphasis] Analysis failed for clip ${job.clipId}, falling back to no emphasis:`,
+        err
       )
+      // Fall back: all words as "normal" — downstream features still work, just without emphasis
+      return { tempFiles: [], modified: false }
     }
-
-    return { tempFiles: [], modified: emphCount > 0 || superCount > 0 }
   }
 }

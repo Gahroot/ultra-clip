@@ -98,42 +98,48 @@ export const brandKitFeature: RenderFeature = {
       return { tempFiles: [], modified: false }
     }
 
-    // Inject brand kit config into the job
-    job.brandKit = {
-      logoPath: bk.logoPath,
-      logoPosition: bk.logoPosition,
-      logoScale: bk.logoScale,
-      logoOpacity: bk.logoOpacity,
-      introBumperPath: bk.introBumperPath,
-      outroBumperPath: bk.outroBumperPath
-    }
+    try {
+      // Inject brand kit config into the job
+      job.brandKit = {
+        logoPath: bk.logoPath,
+        logoPosition: bk.logoPosition,
+        logoScale: bk.logoScale,
+        logoOpacity: bk.logoOpacity,
+        introBumperPath: bk.introBumperPath,
+        outroBumperPath: bk.outroBumperPath
+      }
 
-    // Validate that referenced files actually exist
-    if (job.brandKit.logoPath && !existsSync(job.brandKit.logoPath)) {
-      console.warn(
-        `[BrandKit] Clip ${job.clipId}: logo file not found at ${job.brandKit.logoPath} — disabling logo`
-      )
-      job.brandKit.logoPath = null
-    }
-    if (job.brandKit.introBumperPath && !existsSync(job.brandKit.introBumperPath)) {
-      console.warn(
-        `[BrandKit] Clip ${job.clipId}: intro bumper not found at ${job.brandKit.introBumperPath} — skipping`
-      )
-      job.brandKit.introBumperPath = null
-    }
-    if (job.brandKit.outroBumperPath && !existsSync(job.brandKit.outroBumperPath)) {
-      console.warn(
-        `[BrandKit] Clip ${job.clipId}: outro bumper not found at ${job.brandKit.outroBumperPath} — skipping`
-      )
-      job.brandKit.outroBumperPath = null
-    }
+      // Validate that referenced files actually exist
+      if (job.brandKit.logoPath && !existsSync(job.brandKit.logoPath)) {
+        console.warn(
+          `[BrandKit] Clip ${job.clipId}: logo file not found at ${job.brandKit.logoPath} — disabling logo`
+        )
+        job.brandKit.logoPath = null
+      }
+      if (job.brandKit.introBumperPath && !existsSync(job.brandKit.introBumperPath)) {
+        console.warn(
+          `[BrandKit] Clip ${job.clipId}: intro bumper not found at ${job.brandKit.introBumperPath} — skipping`
+        )
+        job.brandKit.introBumperPath = null
+      }
+      if (job.brandKit.outroBumperPath && !existsSync(job.brandKit.outroBumperPath)) {
+        console.warn(
+          `[BrandKit] Clip ${job.clipId}: outro bumper not found at ${job.brandKit.outroBumperPath} — skipping`
+        )
+        job.brandKit.outroBumperPath = null
+      }
 
-    const hasLogo = !!job.brandKit.logoPath
-    const hasBumpers = !!(job.brandKit.introBumperPath || job.brandKit.outroBumperPath)
-    console.log(
-      `[BrandKit] Clip ${job.clipId}: logo=${hasLogo}, bumpers=${hasBumpers}`
-    )
+      const hasLogo = !!job.brandKit.logoPath
+      const hasBumpers = !!(job.brandKit.introBumperPath || job.brandKit.outroBumperPath)
+      console.log(
+        `[BrandKit] Clip ${job.clipId}: logo=${hasLogo}, bumpers=${hasBumpers}`
+      )
 
-    return { tempFiles: [], modified: true }
+      return { tempFiles: [], modified: true }
+    } catch (err) {
+      console.error(`[BrandKit] Prepare failed for clip ${job.clipId}, skipping brand kit:`, err)
+      job.brandKit = undefined
+      return { tempFiles: [], modified: false }
+    }
   }
 }
