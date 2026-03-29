@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { Eye, EyeOff, FolderOpen, ExternalLink, Music2, Zap, Scan, Film, Briefcase, Type, Clapperboard, Scissors, HardDrive, Bell, RotateCcw, CaseSensitive, CheckCircle2, XCircle, Loader2, PenSquare, Trash2, Pencil, Image, Code2, FileOutput, FileDown, Layers, Save, BookmarkCheck, AlertTriangle } from 'lucide-react'
+import { Eye, EyeOff, FolderOpen, ExternalLink, Music2, Zap, Scan, Film, Briefcase, Type, Clapperboard, Scissors, HardDrive, Bell, RotateCcw, CaseSensitive, CheckCircle2, XCircle, Loader2, PenSquare, Trash2, Pencil, Image, Code2, FileOutput, FileDown, Layers, Save, BookmarkCheck, AlertTriangle, Palette, ChevronDown, Video, ImagePlus, Sparkles, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight, ArrowDown, ArrowUp, Paintbrush, Wand2, Settings2, SlidersHorizontal } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
@@ -90,7 +89,7 @@ const ANIMATION_OPTIONS: { value: CaptionAnimation; label: string }[] = [
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+    <p className="text-sm font-semibold text-foreground mb-3">
       {children}
     </p>
   )
@@ -688,7 +687,7 @@ function StylePresetPicker() {
         onClick={() => setIsExpanded((v) => !v)}
       >
         <div className="flex items-center gap-2">
-          <span className="text-sm">🎨</span>
+          <Palette className="w-4 h-4 text-muted-foreground" />
           <span className="text-xs font-semibold text-foreground">Style Presets</span>
           {activePresetName && (
             <span className="text-[10px] text-muted-foreground">
@@ -696,7 +695,7 @@ function StylePresetPicker() {
             </span>
           )}
         </div>
-        <span className={cn('text-muted-foreground transition-transform duration-200 text-xs', isExpanded ? 'rotate-180' : '')}>▾</span>
+        <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform duration-200', isExpanded ? 'rotate-180' : '')} />
       </button>
 
       {isExpanded && (
@@ -920,7 +919,12 @@ export function SettingsPanel() {
     setActiveHookTemplateId,
     addHookTemplate,
     editHookTemplate,
-    removeHookTemplate
+    removeHookTemplate,
+    settingsProfiles,
+    activeProfileName,
+    saveProfile,
+    loadProfile,
+    deleteProfile
   } = useStore(
     useShallow((s) => ({
       settings: s.settings,
@@ -1011,7 +1015,16 @@ export function SettingsPanel() {
 
   // Active tab — persisted to localStorage
   const [activeTab, setActiveTab] = useState<string>(() => {
-    try { return localStorage.getItem('batchcontent-settings-tab') ?? 'general' } catch { return 'general' }
+    try {
+      const saved = localStorage.getItem('batchcontent-settings-tab')
+      // Migrate old tab names to new consolidated ones
+      if (saved === 'general' || saved === 'advanced') return 'settings'
+      if (saved === 'captions') return 'style'
+      if (saved === 'audio' || saved === 'effects') return 'effects'
+      if (saved === 'brand' || saved === 'overlays') return 'overlays'
+      if (saved && ['style', 'effects', 'overlays', 'settings'].includes(saved)) return saved
+      return 'style'
+    } catch { return 'style' }
   })
   function handleTabChange(tab: string) {
     setActiveTab(tab)
@@ -1277,84 +1290,6 @@ export function SettingsPanel() {
       {/* ── Style Preset Picker ── */}
       <StylePresetPicker />
 
-      {/* ── Settings Profile Selector ── */}
-      <div className="shrink-0 border-b border-border px-4 py-2.5 space-y-2">
-        <div className="flex items-center gap-2">
-          <BookmarkCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-          <Select
-            value={activeProfileName ?? '__none__'}
-            onValueChange={(v) => {
-              if (v === '__none__') return
-              loadProfile(v)
-            }}
-          >
-            <SelectTrigger className="flex-1 h-8 text-xs">
-              <SelectValue placeholder="No profile selected" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__" disabled>No profile</SelectItem>
-              <SelectGroup>
-                <SelectLabel>Built-in Presets</SelectLabel>
-                {BUILT_IN_PROFILE_NAMES.map((name) => (
-                  <SelectItem key={name} value={name}>{name}</SelectItem>
-                ))}
-              </SelectGroup>
-              {profileNames.filter((n) => !(BUILT_IN_PROFILE_NAMES as readonly string[]).includes(n)).length > 0 && (
-                <SelectGroup>
-                  <SelectLabel>My Profiles</SelectLabel>
-                  {profileNames
-                    .filter((n) => !(BUILT_IN_PROFILE_NAMES as readonly string[]).includes(n))
-                    .map((name) => (
-                      <SelectItem key={name} value={name}>{name}</SelectItem>
-                    ))}
-                </SelectGroup>
-              )}
-            </SelectContent>
-          </Select>
-          {profileModified && (
-            <span className="text-[10px] text-amber-500 font-medium whitespace-nowrap">(modified)</span>
-          )}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  title="Save current settings as profile"
-                  onClick={() => {
-                    setSaveProfileName(activeProfileName ?? '')
-                    setShowSaveProfileDialog(true)
-                  }}
-                >
-                  <Save className="w-3.5 h-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom"><p>Save as Profile</p></TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  title="Delete selected profile"
-                  disabled={!activeProfileName || isBuiltInProfile}
-                  onClick={() => setShowDeleteProfileDialog(true)}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p>{isBuiltInProfile ? 'Built-in presets cannot be deleted' : 'Delete Profile'}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      </div>
-
       {/* ── Settings Changed Warning Banner ── */}
       {settingsSnapshot && settingsChanged && changedSettingNames.length > 0 && (
         <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2.5">
@@ -1393,554 +1328,29 @@ export function SettingsPanel() {
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex h-full flex-col">
         <div className="shrink-0 border-b border-border px-4 pt-3 pb-0">
-          <TabsList className="w-full flex-wrap h-auto gap-1">
-            <TabsTrigger value="general" className="text-xs px-2.5 py-1">General</TabsTrigger>
-            <TabsTrigger value="captions" className="text-xs px-2.5 py-1">Captions</TabsTrigger>
-            <TabsTrigger value="overlays" className="text-xs px-2.5 py-1">Overlays</TabsTrigger>
-            <TabsTrigger value="audio" className="text-xs px-2.5 py-1">Audio</TabsTrigger>
-            <TabsTrigger value="effects" className="text-xs px-2.5 py-1">Effects</TabsTrigger>
-            <TabsTrigger value="brand" className="text-xs px-2.5 py-1">Brand</TabsTrigger>
-            <TabsTrigger value="advanced" className="text-xs px-2.5 py-1">Advanced</TabsTrigger>
+          <TabsList className="w-full h-auto gap-1">
+            <TabsTrigger value="style" className="text-xs px-3 py-1.5 gap-1.5 flex-1">
+              <Paintbrush className="w-3.5 h-3.5" />Style
+            </TabsTrigger>
+            <TabsTrigger value="effects" className="text-xs px-3 py-1.5 gap-1.5 flex-1">
+              <Wand2 className="w-3.5 h-3.5" />Effects
+            </TabsTrigger>
+            <TabsTrigger value="overlays" className="text-xs px-3 py-1.5 gap-1.5 flex-1">
+              <Layers className="w-3.5 h-3.5" />Overlays
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="text-xs px-3 py-1.5 gap-1.5 flex-1">
+              <Settings2 className="w-3.5 h-3.5" />Settings
+            </TabsTrigger>
           </TabsList>
         </div>
 
-        {/* ── General Tab ── */}
-        <TabsContent value="general" className="flex-1 overflow-hidden mt-0">
+        {/* ── Style Tab ── */}
+        <TabsContent value="style" className="flex-1 overflow-hidden mt-0">
           <ScrollArea className="h-full">
-            <div className="p-4 space-y-6">
+            <div className="p-5 space-y-8">
 
-        {/* AI Settings */}
-        <div>
-          <div className="flex items-center">
-            <SectionHeader>AI Settings</SectionHeader>
-            <SectionResetButton section="aiSettings" onReset={resetSection} />
-          </div>
-          <div className="space-y-4">
-            <FieldRow
-              label="Gemini API Key"
-              htmlFor="gemini-api-key"
-              hint="Get your free key at aistudio.google.com"
-            >
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Input
-                    id="gemini-api-key"
-                    type={showApiKey ? 'text' : 'password'}
-                    placeholder="AIza..."
-                    value={apiKeyDraft}
-                    onChange={(e) => {
-                      setApiKeyDraft(e.target.value)
-                      setGeminiValidation({ state: 'idle' })
-                    }}
-                    onBlur={handleApiKeyBlur}
-                    onKeyDown={(e) => e.key === 'Enter' && handleApiKeyBlur()}
-                    className="pr-9 font-mono text-sm"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey((v) => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    tabIndex={-1}
-                    aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
-                  >
-                    {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 gap-1.5 px-3"
-                  title="Test this API key"
-                  disabled={!apiKeyDraft.trim() || geminiValidation.state === 'testing'}
-                  onClick={handleTestGeminiKey}
-                >
-                  {geminiValidation.state === 'testing' ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : geminiValidation.state === 'valid' ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                  ) : geminiValidation.state === 'invalid' ? (
-                    <XCircle className="w-3.5 h-3.5 text-destructive" />
-                  ) : (
-                    <Zap className="w-3.5 h-3.5" />
-                  )}
-                  <span className="text-xs">
-                    {geminiValidation.state === 'testing' ? 'Testing…' :
-                     geminiValidation.state === 'valid' ? 'Valid' :
-                     geminiValidation.state === 'invalid' ? 'Invalid' : 'Test'}
-                  </span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="shrink-0"
-                  title="Open aistudio.google.com"
-                  onClick={() => window.open('https://aistudio.google.com/app/apikey')}
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </Button>
-              </div>
-              {geminiValidation.state === 'valid' && (
-                <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Key is valid and working
-                </p>
-              )}
-              {geminiValidation.state === 'invalid' && (
-                <p className="text-xs text-destructive mt-1 flex items-center gap-1">
-                  <XCircle className="w-3 h-3" /> {geminiValidation.error ?? 'Invalid key'}
-                </p>
-              )}
-              {geminiValidation.state === 'idle' && settings.geminiApiKey && (
-                <p className="text-xs text-muted-foreground mt-1">✓ API key saved</p>
-              )}
-            </FieldRow>
-
-            <FieldRow
-              label="Minimum Clip Score"
-              hint={`Only clips scoring ${settings.minScore}+ will be shown`}
-            >
-              <div className="flex items-center gap-3">
-                <Slider
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={[settings.minScore]}
-                  onValueChange={([v]) => setMinScore(v)}
-                  className="flex-1"
-                />
-                <span className="w-8 text-right text-sm tabular-nums font-medium">
-                  {settings.minScore}
-                </span>
-              </div>
-            </FieldRow>
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Output */}
-        <div>
-          <SectionHeader>Output</SectionHeader>
-          <div className="space-y-4">
-            <FieldRow
-              label="Output Directory"
-              htmlFor="output-dir"
-              hint={settings.outputDirectory ? undefined : 'Where rendered clips will be saved'}
-            >
-              <div className="flex gap-2">
-                <Input
-                  id="output-dir"
-                  readOnly
-                  value={settings.outputDirectory ?? ''}
-                  placeholder="Choose a folder…"
-                  className="flex-1 text-sm cursor-default"
-                  onClick={handleBrowseOutput}
-                />
-                <Button variant="outline" size="icon" className="shrink-0" onClick={handleBrowseOutput} title="Browse">
-                  <FolderOpen className="w-4 h-4" />
-                </Button>
-              </div>
-              {settings.outputDirectory && (
-                <div className="flex items-center gap-1.5">
-                  <p className="text-xs text-muted-foreground truncate flex-1" title={settings.outputDirectory}>
-                    {settings.outputDirectory}
-                  </p>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5 shrink-0"
-                    onClick={() => window.api.openPath(settings.outputDirectory!)}
-                    title="Open in file manager"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                  </Button>
-                </div>
-              )}
-              {settings.outputDirectory && freeSpace !== null && (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <HardDrive className="w-3 h-3 text-muted-foreground shrink-0" />
-                  <span className="text-xs text-muted-foreground">
-                    {formatFileSize(freeSpace)} free
-                  </span>
-                </div>
-              )}
-            </FieldRow>
-
-            {/* Filename Template */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <FileOutput className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                <Label htmlFor="filename-template" className="text-sm font-medium">Filename Template</Label>
-                <button
-                  type="button"
-                  onClick={() => setFilenameTemplate(DEFAULT_SETTINGS.filenameTemplate)}
-                  className="ml-auto text-[10px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-                  title="Reset to default"
-                >
-                  Reset
-                </button>
-              </div>
-              <Input
-                id="filename-template"
-                ref={filenameTemplateInputRef}
-                value={settings.filenameTemplate}
-                onChange={(e) => setFilenameTemplate(e.target.value)}
-                className="font-mono text-sm"
-                placeholder="{source}_clip{index}_{score}"
-                spellCheck={false}
-              />
-              {/* Variable pills */}
-              <div className="flex flex-wrap gap-1">
-                {['{source}', '{index}', '{score}', '{hook}', '{duration}', '{start}', '{end}', '{date}', '{quality}'].map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => {
-                      const input = filenameTemplateInputRef.current
-                      if (!input) {
-                        setFilenameTemplate(settings.filenameTemplate + v)
-                        return
-                      }
-                      const start = input.selectionStart ?? settings.filenameTemplate.length
-                      const end = input.selectionEnd ?? start
-                      const next = settings.filenameTemplate.slice(0, start) + v + settings.filenameTemplate.slice(end)
-                      setFilenameTemplate(next)
-                      // Restore cursor after React re-render
-                      requestAnimationFrame(() => {
-                        input.focus()
-                        input.setSelectionRange(start + v.length, start + v.length)
-                      })
-                    }}
-                    className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground border border-border transition-colors"
-                    title={`Insert ${v}`}
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
-              {/* Live preview */}
-              <p className="text-xs text-muted-foreground">
-                Preview:{' '}
-                <span className="font-medium text-foreground font-mono">
-                  {settings.filenameTemplate
-                    .replace(/\{source\}/g, 'my-video')
-                    .replace(/\{index\}/g, '01')
-                    .replace(/\{score\}/g, '85')
-                    .replace(/\{hook\}/g, 'nobody-knows-this')
-                    .replace(/\{duration\}/g, '45')
-                    .replace(/\{start\}/g, '02-30')
-                    .replace(/\{end\}/g, '03-15')
-                    .replace(/\{date\}/g, new Date().toISOString().slice(0, 10))
-                    .replace(/\{quality\}/g, settings.renderQuality.preset)
-                    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
-                    .trim()
-                    .slice(0, 60) || 'clip'}.{settings.renderQuality.outputFormat}
-                </span>
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Render Quality */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Clapperboard className="w-3.5 h-3.5 text-muted-foreground" />
-            <SectionHeader>Render Quality</SectionHeader>
-            <SectionResetButton section="renderQuality" onReset={resetSection} />
-          </div>
-          <div className="space-y-4">
-            {/* Quality preset buttons */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Quality Preset</Label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {([
-                  { value: 'draft' as RenderQualityPreset, label: 'Draft', sub: '540p · ~2MB/30s · Fastest' },
-                  { value: 'normal' as RenderQualityPreset, label: 'Normal', sub: '1080p · ~5MB/30s · Fast' },
-                  { value: 'high' as RenderQualityPreset, label: 'High', sub: '1080p · ~12MB/30s · Slow' },
-                  { value: 'custom' as RenderQualityPreset, label: 'Custom', sub: 'Configure manually' }
-                ]).map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setRenderQuality({ preset: opt.value })}
-                    className={cn(
-                      'px-2 py-2 rounded-md border text-left transition-colors',
-                      settings.renderQuality.preset === opt.value
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-muted/20 text-muted-foreground hover:bg-muted/60'
-                    )}
-                  >
-                    <p className="text-xs font-semibold">{opt.label}</p>
-                    <p className="text-[10px] opacity-70 mt-0.5">{opt.sub}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Custom controls — only shown when preset === 'custom' */}
-            {settings.renderQuality.preset === 'custom' && (
-              <div className="space-y-4 pt-1">
-                {/* CRF slider */}
-                <FieldRow
-                  label={`CRF — ${settings.renderQuality.customCrf}`}
-                  hint="Lower = better quality, larger file (15–35)"
-                >
-                  <div className="space-y-1">
-                    <Slider
-                      min={15}
-                      max={35}
-                      step={1}
-                      value={[settings.renderQuality.customCrf]}
-                      onValueChange={([v]) => setRenderQuality({ customCrf: v })}
-                    />
-                    <div className="flex justify-between text-[10px] text-muted-foreground">
-                      <span>15 (Best)</span>
-                      <span>35 (Smallest)</span>
-                    </div>
-                  </div>
-                </FieldRow>
-
-                {/* Resolution selector */}
-                <FieldRow label="Resolution">
-                  <Select
-                    value={settings.renderQuality.outputResolution}
-                    onValueChange={(v) => setRenderQuality({ outputResolution: v as OutputResolution })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1080x1920">1080×1920 (Full HD)</SelectItem>
-                      <SelectItem value="720x1280">720×1280 (HD)</SelectItem>
-                      <SelectItem value="540x960">540×960 (SD)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FieldRow>
-
-                {/* Encoding preset selector */}
-                <FieldRow label="Encoding Speed" hint="Slower = smaller file at same quality">
-                  <Select
-                    value={settings.renderQuality.encodingPreset}
-                    onValueChange={(v) => setRenderQuality({ encodingPreset: v as EncodingPreset })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ultrafast">Ultrafast (draft renders)</SelectItem>
-                      <SelectItem value="veryfast">Veryfast (default)</SelectItem>
-                      <SelectItem value="medium">Medium (balanced)</SelectItem>
-                      <SelectItem value="slow">Slow (best compression)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FieldRow>
-              </div>
-            )}
-
-            {/* Output aspect ratio */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Aspect Ratio</Label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {([
-                  { value: '9:16' as OutputAspectRatio, label: '9:16 Vertical', sub: '1080×1920 · TikTok, Reels, Shorts' },
-                  { value: '1:1' as OutputAspectRatio, label: '1:1 Square', sub: '1080×1080 · Instagram Feed' },
-                  { value: '4:5' as OutputAspectRatio, label: '4:5 Portrait', sub: '1080×1350 · Instagram Post' },
-                  { value: '16:9' as OutputAspectRatio, label: '16:9 Landscape', sub: '1920×1080 · YouTube, Twitter' }
-                ] satisfies { value: OutputAspectRatio; label: string; sub: string }[]).map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setOutputAspectRatio(opt.value)}
-                    className={cn(
-                      'px-2 py-2 rounded-md border text-left transition-colors',
-                      settings.outputAspectRatio === opt.value
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-muted/20 text-muted-foreground hover:bg-muted/60'
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      {/* Mini aspect ratio shape preview */}
-                      <div
-                        className={cn(
-                          'border rounded-[1px] shrink-0',
-                          settings.outputAspectRatio === opt.value ? 'border-primary' : 'border-muted-foreground/40'
-                        )}
-                        style={{
-                          width: opt.value === '16:9' ? 16 : opt.value === '1:1' ? 10 : 6,
-                          height: opt.value === '16:9' ? 9 : opt.value === '4:5' ? 12 : opt.value === '1:1' ? 10 : 11
-                        }}
-                      />
-                      <div>
-                        <p className="text-xs font-semibold">{opt.label}</p>
-                        <p className="text-[10px] opacity-70 mt-0.5">{opt.sub}</p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              {settings.outputAspectRatio !== '9:16' && (
-                <p className="text-xs text-amber-500/80">
-                  ⚠ Safe zones are designed for 9:16. Other ratios use center-crop from source.
-                </p>
-              )}
-            </div>
-
-            {/* Output format toggle */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Output Format</Label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {([
-                  { value: 'mp4' as OutputFormat, label: 'MP4' },
-                  { value: 'webm' as OutputFormat, label: 'WebM' }
-                ]).map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setRenderQuality({ outputFormat: opt.value })}
-                    className={cn(
-                      'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
-                      settings.renderQuality.outputFormat === opt.value
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-border bg-muted/20 text-muted-foreground hover:bg-muted/60'
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              {settings.renderQuality.outputFormat === 'webm' && (
-                <p className="text-xs text-muted-foreground">
-                  Better quality per byte, slower to encode, less compatible with some platforms.
-                </p>
-              )}
-            </div>
-
-            {/* Parallel Renders */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Layers className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                <Label className="text-sm font-medium">
-                  Parallel Renders — {settings.renderConcurrency}
-                </Label>
-              </div>
-              <Slider
-                min={1}
-                max={4}
-                step={1}
-                value={[settings.renderConcurrency ?? 1]}
-                onValueChange={([v]) => setRenderConcurrency(v)}
-              />
-              <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>1 (Sequential)</span>
-                <span>2</span>
-                <span>3</span>
-                <span>4 (Max)</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Render multiple clips simultaneously. Higher values use more CPU/GPU resources.
-                GPU encoders (NVENC/QSV) are capped at 2 to avoid exhausting hardware sessions.
-              </p>
-              {(settings.renderConcurrency ?? 1) > 1 && (
-                <p className="text-xs text-amber-500/80 flex items-center gap-1">
-                  ⚠ May increase memory usage and reduce per-clip rendering speed.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Notifications */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Bell className="w-3.5 h-3.5 text-muted-foreground" />
-            <SectionHeader>Notifications</SectionHeader>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="notifications-enabled" className="text-sm font-medium cursor-pointer">
-                Desktop Notifications
-              </Label>
-              <Switch
-                id="notifications-enabled"
-                checked={settings.enableNotifications}
-                onCheckedChange={setEnableNotifications}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Show OS notifications when pipeline processing or rendering completes.
-              Notifications are only sent when the app window is not focused.
-            </p>
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Developer Mode */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Code2 className="w-3.5 h-3.5 text-muted-foreground" />
-            <SectionHeader>Developer Mode</SectionHeader>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="developer-mode-enabled" className="text-sm font-medium cursor-pointer">
-                Log FFmpeg Commands
-              </Label>
-              <Switch
-                id="developer-mode-enabled"
-                checked={settings.developerMode}
-                onCheckedChange={setDeveloperMode}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              When enabled, every FFmpeg command is logged to the Error Log during rendering — both
-              on success and failure. Click the{' '}
-              <span className="inline-flex items-center gap-0.5 font-mono bg-muted rounded px-1">
-                <code>⊟</code>
-              </span>{' '}
-              icon on any error entry to view and copy the full command. Useful for diagnosing render
-              failures.
-            </p>
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Transcription */}
-        <div>
-          <SectionHeader>Transcription Engine</SectionHeader>
-          <div className="space-y-3">
-            <FieldRow label="Engine">
-              <Select defaultValue="parakeet-tdt-v3">
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="parakeet-tdt-v3">
-                    Parakeet TDT v3 (NVIDIA / NeMo)
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </FieldRow>
-            <p className="text-xs text-muted-foreground">
-              Parakeet TDT 0.6B v3 runs locally via Python. First run downloads ~1.2 GB from
-              HuggingFace and caches it.
-            </p>
-          </div>
-        </div>
-
-            </div>
-          </ScrollArea>
-        </TabsContent>
-
-        {/* ── Captions Tab ── */}
-        <TabsContent value="captions" className="flex-1 overflow-hidden mt-0">
-          <ScrollArea className="h-full">
-            <div className="p-4 space-y-6">
-
-        {/* Captions */}
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Captions */}
         <div>
           <div className="flex items-center">
             <SectionHeader>Caption Style</SectionHeader>
@@ -2099,16 +1509,414 @@ export function SettingsPanel() {
             </div>
           </div>
         </div>
+        </div>
+
             </div>
           </ScrollArea>
         </TabsContent>
 
-        {/* ── Audio Tab ── */}
-        <TabsContent value="audio" className="flex-1 overflow-hidden mt-0">
+        {/* ── Effects Tab ── */}
+        <TabsContent value="effects" className="flex-1 overflow-hidden mt-0">
           <ScrollArea className="h-full">
-            <div className="p-4 space-y-6">
+            <div className="p-5 space-y-8">
 
-        {/* Sound Design */}
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Auto-Zoom */}
+        <div>
+          <div className="flex items-center">
+            <SectionHeader>Auto-Zoom</SectionHeader>
+            <SectionResetButton section="autoZoom" onReset={resetSection} />
+          </div>
+          <div className="space-y-4">
+            {/* Enable toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Scan className="w-3.5 h-3.5 text-muted-foreground" />
+                <Label htmlFor="zoom-enabled" className="text-sm font-medium cursor-pointer">
+                  Ken Burns Auto-Zoom
+                </Label>
+              </div>
+              <Switch
+                id="zoom-enabled"
+                checked={settings.autoZoom.enabled}
+                onCheckedChange={setAutoZoomEnabled}
+              />
+            </div>
+
+            <div
+              className={cn(
+                'space-y-4 transition-opacity',
+                !settings.autoZoom.enabled && 'opacity-40 pointer-events-none'
+              )}
+            >
+              <p className="text-xs text-muted-foreground">
+                Adds animated zoom motion to rendered clips.
+                Prevents static talking-head feel and boosts viewer retention.
+              </p>
+
+              {/* Mode selector */}
+              <FieldRow
+                label="Mode"
+                hint={
+                  settings.autoZoom.mode === 'ken-burns'
+                    ? 'Smooth sinusoidal breathing — classic Ken Burns feel'
+                    : settings.autoZoom.mode === 'reactive'
+                    ? 'Zoom responds to word emphasis moments — content-aware energy'
+                    : 'Hard zoom cuts at sentence boundaries — simulates multi-camera editing'
+                }
+              >
+                <Select
+                  value={settings.autoZoom.mode}
+                  onValueChange={(v) => setAutoZoomMode(v as ZoomMode)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ken-burns">Ken Burns</SelectItem>
+                    <SelectItem value="reactive">Reactive</SelectItem>
+                    <SelectItem value="jump-cut">Jump Cut</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FieldRow>
+
+              {/* Intensity selector */}
+              <FieldRow
+                label="Intensity"
+                hint={
+                  settings.autoZoom.intensity === 'subtle'
+                    ? '±5% zoom — barely noticeable, natural feel'
+                    : settings.autoZoom.intensity === 'medium'
+                    ? '±9% zoom + horizontal drift — noticeable energy'
+                    : '±13% zoom + pronounced drift — cinematic energy'
+                }
+              >
+                <Select
+                  value={settings.autoZoom.intensity}
+                  onValueChange={(v) => setAutoZoomIntensity(v as ZoomIntensity)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="subtle">Subtle</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="dynamic">Dynamic</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FieldRow>
+
+              {/* Interval slider */}
+              <FieldRow
+                label={`Zoom Interval — ${settings.autoZoom.intervalSeconds}s`}
+                hint="Seconds between zoom direction reversals (half the zoom cycle)"
+              >
+                <Slider
+                  min={2}
+                  max={10}
+                  step={1}
+                  value={[settings.autoZoom.intervalSeconds]}
+                  onValueChange={([v]) => setAutoZoomInterval(v)}
+                />
+              </FieldRow>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* B-Roll Insertion */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Clapperboard className="w-3.5 h-3.5 text-muted-foreground" />
+            <SectionHeader>B-Roll Insertion</SectionHeader>
+            <SectionResetButton section="broll" onReset={resetSection} />
+          </div>
+          <div className="space-y-4">
+            {/* Master toggle */}
+            <div className="flex items-center justify-between">
+              <Label htmlFor="broll-enabled" className="text-sm font-medium cursor-pointer">
+                Auto B-Roll (Pexels Stock Footage)
+              </Label>
+              <Switch
+                id="broll-enabled"
+                checked={settings.broll.enabled}
+                onCheckedChange={setBRollEnabled}
+              />
+            </div>
+
+            <div
+              className={cn(
+                'space-y-4 transition-opacity',
+                !settings.broll.enabled && 'opacity-40 pointer-events-none'
+              )}
+            >
+              <p className="text-xs text-muted-foreground">
+                Automatically inserts relevant visual overlays every few seconds to break up
+                talking-head monotony and boost viewer retention. Choose between stock footage,
+                AI-generated images, or let AI decide per-placement.
+              </p>
+
+              {/* B-Roll Source Mode */}
+              <FieldRow
+                label="B-Roll Source"
+                hint="Where B-Roll visuals come from"
+              >
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: 'stock' as const, icon: <Video className="w-3.5 h-3.5" />, label: 'Stock', desc: 'Pexels footage' },
+                    { value: 'ai-generated' as const, icon: <ImagePlus className="w-3.5 h-3.5" />, label: 'AI Images', desc: '~$0.04/image' },
+                    { value: 'auto' as const, icon: <Sparkles className="w-3.5 h-3.5" />, label: 'Auto', desc: 'AI decides' },
+                  ]).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setBRollSourceMode(opt.value)}
+                      className={cn(
+                        'px-2 py-2 rounded-md border text-left transition-colors',
+                        (settings.broll.sourceMode ?? 'auto') === opt.value
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/40'
+                      )}
+                    >
+                      <span className="text-xs font-medium flex items-center gap-1">{opt.icon} {opt.label}</span>
+                      <span className="text-[10px] text-muted-foreground block mt-0.5">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
+                {(settings.broll.sourceMode === 'ai-generated' || settings.broll.sourceMode === 'auto') && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Uses your Gemini API key from AI Settings (~$0.04/image)
+                  </p>
+                )}
+              </FieldRow>
+
+              {/* Pexels API key */}
+              <FieldRow
+                label="Pexels API Key"
+                htmlFor="pexels-api-key"
+                hint="Free at pexels.com/api — 200 requests/hour, 20,000/month"
+              >
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      id="pexels-api-key"
+                      type={showPexelsKey ? 'text' : 'password'}
+                      placeholder="Your Pexels API key…"
+                      value={pexelsKeyDraft}
+                      onChange={(e) => {
+                        setPexelsKeyDraft(e.target.value)
+                        setPexelsValidation({ state: 'idle' })
+                      }}
+                      onBlur={handlePexelsKeyBlur}
+                      onKeyDown={(e) => e.key === 'Enter' && handlePexelsKeyBlur()}
+                      className="pr-9 font-mono text-sm"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPexelsKey((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      tabIndex={-1}
+                      aria-label={showPexelsKey ? 'Hide Pexels key' : 'Show Pexels key'}
+                    >
+                      {showPexelsKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5 px-3"
+                    title="Test this API key"
+                    disabled={!pexelsKeyDraft.trim() || pexelsValidation.state === 'testing'}
+                    onClick={handleTestPexelsKey}
+                  >
+                    {pexelsValidation.state === 'testing' ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : pexelsValidation.state === 'valid' ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                    ) : pexelsValidation.state === 'invalid' ? (
+                      <XCircle className="w-3.5 h-3.5 text-destructive" />
+                    ) : (
+                      <Zap className="w-3.5 h-3.5" />
+                    )}
+                    <span className="text-xs">
+                      {pexelsValidation.state === 'testing' ? 'Testing…' :
+                       pexelsValidation.state === 'valid' ? 'Valid' :
+                       pexelsValidation.state === 'invalid' ? 'Invalid' : 'Test'}
+                    </span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0"
+                    title="Get a free Pexels API key"
+                    onClick={() => window.open('https://www.pexels.com/api/')}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                </div>
+                {pexelsValidation.state === 'valid' && (
+                  <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Key is valid and working
+                  </p>
+                )}
+                {pexelsValidation.state === 'invalid' && (
+                  <p className="text-xs text-destructive mt-1 flex items-center gap-1">
+                    <XCircle className="w-3 h-3" /> {pexelsValidation.error ?? 'Invalid key'}
+                  </p>
+                )}
+                {pexelsValidation.state === 'idle' && settings.broll.pexelsApiKey && (
+                  <p className="text-xs text-muted-foreground mt-1"><CheckCircle2 className="w-3 h-3 inline mr-1" />Pexels API key saved</p>
+                )}
+              </FieldRow>
+
+              {/* B-Roll interval */}
+              <FieldRow
+                label={`B-Roll Every — ${settings.broll.intervalSeconds}s`}
+                hint="Target interval between B-Roll clip insertions"
+              >
+                <Slider
+                  min={3}
+                  max={10}
+                  step={1}
+                  value={[settings.broll.intervalSeconds]}
+                  onValueChange={([v]) => setBRollIntervalSeconds(v)}
+                />
+              </FieldRow>
+
+              {/* B-Roll clip duration */}
+              <FieldRow
+                label={`Clip Duration — ${settings.broll.clipDuration}s`}
+                hint="How long each B-Roll overlay lasts (2–6 seconds)"
+              >
+                <Slider
+                  min={2}
+                  max={6}
+                  step={1}
+                  value={[settings.broll.clipDuration]}
+                  onValueChange={([v]) => setBRollClipDuration(v)}
+                />
+              </FieldRow>
+
+              {/* Display Mode */}
+              <FieldRow
+                label="Display Mode"
+                hint="How B-Roll footage is composited onto your video"
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['fullscreen', 'Fullscreen', 'B-Roll covers the entire frame'],
+                    ['split-top', 'Split Top', 'B-Roll top 65%, speaker bottom 35%'],
+                    ['split-bottom', 'Split Bottom', 'Speaker top 65%, B-Roll bottom 35%'],
+                    ['pip', 'Picture-in-Picture', 'B-Roll fullscreen, speaker in corner'],
+                  ] as const).map(([value, label, desc]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setBRollDisplayMode(value)}
+                      className={cn(
+                        'px-2 py-2 rounded-md border text-left transition-colors',
+                        settings.broll.displayMode === value
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border hover:border-muted-foreground/50'
+                      )}
+                    >
+                      <div className="text-xs font-medium">{label}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">{desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </FieldRow>
+
+              {/* Transition Type */}
+              <FieldRow
+                label="Transition"
+                hint="How B-Roll enters and exits the frame"
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['hard-cut', 'Hard Cut'],
+                    ['crossfade', 'Crossfade'],
+                    ['swipe-up', 'Swipe Up'],
+                    ['swipe-down', 'Swipe Down'],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setBRollTransition(value)}
+                      className={cn(
+                        'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
+                        settings.broll.transition === value
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border hover:border-muted-foreground/50'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </FieldRow>
+
+              {/* PiP Settings (only shown when displayMode is 'pip') */}
+              {settings.broll.displayMode === 'pip' && (
+                <>
+                  <FieldRow
+                    label={`PiP Size — ${Math.round((settings.broll.pipSize ?? 0.25) * 100)}%`}
+                    hint="Size of the speaker window as a fraction of canvas width"
+                  >
+                    <Slider
+                      min={0.2}
+                      max={0.4}
+                      step={0.05}
+                      value={[settings.broll.pipSize ?? 0.25]}
+                      onValueChange={([v]) => setBRollPipSize(v)}
+                    />
+                  </FieldRow>
+                  <FieldRow
+                    label="PiP Position"
+                    hint="Corner position for the speaker window"
+                  >
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        ['top-left', 'Top Left'],
+                        ['top-right', 'Top Right'],
+                        ['bottom-left', 'Bottom Left'],
+                        ['bottom-right', 'Bottom Right'],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setBRollPipPosition(value)}
+                          className={cn(
+                            'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
+                            (settings.broll.pipPosition ?? 'bottom-right') === value
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border hover:border-muted-foreground/50'
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </FieldRow>
+                </>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                <strong>How it works:</strong> At render time, Gemini AI extracts visual keywords
+                from each clip&apos;s transcript, searches Pexels for matching stock footage, and
+                composites it onto your video with smooth transitions. The first 3 seconds
+                (the hook) are never covered.
+              </p>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Sound Design */}
         <div>
           <div className="flex items-center">
             <SectionHeader>Sound Design</SectionHeader>
@@ -2273,11 +2081,10 @@ export function SettingsPanel() {
             </div>
           </div>
         </div>
+        </div>
 
-
-        <Separator />
-
-        {/* Filler & Silence Removal */}
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Filler & Silence Removal */}
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Scissors className="w-3.5 h-3.5 text-muted-foreground" />
@@ -2366,544 +2173,6 @@ export function SettingsPanel() {
             </p>
           </div>
         </div>
-
-            </div>
-          </ScrollArea>
-        </TabsContent>
-
-        {/* ── Effects Tab ── */}
-        <TabsContent value="effects" className="flex-1 overflow-hidden mt-0">
-          <ScrollArea className="h-full">
-            <div className="p-4 space-y-6">
-
-        {/* Auto-Zoom */}
-        <div>
-          <div className="flex items-center">
-            <SectionHeader>Auto-Zoom</SectionHeader>
-            <SectionResetButton section="autoZoom" onReset={resetSection} />
-          </div>
-          <div className="space-y-4">
-            {/* Enable toggle */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Scan className="w-3.5 h-3.5 text-muted-foreground" />
-                <Label htmlFor="zoom-enabled" className="text-sm font-medium cursor-pointer">
-                  Ken Burns Auto-Zoom
-                </Label>
-              </div>
-              <Switch
-                id="zoom-enabled"
-                checked={settings.autoZoom.enabled}
-                onCheckedChange={setAutoZoomEnabled}
-              />
-            </div>
-
-            <div
-              className={cn(
-                'space-y-4 transition-opacity',
-                !settings.autoZoom.enabled && 'opacity-40 pointer-events-none'
-              )}
-            >
-              <p className="text-xs text-muted-foreground">
-                Adds animated zoom motion to rendered clips.
-                Prevents static talking-head feel and boosts viewer retention.
-              </p>
-
-              {/* Mode selector */}
-              <FieldRow
-                label="Mode"
-                hint={
-                  settings.autoZoom.mode === 'ken-burns'
-                    ? 'Smooth sinusoidal breathing — classic Ken Burns feel'
-                    : settings.autoZoom.mode === 'reactive'
-                    ? 'Zoom responds to word emphasis moments — content-aware energy'
-                    : 'Hard zoom cuts at sentence boundaries — simulates multi-camera editing'
-                }
-              >
-                <Select
-                  value={settings.autoZoom.mode}
-                  onValueChange={(v) => setAutoZoomMode(v as ZoomMode)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ken-burns">Ken Burns</SelectItem>
-                    <SelectItem value="reactive">Reactive</SelectItem>
-                    <SelectItem value="jump-cut">Jump Cut</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FieldRow>
-
-              {/* Intensity selector */}
-              <FieldRow
-                label="Intensity"
-                hint={
-                  settings.autoZoom.intensity === 'subtle'
-                    ? '±5% zoom — barely noticeable, natural feel'
-                    : settings.autoZoom.intensity === 'medium'
-                    ? '±9% zoom + horizontal drift — noticeable energy'
-                    : '±13% zoom + pronounced drift — cinematic energy'
-                }
-              >
-                <Select
-                  value={settings.autoZoom.intensity}
-                  onValueChange={(v) => setAutoZoomIntensity(v as ZoomIntensity)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="subtle">Subtle</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="dynamic">Dynamic</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FieldRow>
-
-              {/* Interval slider */}
-              <FieldRow
-                label={`Zoom Interval — ${settings.autoZoom.intervalSeconds}s`}
-                hint="Seconds between zoom direction reversals (half the zoom cycle)"
-              >
-                <Slider
-                  min={2}
-                  max={10}
-                  step={1}
-                  value={[settings.autoZoom.intervalSeconds]}
-                  onValueChange={([v]) => setAutoZoomInterval(v)}
-                />
-              </FieldRow>
-            </div>
-          </div>
-        </div>
-
-
-        <Separator />
-
-        {/* B-Roll Insertion */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Clapperboard className="w-3.5 h-3.5 text-muted-foreground" />
-            <SectionHeader>B-Roll Insertion</SectionHeader>
-            <SectionResetButton section="broll" onReset={resetSection} />
-          </div>
-          <div className="space-y-4">
-            {/* Master toggle */}
-            <div className="flex items-center justify-between">
-              <Label htmlFor="broll-enabled" className="text-sm font-medium cursor-pointer">
-                Auto B-Roll (Pexels Stock Footage)
-              </Label>
-              <Switch
-                id="broll-enabled"
-                checked={settings.broll.enabled}
-                onCheckedChange={setBRollEnabled}
-              />
-            </div>
-
-            <div
-              className={cn(
-                'space-y-4 transition-opacity',
-                !settings.broll.enabled && 'opacity-40 pointer-events-none'
-              )}
-            >
-              <p className="text-xs text-muted-foreground">
-                Automatically inserts relevant visual overlays every few seconds to break up
-                talking-head monotony and boost viewer retention. Choose between stock footage,
-                AI-generated images, or let AI decide per-placement.
-              </p>
-
-              {/* B-Roll Source Mode */}
-              <FieldRow
-                label="B-Roll Source"
-                hint="Where B-Roll visuals come from"
-              >
-                <div className="grid grid-cols-3 gap-2">
-                  {([
-                    ['stock', '📹 Stock', 'Pexels footage'],
-                    ['ai-generated', '🖼️ AI Images', '~$0.04/image'],
-                    ['auto', '✨ Auto', 'AI decides'],
-                  ] as const).map(([value, label, desc]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setBRollSourceMode(value)}
-                      className={cn(
-                        'px-2 py-2 rounded-md border text-left transition-colors',
-                        (settings.broll.sourceMode ?? 'auto') === value
-                          ? 'border-primary bg-primary/10'
-                          : 'border-border hover:border-primary/40'
-                      )}
-                    >
-                      <span className="text-xs font-medium block">{label}</span>
-                      <span className="text-[10px] text-muted-foreground block mt-0.5">{desc}</span>
-                    </button>
-                  ))}
-                </div>
-                {(settings.broll.sourceMode === 'ai-generated' || settings.broll.sourceMode === 'auto') && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Uses your Gemini API key from AI Settings (~$0.04/image)
-                  </p>
-                )}
-              </FieldRow>
-
-              {/* Pexels API key */}
-              <FieldRow
-                label="Pexels API Key"
-                htmlFor="pexels-api-key"
-                hint="Free at pexels.com/api — 200 requests/hour, 20,000/month"
-              >
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Input
-                      id="pexels-api-key"
-                      type={showPexelsKey ? 'text' : 'password'}
-                      placeholder="Your Pexels API key…"
-                      value={pexelsKeyDraft}
-                      onChange={(e) => {
-                        setPexelsKeyDraft(e.target.value)
-                        setPexelsValidation({ state: 'idle' })
-                      }}
-                      onBlur={handlePexelsKeyBlur}
-                      onKeyDown={(e) => e.key === 'Enter' && handlePexelsKeyBlur()}
-                      className="pr-9 font-mono text-sm"
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPexelsKey((v) => !v)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      tabIndex={-1}
-                      aria-label={showPexelsKey ? 'Hide Pexels key' : 'Show Pexels key'}
-                    >
-                      {showPexelsKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 gap-1.5 px-3"
-                    title="Test this API key"
-                    disabled={!pexelsKeyDraft.trim() || pexelsValidation.state === 'testing'}
-                    onClick={handleTestPexelsKey}
-                  >
-                    {pexelsValidation.state === 'testing' ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : pexelsValidation.state === 'valid' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                    ) : pexelsValidation.state === 'invalid' ? (
-                      <XCircle className="w-3.5 h-3.5 text-destructive" />
-                    ) : (
-                      <Zap className="w-3.5 h-3.5" />
-                    )}
-                    <span className="text-xs">
-                      {pexelsValidation.state === 'testing' ? 'Testing…' :
-                       pexelsValidation.state === 'valid' ? 'Valid' :
-                       pexelsValidation.state === 'invalid' ? 'Invalid' : 'Test'}
-                    </span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="shrink-0"
-                    title="Get a free Pexels API key"
-                    onClick={() => window.open('https://www.pexels.com/api/')}
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </Button>
-                </div>
-                {pexelsValidation.state === 'valid' && (
-                  <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Key is valid and working
-                  </p>
-                )}
-                {pexelsValidation.state === 'invalid' && (
-                  <p className="text-xs text-destructive mt-1 flex items-center gap-1">
-                    <XCircle className="w-3 h-3" /> {pexelsValidation.error ?? 'Invalid key'}
-                  </p>
-                )}
-                {pexelsValidation.state === 'idle' && settings.broll.pexelsApiKey && (
-                  <p className="text-xs text-muted-foreground mt-1">✓ Pexels API key saved</p>
-                )}
-              </FieldRow>
-
-              {/* B-Roll interval */}
-              <FieldRow
-                label={`B-Roll Every — ${settings.broll.intervalSeconds}s`}
-                hint="Target interval between B-Roll clip insertions"
-              >
-                <Slider
-                  min={3}
-                  max={10}
-                  step={1}
-                  value={[settings.broll.intervalSeconds]}
-                  onValueChange={([v]) => setBRollIntervalSeconds(v)}
-                />
-              </FieldRow>
-
-              {/* B-Roll clip duration */}
-              <FieldRow
-                label={`Clip Duration — ${settings.broll.clipDuration}s`}
-                hint="How long each B-Roll overlay lasts (2–6 seconds)"
-              >
-                <Slider
-                  min={2}
-                  max={6}
-                  step={1}
-                  value={[settings.broll.clipDuration]}
-                  onValueChange={([v]) => setBRollClipDuration(v)}
-                />
-              </FieldRow>
-
-              {/* Display Mode */}
-              <FieldRow
-                label="Display Mode"
-                hint="How B-Roll footage is composited onto your video"
-              >
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    ['fullscreen', 'Fullscreen', 'B-Roll covers the entire frame'],
-                    ['split-top', 'Split Top', 'B-Roll top 65%, speaker bottom 35%'],
-                    ['split-bottom', 'Split Bottom', 'Speaker top 65%, B-Roll bottom 35%'],
-                    ['pip', 'Picture-in-Picture', 'B-Roll fullscreen, speaker in corner'],
-                  ] as const).map(([value, label, desc]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setBRollDisplayMode(value)}
-                      className={cn(
-                        'px-2 py-2 rounded-md border text-left transition-colors',
-                        settings.broll.displayMode === value
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border hover:border-muted-foreground/50'
-                      )}
-                    >
-                      <div className="text-xs font-medium">{label}</div>
-                      <div className="text-[10px] text-muted-foreground mt-0.5">{desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </FieldRow>
-
-              {/* Transition Type */}
-              <FieldRow
-                label="Transition"
-                hint="How B-Roll enters and exits the frame"
-              >
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    ['hard-cut', 'Hard Cut'],
-                    ['crossfade', 'Crossfade'],
-                    ['swipe-up', 'Swipe Up'],
-                    ['swipe-down', 'Swipe Down'],
-                  ] as const).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setBRollTransition(value)}
-                      className={cn(
-                        'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
-                        settings.broll.transition === value
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border hover:border-muted-foreground/50'
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </FieldRow>
-
-              {/* PiP Settings (only shown when displayMode is 'pip') */}
-              {settings.broll.displayMode === 'pip' && (
-                <>
-                  <FieldRow
-                    label={`PiP Size — ${Math.round((settings.broll.pipSize ?? 0.25) * 100)}%`}
-                    hint="Size of the speaker window as a fraction of canvas width"
-                  >
-                    <Slider
-                      min={0.2}
-                      max={0.4}
-                      step={0.05}
-                      value={[settings.broll.pipSize ?? 0.25]}
-                      onValueChange={([v]) => setBRollPipSize(v)}
-                    />
-                  </FieldRow>
-                  <FieldRow
-                    label="PiP Position"
-                    hint="Corner position for the speaker window"
-                  >
-                    <div className="grid grid-cols-2 gap-2">
-                      {([
-                        ['top-left', 'Top Left'],
-                        ['top-right', 'Top Right'],
-                        ['bottom-left', 'Bottom Left'],
-                        ['bottom-right', 'Bottom Right'],
-                      ] as const).map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setBRollPipPosition(value)}
-                          className={cn(
-                            'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
-                            (settings.broll.pipPosition ?? 'bottom-right') === value
-                              ? 'border-primary bg-primary/10 text-primary'
-                              : 'border-border hover:border-muted-foreground/50'
-                          )}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </FieldRow>
-                </>
-              )}
-
-              <p className="text-xs text-muted-foreground">
-                <strong>How it works:</strong> At render time, Gemini AI extracts visual keywords
-                from each clip&apos;s transcript, searches Pexels for matching stock footage, and
-                composites it onto your video with smooth transitions. The first 3 seconds
-                (the hook) are never covered.
-              </p>
-            </div>
-          </div>
-        </div>
-
-            </div>
-          </ScrollArea>
-        </TabsContent>
-
-        {/* ── Brand Tab ── */}
-        <TabsContent value="brand" className="flex-1 overflow-hidden mt-0">
-          <ScrollArea className="h-full">
-            <div className="p-4 space-y-6">
-
-        {/* Brand Kit */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
-            <SectionHeader>Brand Kit</SectionHeader>
-            <SectionResetButton section="brandKit" onReset={resetSection} />
-          </div>
-          <div className="space-y-4">
-            {/* Master toggle */}
-            <div className="flex items-center justify-between">
-              <Label htmlFor="brandkit-enabled" className="text-sm font-medium cursor-pointer">
-                Apply Brand Kit to Clips
-              </Label>
-              <Switch
-                id="brandkit-enabled"
-                checked={bk.enabled}
-                onCheckedChange={setBrandKitEnabled}
-              />
-            </div>
-
-            <div className={cn('space-y-4 transition-opacity', !bk.enabled && 'opacity-40 pointer-events-none')}>
-
-              {/* Logo upload */}
-              <FieldRow label="Logo Watermark">
-                <DropZone
-                  accept={['image/png', 'image/jpeg', 'image/webp']}
-                  maxSizeMB={5}
-                  onFile={setBrandKitLogoPath}
-                  copyFile={window.api.copyBrandLogo}
-                  openPicker={window.api.selectBrandLogo}
-                  label="Upload Logo"
-                  icon={Image}
-                  hint="PNG, JPG, WEBP · Max 5 MB"
-                  currentFile={bk.logoPath}
-                  onRemove={() => setBrandKitLogoPath(null)}
-                />
-              </FieldRow>
-
-              {/* Logo controls — only shown when logo is set */}
-              {bk.logoPath && (
-                <>
-                  {/* Logo position */}
-                  <FieldRow label="Logo Position">
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as LogoPosition[]).map((pos) => (
-                        <button
-                          key={pos}
-                          onClick={() => setBrandKitLogoPosition(pos)}
-                          className={cn(
-                            'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
-                            bk.logoPosition === pos
-                              ? 'border-primary bg-primary/10 text-primary'
-                              : 'border-border bg-muted/20 text-muted-foreground hover:bg-muted/60'
-                          )}
-                        >
-                          {pos === 'top-left' && '↖ Top Left'}
-                          {pos === 'top-right' && '↗ Top Right'}
-                          {pos === 'bottom-left' && '↙ Bottom Left'}
-                          {pos === 'bottom-right' && '↘ Bottom Right'}
-                        </button>
-                      ))}
-                    </div>
-                  </FieldRow>
-
-                  {/* Logo scale */}
-                  <FieldRow
-                    label={`Logo Size — ${Math.round(bk.logoScale * 100)}% of frame width`}
-                    hint={`~${Math.round(bk.logoScale * 1080)}px wide on 1080p`}
-                  >
-                    <Slider
-                      min={5}
-                      max={30}
-                      step={1}
-                      value={[Math.round(bk.logoScale * 100)]}
-                      onValueChange={([v]) => setBrandKitLogoScale(v / 100)}
-                    />
-                  </FieldRow>
-
-                  {/* Logo opacity */}
-                  <FieldRow label={`Logo Opacity — ${Math.round(bk.logoOpacity * 100)}%`}>
-                    <Slider
-                      min={10}
-                      max={100}
-                      step={5}
-                      value={[Math.round(bk.logoOpacity * 100)]}
-                      onValueChange={([v]) => setBrandKitLogoOpacity(v / 100)}
-                    />
-                  </FieldRow>
-                </>
-              )}
-
-              {/* Intro bumper */}
-              <FieldRow label="Intro Bumper" hint="Prepended to every clip">
-                <DropZone
-                  accept={['video/mp4', 'video/quicktime', 'video/webm']}
-                  maxSizeMB={200}
-                  onFile={setBrandKitIntroBumperPath}
-                  copyFile={window.api.copyBrandBumper}
-                  openPicker={window.api.selectIntroBumper}
-                  label="Upload Intro Bumper"
-                  icon={Film}
-                  hint="MP4, MOV, WEBM · Max 200 MB"
-                  currentFile={bk.introBumperPath}
-                  onRemove={() => setBrandKitIntroBumperPath(null)}
-                />
-              </FieldRow>
-
-              {/* Outro bumper */}
-              <FieldRow label="Outro Bumper" hint="Appended after every clip">
-                <DropZone
-                  accept={['video/mp4', 'video/quicktime', 'video/webm']}
-                  maxSizeMB={200}
-                  onFile={setBrandKitOutroBumperPath}
-                  copyFile={window.api.copyBrandBumper}
-                  openPicker={window.api.selectOutroBumper}
-                  label="Upload Outro Bumper"
-                  icon={Film}
-                  hint="MP4, MOV, WEBM · Max 200 MB"
-                  currentFile={bk.outroBumperPath}
-                  onRemove={() => setBrandKitOutroBumperPath(null)}
-                />
-              </FieldRow>
-
-            </div>
-          </div>
         </div>
 
             </div>
@@ -2913,9 +2182,10 @@ export function SettingsPanel() {
         {/* ── Overlays Tab ── */}
         <TabsContent value="overlays" className="flex-1 overflow-hidden mt-0">
           <ScrollArea className="h-full">
-            <div className="p-4 space-y-6">
+            <div className="p-5 space-y-8">
 
-        {/* Hook Title Overlay */}
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Hook Title Overlay */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Type className="w-3.5 h-3.5 text-muted-foreground" />
@@ -3126,11 +2396,10 @@ export function SettingsPanel() {
             </div>
           </div>
         </div>
+        </div>
 
-
-        <Separator />
-
-        {/* Re-hook Overlay */}
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Re-hook Overlay */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <SectionHeader>Re-hook Overlay</SectionHeader>
@@ -3217,11 +2486,10 @@ export function SettingsPanel() {
             </div>
           </div>
         </div>
+        </div>
 
-
-        <Separator />
-
-        {/* Progress Bar Overlay */}
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Progress Bar Overlay */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             {/* Inline SVG progress bar icon — not in lucide-react */}
@@ -3270,7 +2538,7 @@ export function SettingsPanel() {
                           : 'border-border bg-muted/20 text-muted-foreground hover:bg-muted/60'
                       )}
                     >
-                      {pos === 'bottom' ? '↓ Bottom Edge' : '↑ Top Edge'}
+                      {pos === 'bottom' ? <><ArrowDown className="w-3 h-3 inline mr-1" />Bottom Edge</> : <><ArrowUp className="w-3 h-3 inline mr-1" />Top Edge</>}
                     </button>
                   ))}
                 </div>
@@ -3400,17 +2668,672 @@ export function SettingsPanel() {
             </div>
           </div>
         </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Brand Kit */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
+            <SectionHeader>Brand Kit</SectionHeader>
+            <SectionResetButton section="brandKit" onReset={resetSection} />
+          </div>
+          <div className="space-y-4">
+            {/* Master toggle */}
+            <div className="flex items-center justify-between">
+              <Label htmlFor="brandkit-enabled" className="text-sm font-medium cursor-pointer">
+                Apply Brand Kit to Clips
+              </Label>
+              <Switch
+                id="brandkit-enabled"
+                checked={bk.enabled}
+                onCheckedChange={setBrandKitEnabled}
+              />
+            </div>
+
+            <div className={cn('space-y-4 transition-opacity', !bk.enabled && 'opacity-40 pointer-events-none')}>
+
+              {/* Logo upload */}
+              <FieldRow label="Logo Watermark">
+                <DropZone
+                  accept={['image/png', 'image/jpeg', 'image/webp']}
+                  maxSizeMB={5}
+                  onFile={setBrandKitLogoPath}
+                  copyFile={window.api.copyBrandLogo}
+                  openPicker={window.api.selectBrandLogo}
+                  label="Upload Logo"
+                  icon={Image}
+                  hint="PNG, JPG, WEBP · Max 5 MB"
+                  currentFile={bk.logoPath}
+                  onRemove={() => setBrandKitLogoPath(null)}
+                />
+              </FieldRow>
+
+              {/* Logo controls — only shown when logo is set */}
+              {bk.logoPath && (
+                <>
+                  {/* Logo position */}
+                  <FieldRow label="Logo Position">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as LogoPosition[]).map((pos) => (
+                        <button
+                          key={pos}
+                          onClick={() => setBrandKitLogoPosition(pos)}
+                          className={cn(
+                            'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
+                            bk.logoPosition === pos
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border bg-muted/20 text-muted-foreground hover:bg-muted/60'
+                          )}
+                        >
+                          {pos === 'top-left' && <><ArrowUpLeft className="w-3 h-3 inline mr-1" />Top Left</>}
+                          {pos === 'top-right' && <><ArrowUpRight className="w-3 h-3 inline mr-1" />Top Right</>}
+                          {pos === 'bottom-left' && <><ArrowDownLeft className="w-3 h-3 inline mr-1" />Bottom Left</>}
+                          {pos === 'bottom-right' && <><ArrowDownRight className="w-3 h-3 inline mr-1" />Bottom Right</>}
+                        </button>
+                      ))}
+                    </div>
+                  </FieldRow>
+
+                  {/* Logo scale */}
+                  <FieldRow
+                    label={`Logo Size — ${Math.round(bk.logoScale * 100)}% of frame width`}
+                    hint={`~${Math.round(bk.logoScale * 1080)}px wide on 1080p`}
+                  >
+                    <Slider
+                      min={5}
+                      max={30}
+                      step={1}
+                      value={[Math.round(bk.logoScale * 100)]}
+                      onValueChange={([v]) => setBrandKitLogoScale(v / 100)}
+                    />
+                  </FieldRow>
+
+                  {/* Logo opacity */}
+                  <FieldRow label={`Logo Opacity — ${Math.round(bk.logoOpacity * 100)}%`}>
+                    <Slider
+                      min={10}
+                      max={100}
+                      step={5}
+                      value={[Math.round(bk.logoOpacity * 100)]}
+                      onValueChange={([v]) => setBrandKitLogoOpacity(v / 100)}
+                    />
+                  </FieldRow>
+                </>
+              )}
+
+              {/* Intro bumper */}
+              <FieldRow label="Intro Bumper" hint="Prepended to every clip">
+                <DropZone
+                  accept={['video/mp4', 'video/quicktime', 'video/webm']}
+                  maxSizeMB={200}
+                  onFile={setBrandKitIntroBumperPath}
+                  copyFile={window.api.copyBrandBumper}
+                  openPicker={window.api.selectIntroBumper}
+                  label="Upload Intro Bumper"
+                  icon={Film}
+                  hint="MP4, MOV, WEBM · Max 200 MB"
+                  currentFile={bk.introBumperPath}
+                  onRemove={() => setBrandKitIntroBumperPath(null)}
+                />
+              </FieldRow>
+
+              {/* Outro bumper */}
+              <FieldRow label="Outro Bumper" hint="Appended after every clip">
+                <DropZone
+                  accept={['video/mp4', 'video/quicktime', 'video/webm']}
+                  maxSizeMB={200}
+                  onFile={setBrandKitOutroBumperPath}
+                  copyFile={window.api.copyBrandBumper}
+                  openPicker={window.api.selectOutroBumper}
+                  label="Upload Outro Bumper"
+                  icon={Film}
+                  hint="MP4, MOV, WEBM · Max 200 MB"
+                  currentFile={bk.outroBumperPath}
+                  onRemove={() => setBrandKitOutroBumperPath(null)}
+                />
+              </FieldRow>
+
+            </div>
+          </div>
+        </div>
+        </div>
 
             </div>
           </ScrollArea>
         </TabsContent>
 
-        {/* ── Advanced Tab ── */}
-        <TabsContent value="advanced" className="flex-1 overflow-hidden mt-0">
+        {/* ── Settings Tab ── */}
+        <TabsContent value="settings" className="flex-1 overflow-hidden mt-0">
           <ScrollArea className="h-full">
-            <div className="p-4 space-y-6">
+            <div className="p-5 space-y-8">
 
-        {/* Storage */}
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* AI Settings */}
+        <div>
+          <div className="flex items-center">
+            <SectionHeader>AI Settings</SectionHeader>
+            <SectionResetButton section="aiSettings" onReset={resetSection} />
+          </div>
+          <div className="space-y-4">
+            <FieldRow
+              label="Gemini API Key"
+              htmlFor="gemini-api-key"
+              hint="Get your free key at aistudio.google.com"
+            >
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    id="gemini-api-key"
+                    type={showApiKey ? 'text' : 'password'}
+                    placeholder="AIza..."
+                    value={apiKeyDraft}
+                    onChange={(e) => {
+                      setApiKeyDraft(e.target.value)
+                      setGeminiValidation({ state: 'idle' })
+                    }}
+                    onBlur={handleApiKeyBlur}
+                    onKeyDown={(e) => e.key === 'Enter' && handleApiKeyBlur()}
+                    className="pr-9 font-mono text-sm"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey((v) => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                    aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                  >
+                    {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 gap-1.5 px-3"
+                  title="Test this API key"
+                  disabled={!apiKeyDraft.trim() || geminiValidation.state === 'testing'}
+                  onClick={handleTestGeminiKey}
+                >
+                  {geminiValidation.state === 'testing' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : geminiValidation.state === 'valid' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                  ) : geminiValidation.state === 'invalid' ? (
+                    <XCircle className="w-3.5 h-3.5 text-destructive" />
+                  ) : (
+                    <Zap className="w-3.5 h-3.5" />
+                  )}
+                  <span className="text-xs">
+                    {geminiValidation.state === 'testing' ? 'Testing…' :
+                     geminiValidation.state === 'valid' ? 'Valid' :
+                     geminiValidation.state === 'invalid' ? 'Invalid' : 'Test'}
+                  </span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  title="Open aistudio.google.com"
+                  onClick={() => window.open('https://aistudio.google.com/app/apikey')}
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </Button>
+              </div>
+              {geminiValidation.state === 'valid' && (
+                <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Key is valid and working
+                </p>
+              )}
+              {geminiValidation.state === 'invalid' && (
+                <p className="text-xs text-destructive mt-1 flex items-center gap-1">
+                  <XCircle className="w-3 h-3" /> {geminiValidation.error ?? 'Invalid key'}
+                </p>
+              )}
+              {geminiValidation.state === 'idle' && settings.geminiApiKey && (
+                <p className="text-xs text-muted-foreground mt-1"><CheckCircle2 className="w-3 h-3 inline mr-1" />API key saved</p>
+              )}
+            </FieldRow>
+
+            <FieldRow
+              label="Minimum Clip Score"
+              hint={`Only clips scoring ${settings.minScore}+ will be shown`}
+            >
+              <div className="flex items-center gap-3">
+                <Slider
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={[settings.minScore]}
+                  onValueChange={([v]) => setMinScore(v)}
+                  className="flex-1"
+                />
+                <span className="w-8 text-right text-sm tabular-nums font-medium">
+                  {settings.minScore}
+                </span>
+              </div>
+            </FieldRow>
+          </div>
+        </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Output */}
+        <div>
+          <SectionHeader>Output</SectionHeader>
+          <div className="space-y-4">
+            <FieldRow
+              label="Output Directory"
+              htmlFor="output-dir"
+              hint={settings.outputDirectory ? undefined : 'Where rendered clips will be saved'}
+            >
+              <div className="flex gap-2">
+                <Input
+                  id="output-dir"
+                  readOnly
+                  value={settings.outputDirectory ?? ''}
+                  placeholder="Choose a folder…"
+                  className="flex-1 text-sm cursor-default"
+                  onClick={handleBrowseOutput}
+                />
+                <Button variant="outline" size="icon" className="shrink-0" onClick={handleBrowseOutput} title="Browse">
+                  <FolderOpen className="w-4 h-4" />
+                </Button>
+              </div>
+              {settings.outputDirectory && (
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs text-muted-foreground truncate flex-1" title={settings.outputDirectory}>
+                    {settings.outputDirectory}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 shrink-0"
+                    onClick={() => window.api.openPath(settings.outputDirectory!)}
+                    title="Open in file manager"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
+              {settings.outputDirectory && freeSpace !== null && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <HardDrive className="w-3 h-3 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-muted-foreground">
+                    {formatFileSize(freeSpace)} free
+                  </span>
+                </div>
+              )}
+            </FieldRow>
+
+            {/* Filename Template */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <FileOutput className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <Label htmlFor="filename-template" className="text-sm font-medium">Filename Template</Label>
+                <button
+                  type="button"
+                  onClick={() => setFilenameTemplate(DEFAULT_SETTINGS.filenameTemplate)}
+                  className="ml-auto text-[10px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+                  title="Reset to default"
+                >
+                  Reset
+                </button>
+              </div>
+              <Input
+                id="filename-template"
+                ref={filenameTemplateInputRef}
+                value={settings.filenameTemplate}
+                onChange={(e) => setFilenameTemplate(e.target.value)}
+                className="font-mono text-sm"
+                placeholder="{source}_clip{index}_{score}"
+                spellCheck={false}
+              />
+              {/* Variable pills */}
+              <div className="flex flex-wrap gap-1">
+                {['{source}', '{index}', '{score}', '{hook}', '{duration}', '{start}', '{end}', '{date}', '{quality}'].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => {
+                      const input = filenameTemplateInputRef.current
+                      if (!input) {
+                        setFilenameTemplate(settings.filenameTemplate + v)
+                        return
+                      }
+                      const start = input.selectionStart ?? settings.filenameTemplate.length
+                      const end = input.selectionEnd ?? start
+                      const next = settings.filenameTemplate.slice(0, start) + v + settings.filenameTemplate.slice(end)
+                      setFilenameTemplate(next)
+                      // Restore cursor after React re-render
+                      requestAnimationFrame(() => {
+                        input.focus()
+                        input.setSelectionRange(start + v.length, start + v.length)
+                      })
+                    }}
+                    className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground border border-border transition-colors"
+                    title={`Insert ${v}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+              {/* Live preview */}
+              <p className="text-xs text-muted-foreground">
+                Preview:{' '}
+                <span className="font-medium text-foreground font-mono">
+                  {settings.filenameTemplate
+                    .replace(/\{source\}/g, 'my-video')
+                    .replace(/\{index\}/g, '01')
+                    .replace(/\{score\}/g, '85')
+                    .replace(/\{hook\}/g, 'nobody-knows-this')
+                    .replace(/\{duration\}/g, '45')
+                    .replace(/\{start\}/g, '02-30')
+                    .replace(/\{end\}/g, '03-15')
+                    .replace(/\{date\}/g, new Date().toISOString().slice(0, 10))
+                    .replace(/\{quality\}/g, settings.renderQuality.preset)
+                    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+                    .trim()
+                    .slice(0, 60) || 'clip'}.{settings.renderQuality.outputFormat}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Render Quality */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Clapperboard className="w-3.5 h-3.5 text-muted-foreground" />
+            <SectionHeader>Render Quality</SectionHeader>
+            <SectionResetButton section="renderQuality" onReset={resetSection} />
+          </div>
+          <div className="space-y-4">
+            {/* Quality preset buttons */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Quality Preset</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([
+                  { value: 'draft' as RenderQualityPreset, label: 'Draft', sub: '540p · ~2MB/30s · Fastest' },
+                  { value: 'normal' as RenderQualityPreset, label: 'Normal', sub: '1080p · ~5MB/30s · Fast' },
+                  { value: 'high' as RenderQualityPreset, label: 'High', sub: '1080p · ~12MB/30s · Slow' },
+                  { value: 'custom' as RenderQualityPreset, label: 'Custom', sub: 'Configure manually' }
+                ]).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setRenderQuality({ preset: opt.value })}
+                    className={cn(
+                      'px-2 py-2 rounded-md border text-left transition-colors',
+                      settings.renderQuality.preset === opt.value
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-muted/20 text-muted-foreground hover:bg-muted/60'
+                    )}
+                  >
+                    <p className="text-xs font-semibold">{opt.label}</p>
+                    <p className="text-[10px] opacity-70 mt-0.5">{opt.sub}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom controls — only shown when preset === 'custom' */}
+            {settings.renderQuality.preset === 'custom' && (
+              <div className="space-y-4 pt-1">
+                {/* CRF slider */}
+                <FieldRow
+                  label={`CRF — ${settings.renderQuality.customCrf}`}
+                  hint="Lower = better quality, larger file (15–35)"
+                >
+                  <div className="space-y-1">
+                    <Slider
+                      min={15}
+                      max={35}
+                      step={1}
+                      value={[settings.renderQuality.customCrf]}
+                      onValueChange={([v]) => setRenderQuality({ customCrf: v })}
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                      <span>15 (Best)</span>
+                      <span>35 (Smallest)</span>
+                    </div>
+                  </div>
+                </FieldRow>
+
+                {/* Resolution selector */}
+                <FieldRow label="Resolution">
+                  <Select
+                    value={settings.renderQuality.outputResolution}
+                    onValueChange={(v) => setRenderQuality({ outputResolution: v as OutputResolution })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1080x1920">1080×1920 (Full HD)</SelectItem>
+                      <SelectItem value="720x1280">720×1280 (HD)</SelectItem>
+                      <SelectItem value="540x960">540×960 (SD)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FieldRow>
+
+                {/* Encoding preset selector */}
+                <FieldRow label="Encoding Speed" hint="Slower = smaller file at same quality">
+                  <Select
+                    value={settings.renderQuality.encodingPreset}
+                    onValueChange={(v) => setRenderQuality({ encodingPreset: v as EncodingPreset })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ultrafast">Ultrafast (draft renders)</SelectItem>
+                      <SelectItem value="veryfast">Veryfast (default)</SelectItem>
+                      <SelectItem value="medium">Medium (balanced)</SelectItem>
+                      <SelectItem value="slow">Slow (best compression)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FieldRow>
+              </div>
+            )}
+
+            {/* Output aspect ratio */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Aspect Ratio</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([
+                  { value: '9:16' as OutputAspectRatio, label: '9:16 Vertical', sub: '1080×1920 · TikTok, Reels, Shorts' },
+                  { value: '1:1' as OutputAspectRatio, label: '1:1 Square', sub: '1080×1080 · Instagram Feed' },
+                  { value: '4:5' as OutputAspectRatio, label: '4:5 Portrait', sub: '1080×1350 · Instagram Post' },
+                  { value: '16:9' as OutputAspectRatio, label: '16:9 Landscape', sub: '1920×1080 · YouTube, Twitter' }
+                ] satisfies { value: OutputAspectRatio; label: string; sub: string }[]).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setOutputAspectRatio(opt.value)}
+                    className={cn(
+                      'px-2 py-2 rounded-md border text-left transition-colors',
+                      settings.outputAspectRatio === opt.value
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-muted/20 text-muted-foreground hover:bg-muted/60'
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      {/* Mini aspect ratio shape preview */}
+                      <div
+                        className={cn(
+                          'border rounded-[1px] shrink-0',
+                          settings.outputAspectRatio === opt.value ? 'border-primary' : 'border-muted-foreground/40'
+                        )}
+                        style={{
+                          width: opt.value === '16:9' ? 16 : opt.value === '1:1' ? 10 : 6,
+                          height: opt.value === '16:9' ? 9 : opt.value === '4:5' ? 12 : opt.value === '1:1' ? 10 : 11
+                        }}
+                      />
+                      <div>
+                        <p className="text-xs font-semibold">{opt.label}</p>
+                        <p className="text-[10px] opacity-70 mt-0.5">{opt.sub}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {settings.outputAspectRatio !== '9:16' && (
+                <p className="text-xs text-amber-500/80">
+                  <AlertTriangle className="w-3 h-3 inline mr-1" />Safe zones are designed for 9:16. Other ratios use center-crop from source.
+                </p>
+              )}
+            </div>
+
+            {/* Output format toggle */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Output Format</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([
+                  { value: 'mp4' as OutputFormat, label: 'MP4' },
+                  { value: 'webm' as OutputFormat, label: 'WebM' }
+                ]).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setRenderQuality({ outputFormat: opt.value })}
+                    className={cn(
+                      'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
+                      settings.renderQuality.outputFormat === opt.value
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border bg-muted/20 text-muted-foreground hover:bg-muted/60'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {settings.renderQuality.outputFormat === 'webm' && (
+                <p className="text-xs text-muted-foreground">
+                  Better quality per byte, slower to encode, less compatible with some platforms.
+                </p>
+              )}
+            </div>
+
+            {/* Parallel Renders */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Layers className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <Label className="text-sm font-medium">
+                  Parallel Renders — {settings.renderConcurrency}
+                </Label>
+              </div>
+              <Slider
+                min={1}
+                max={4}
+                step={1}
+                value={[settings.renderConcurrency ?? 1]}
+                onValueChange={([v]) => setRenderConcurrency(v)}
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>1 (Sequential)</span>
+                <span>2</span>
+                <span>3</span>
+                <span>4 (Max)</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Render multiple clips simultaneously. Higher values use more CPU/GPU resources.
+                GPU encoders (NVENC/QSV) are capped at 2 to avoid exhausting hardware sessions.
+              </p>
+              {(settings.renderConcurrency ?? 1) > 1 && (
+                <p className="text-xs text-amber-500/80 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 inline mr-1" />May increase memory usage and reduce per-clip rendering speed.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Notifications */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Bell className="w-3.5 h-3.5 text-muted-foreground" />
+            <SectionHeader>Notifications</SectionHeader>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="notifications-enabled" className="text-sm font-medium cursor-pointer">
+                Desktop Notifications
+              </Label>
+              <Switch
+                id="notifications-enabled"
+                checked={settings.enableNotifications}
+                onCheckedChange={setEnableNotifications}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Show OS notifications when pipeline processing or rendering completes.
+              Notifications are only sent when the app window is not focused.
+            </p>
+          </div>
+        </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Developer Mode */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Code2 className="w-3.5 h-3.5 text-muted-foreground" />
+            <SectionHeader>Developer Mode</SectionHeader>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="developer-mode-enabled" className="text-sm font-medium cursor-pointer">
+                Log FFmpeg Commands
+              </Label>
+              <Switch
+                id="developer-mode-enabled"
+                checked={settings.developerMode}
+                onCheckedChange={setDeveloperMode}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              When enabled, every FFmpeg command is logged to the Error Log during rendering — both
+              on success and failure. Click the{' '}
+              <span className="inline-flex items-center gap-0.5 font-mono bg-muted rounded px-1">
+                <code>⊟</code>
+              </span>{' '}
+              icon on any error entry to view and copy the full command. Useful for diagnosing render
+              failures.
+            </p>
+          </div>
+        </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Transcription */}
+        <div>
+          <SectionHeader>Transcription Engine</SectionHeader>
+          <div className="space-y-3">
+            <FieldRow label="Engine">
+              <Select defaultValue="parakeet-tdt-v3">
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="parakeet-tdt-v3">
+                    Parakeet TDT v3 (NVIDIA / NeMo)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </FieldRow>
+            <p className="text-xs text-muted-foreground">
+              Parakeet TDT 0.6B v3 runs locally via Python. First run downloads ~1.2 GB from
+              HuggingFace and caches it.
+            </p>
+          </div>
+        </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Storage */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <HardDrive className="w-3.5 h-3.5 text-muted-foreground" />
@@ -3489,11 +3412,10 @@ export function SettingsPanel() {
             </div>
           </div>
         </div>
+        </div>
 
-
-        <Separator />
-
-        {/* Debug Log */}
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+{/* Debug Log */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <FileDown className="w-3.5 h-3.5 text-muted-foreground" />
@@ -3558,9 +3480,86 @@ export function SettingsPanel() {
             </p>
           </div>
         </div>
+        </div>
 
-
-        <Separator />
+        {/* ── Settings Profile Selector ── */}
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+          <SectionHeader>Settings Profiles</SectionHeader>
+          <div className="flex items-center gap-2">
+            <BookmarkCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <Select
+              value={activeProfileName ?? '__none__'}
+              onValueChange={(v) => {
+                if (v === '__none__') return
+                loadProfile(v)
+              }}
+            >
+              <SelectTrigger className="flex-1 h-8 text-xs">
+                <SelectValue placeholder="No profile selected" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__" disabled>No profile</SelectItem>
+                <SelectGroup>
+                  <SelectLabel>Built-in Presets</SelectLabel>
+                  {BUILT_IN_PROFILE_NAMES.map((name) => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectGroup>
+                {profileNames.filter((n) => !(BUILT_IN_PROFILE_NAMES as readonly string[]).includes(n)).length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>My Profiles</SelectLabel>
+                    {profileNames
+                      .filter((n) => !(BUILT_IN_PROFILE_NAMES as readonly string[]).includes(n))
+                      .map((name) => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                  </SelectGroup>
+                )}
+              </SelectContent>
+            </Select>
+            {profileModified && (
+              <span className="text-[10px] text-amber-500 font-medium whitespace-nowrap">(modified)</span>
+            )}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    title="Save current settings as profile"
+                    onClick={() => {
+                      setSaveProfileName(activeProfileName ?? '')
+                      setShowSaveProfileDialog(true)
+                    }}
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom"><p>Save as Profile</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    title="Delete selected profile"
+                    disabled={!activeProfileName || isBuiltInProfile}
+                    onClick={() => setShowDeleteProfileDialog(true)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>{isBuiltInProfile ? 'Built-in presets cannot be deleted' : 'Delete Profile'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
 
         {/* Reset All */}
         <div className="pb-2">

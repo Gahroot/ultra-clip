@@ -14,12 +14,13 @@ import {
   AlertDialogTitle
 } from '@/components/ui/alert-dialog'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from '@/components/ui/dialog'
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetDescription
+} from '@/components/ui/sheet'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -396,21 +397,22 @@ function App() {
         >
           <Keyboard className="w-4 h-4" />
         </Button>
-        <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <DialogTrigger asChild>
+        <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+          <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="h-8 w-8" title="Settings (Ctrl+,)">
               <Settings className="w-4 h-4" />
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md h-[80vh] flex flex-col p-0 gap-0">
-            <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
-              <DialogTitle>Settings</DialogTitle>
-            </DialogHeader>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-[540px] p-0 flex flex-col">
+            <SheetHeader className="px-6 py-4 border-b border-border shrink-0">
+              <SheetTitle>Settings</SheetTitle>
+              <SheetDescription className="sr-only">Configure your video processing settings</SheetDescription>
+            </SheetHeader>
             <div className="flex-1 overflow-hidden">
               <SettingsPanel />
             </div>
-          </DialogContent>
-        </Dialog>
+          </SheetContent>
+        </Sheet>
         </div>
       </header>
 
