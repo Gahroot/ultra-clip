@@ -26,6 +26,8 @@ export interface BRollPlacement {
   pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   /** The keyword used to find this clip */
   keyword: string
+  /** Source of the B-Roll media: stock footage or AI-generated image */
+  source?: 'stock' | 'ai-generated'
 }
 
 export interface BRollSettings {
@@ -45,6 +47,8 @@ export interface BRollSettings {
   pipSize: number
   /** PiP corner position. Default: 'bottom-right' */
   pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  /** B-Roll source preference: 'stock' (Pexels only), 'ai-generated' (Gemini images only), or 'auto' (AI decides) */
+  sourceMode?: 'stock' | 'ai-generated' | 'auto'
 }
 
 // ---------------------------------------------------------------------------

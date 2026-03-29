@@ -26,6 +26,7 @@ import { fetchBRollClips } from '../broll-pexels'
 import { buildBRollPlacements } from '../broll-placement'
 import type { BRollSettings as BRollSettingsConfig, BRollDisplayMode, BRollTransition } from '../broll-placement'
 import { checkPythonSetup, runFullSetup } from '../python-setup'
+import { detectFillers } from '../filler-detection'
 
 export function registerMediaHandlers(): void {
   // YouTube download
@@ -219,4 +220,12 @@ export function registerMediaHandlers(): void {
     })
     return { started: true }
   })
+
+  // Filler detection — detect filler words, silences, and repeats in word timestamps
+  ipcMain.handle(
+    Ch.Invoke.FILLER_DETECT,
+    wrapHandler(Ch.Invoke.FILLER_DETECT, (_event, words: Array<{ text: string; start: number; end: number; confidence?: number }>, settings: Parameters<typeof detectFillers>[1]) => {
+      return detectFillers(words, settings)
+    })
+  )
 }

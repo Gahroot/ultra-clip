@@ -92,14 +92,16 @@ interface ReactiveConfig {
   emphasis: number
   /** Peak zoom for 'supersize'-level words */
   supersize: number
+  /** Peak zoom for 'box'-level words */
+  box: number
   /** Linear ramp-in and ramp-out duration in seconds around each word */
   rampSeconds: number
 }
 
 const REACTIVE_CONFIG: Record<ZoomIntensity, ReactiveConfig> = {
-  subtle:  { base: 1.00, emphasis: 1.06, supersize: 1.10, rampSeconds: 0.15 },
-  medium:  { base: 1.00, emphasis: 1.08, supersize: 1.13, rampSeconds: 0.12 },
-  dynamic: { base: 1.00, emphasis: 1.10, supersize: 1.16, rampSeconds: 0.10 },
+  subtle:  { base: 1.00, emphasis: 1.06, supersize: 1.10, box: 1.06, rampSeconds: 0.15 },
+  medium:  { base: 1.00, emphasis: 1.08, supersize: 1.13, box: 1.08, rampSeconds: 0.12 },
+  dynamic: { base: 1.00, emphasis: 1.10, supersize: 1.16, box: 1.10, rampSeconds: 0.10 },
 }
 
 /**
@@ -268,7 +270,7 @@ function buildReactiveSegments(
   let cursor = 0
 
   for (const kf of sorted) {
-    const Z = kf.level === 'supersize' ? cfg.supersize : cfg.emphasis
+    const Z = kf.level === 'supersize' ? cfg.supersize : kf.level === 'box' ? cfg.box : cfg.emphasis
     // Clamp ramp window to valid clip range and avoid overlapping with cursor
     const rampIn  = Math.max(cursor, kf.time - R)
     const holdEnd = Math.min(clipDuration, kf.end)
@@ -810,7 +812,7 @@ export function generatePiecewiseZoomFilter(
       // Build nested if expressions for reactive zoom
       let zExpr = baseZ
       for (const kf of shotKeyframes) {
-        const Z = (kf.level === 'supersize' ? reactiveCfg.supersize : reactiveCfg.emphasis).toFixed(4)
+        const Z = (kf.level === 'supersize' ? reactiveCfg.supersize : kf.level === 'box' ? reactiveCfg.box : reactiveCfg.emphasis).toFixed(4)
         const s = kf.time.toFixed(3)
         const e = kf.end.toFixed(3)
         zExpr = `if(between(t\\,${s}\\,${e})\\,${Z}\\,${zExpr})`

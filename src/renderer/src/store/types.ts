@@ -230,6 +230,20 @@ export interface ClipCandidate {
    * this clip. Shot indices not present in this array use the global style.
    */
   shotStyles?: import('@shared/types').ShotStyleAssignment[]
+  /** Detected filler segments for this clip (absolute timestamps from source) */
+  fillerSegments?: FillerSegmentUI[]
+  /** Indices of filler segments the user has restored (won't be cut) */
+  restoredFillerIndices?: number[]
+  /** Time saved by filler removal (seconds) */
+  fillerTimeSaved?: number
+}
+
+/** Filler segment as stored in the renderer — mirrors the main-process FillerSegment type. */
+export interface FillerSegmentUI {
+  start: number
+  end: number
+  type: 'filler' | 'silence' | 'repeat'
+  label: string
 }
 
 export type PipelineStage =
@@ -437,6 +451,8 @@ export interface BRollSettings {
   pipSize: number
   /** PiP corner position. Default: 'bottom-right' */
   pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  /** B-Roll source preference. Default: 'auto' */
+  sourceMode?: 'stock' | 'ai-generated' | 'auto'
 }
 
 export type BRollDisplayMode = 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
@@ -631,6 +647,8 @@ export interface EditStyleBRoll {
   intervalSeconds: number
   /** Duration of each B-Roll clip in seconds (2–6). Default: 3. */
   clipDuration: number
+  /** B-Roll source: 'stock', 'ai-generated', or 'auto'. Default: 'auto'. */
+  sourceMode?: 'stock' | 'ai-generated' | 'auto'
 }
 
 /** Background music, SFX density, and ducking mix within a style preset. */
@@ -1009,6 +1027,12 @@ export interface AppState {
   setClipShotStyles: (sourceId: string, clipId: string, assignments: import('@shared/types').ShotStyleAssignment[]) => void
   /** Remove all per-shot style assignments (revert to global style). */
   clearAllShotStyles: (sourceId: string, clipId: string) => void
+  /** Store detected filler segments for a clip. */
+  setClipFillers: (sourceId: string, clipId: string, segments: FillerSegmentUI[], timeSaved: number) => void
+  /** Toggle whether a filler segment is restored (user wants to keep it). */
+  toggleFillerRestore: (sourceId: string, clipId: string, segmentIndex: number) => void
+  /** Clear all filler detection data from a clip. */
+  clearClipFillers: (sourceId: string, clipId: string) => void
   approveAll: (sourceId: string) => void
   approveClipsAboveScore: (sourceId: string, minScore: number) => { approved: number; rejected: number }
   rejectAll: (sourceId: string) => void

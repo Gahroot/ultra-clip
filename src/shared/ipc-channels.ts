@@ -111,6 +111,9 @@ export const InvokeChannels = {
   // Shot Segmentation
   SHOT_SEGMENT_CLIP: 'shot:segmentClip',
 
+  // Filler Detection
+  FILLER_DETECT: 'filler:detect',
+
   // B-Roll
   BROLL_GENERATE_PLACEMENTS: 'broll:generatePlacements',
 

@@ -43,6 +43,7 @@ export function usePipeline() {
   const setStoryArcs = useStore((s) => s.setStoryArcs)
   const setClipPartInfo = useStore((s) => s.setClipPartInfo)
   const setClipAIEditPlan = useStore((s) => s.setClipAIEditPlan)
+  const setClipFillers = useStore((s) => s.setClipFillers)
   const markStageCompleted = useStore((s) => s.markStageCompleted)
   const setFailedPipelineStage = useStore((s) => s.setFailedPipelineStage)
   const setCachedSourcePath = useStore((s) => s.setCachedSourcePath)
@@ -120,7 +121,8 @@ export function usePipeline() {
           setStoryArcs,
           setClipPartInfo,
           setCachedSourcePath,
-          setClipAIEditPlan
+          setClipAIEditPlan,
+          setClipFillers
         },
         geminiApiKey: currentState.settings.geminiApiKey,
         processingConfig: {
@@ -147,6 +149,33 @@ export function usePipeline() {
 
         // ── Step 3.1: Generate thumbnails ────────────────────────────
         await thumbnailStage(ctx, sourcePath, clips)
+
+        // ── Step 3.2: Filler detection ────────────────────────────────
+        if (currentState.settings.fillerRemoval.enabled) {
+          const fr = currentState.settings.fillerRemoval
+          for (const clip of clips) {
+            check()
+            const clipWords = (clip.wordTimestamps ?? []).filter(
+              (w) => w.start >= clip.startTime && w.end <= clip.endTime
+            )
+            if (clipWords.length === 0) continue
+            try {
+              const result = await window.api.detectFillers(clipWords, {
+                removeFillerWords: fr.removeFillerWords,
+                trimSilences: fr.trimSilences,
+                removeRepeats: fr.removeRepeats,
+                silenceThreshold: fr.silenceThreshold,
+                silenceTargetGap: 0.15,
+                fillerWords: fr.fillerWords
+              })
+              if (result.segments.length > 0) {
+                setClipFillers(source.id, clip.id, result.segments, result.timeSaved)
+              }
+            } catch {
+              // Non-critical — skip filler detection for this clip
+            }
+          }
+        }
 
         // ── Step 3.5: Clip boundary optimization ─────────────────────
         currentStage = 'optimizing-loops'
@@ -196,7 +225,7 @@ export function usePipeline() {
       updateClipTrim, updateClipThumbnail, addError, setClipVariants,
       setStitchedClips, setStoryArcs, setClipPartInfo, markStageCompleted,
       setFailedPipelineStage, setCachedSourcePath, clearPipelineCache,
-      snapshotSettings, setClipAIEditPlan
+      snapshotSettings, setClipAIEditPlan, setClipFillers
     ]
   )
 

@@ -199,6 +199,9 @@ const api = {
 
   // AI Token Usage
   onAiTokenUsage: listen(S.AI_TOKEN_USAGE),
+
+  // Filler Detection
+  detectFillers: invoke(I.FILLER_DETECT),
 }
 
 // ---------------------------------------------------------------------------

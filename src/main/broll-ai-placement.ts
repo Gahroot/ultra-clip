@@ -37,6 +37,8 @@ export interface AIBRollMoment {
   reason: string
   /** AI-chosen display mode */
   displayMode: BRollDisplayMode
+  /** Whether AI recommends stock footage or generated image for this B-Roll moment */
+  suggestedSource?: 'stock' | 'ai-generated'
 }
 
 // ---------------------------------------------------------------------------
@@ -71,13 +73,14 @@ Return a JSON array of objects. Each object:
 - "keyword": string (1-3 words, concrete visual noun/action)
 - "reason": string (brief explanation, 5-10 words)
 - "displayMode": "split-top" | "fullscreen" | "pip"
+- "suggestedSource": "stock" | "ai-generated" (use "stock" for concrete real-world objects/places like "city skyline", "coffee shop"; use "ai-generated" for abstract concepts, data visualizations, specific scenarios like "revenue chart", "brain neurons firing")
 
 Order by startTime ascending. Return 2-6 placements depending on clip length (roughly one per 5-8 seconds of content, but only where it makes sense).
 
 Respond ONLY with a JSON array, no markdown, no explanation.
 
 Example:
-[{"startTime":3.5,"duration":3,"keyword":"laptop typing","reason":"speaker mentions working on computer","displayMode":"split-top"},{"startTime":9.2,"duration":2.5,"keyword":"city skyline","reason":"topic shifts to urban life","displayMode":"fullscreen"},{"startTime":15.0,"duration":2,"keyword":"coffee cup","reason":"brief mention of morning routine","displayMode":"pip"}]`
+[{"startTime":3.5,"duration":3,"keyword":"laptop typing","reason":"speaker mentions working on computer","displayMode":"split-top","suggestedSource":"stock"},{"startTime":9.2,"duration":2.5,"keyword":"city skyline","reason":"topic shifts to urban life","displayMode":"fullscreen","suggestedSource":"stock"},{"startTime":15.0,"duration":2,"keyword":"brain neurons","reason":"abstract concept visualization","displayMode":"pip","suggestedSource":"ai-generated"}]`
 
 // ---------------------------------------------------------------------------
 // Gemini helpers (following project patterns from ai-scoring.ts)
@@ -145,6 +148,7 @@ interface RawAIPlacement {
   keyword?: unknown
   reason?: unknown
   displayMode?: unknown
+  suggestedSource?: unknown
 }
 
 function validateAIPlacements(
@@ -174,12 +178,17 @@ function validateAIPlacements(
 
     const reason = typeof item.reason === 'string' ? item.reason : ''
 
+    const suggestedSource = (item.suggestedSource === 'stock' || item.suggestedSource === 'ai-generated')
+      ? item.suggestedSource as 'stock' | 'ai-generated'
+      : undefined
+
     parsed.push({
       startTime,
       duration,
       keyword: item.keyword.trim().toLowerCase(),
       reason,
-      displayMode
+      displayMode,
+      suggestedSource
     })
   }
 
