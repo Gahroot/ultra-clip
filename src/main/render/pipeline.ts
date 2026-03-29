@@ -87,8 +87,25 @@ export async function startBatchRender(
   }
 
   // ── Create feature instances ──────────────────────────────────────────────
-  // Order matters: filler removal first (modifies source), then captions
-  // (needs to know about filler changes), then everything else.
+  // Registration order determines prepare() execution order.
+  // Data flows via job mutation — earlier features write, later ones read.
+  //
+  // 1. filler-removal  — mutates job.sourceVideoPath, startTime, endTime, wordTimestamps
+  // 2. brand-kit       — writes job.brandKit (consumed by base-render)
+  // 3. sound-design    — validates job.soundPlacements (pre-computed by IPC handler)
+  // 4. captions        — writes job.emphasisKeyframes from wordEmphasis/heuristic
+  // 5. hook-title      — generates ASS overlay file
+  // 6. rehook          — reads hookTitleOverlay.displayDuration for appear time
+  // 7. progress-bar    — injects job.progressBarConfig
+  // 8. auto-zoom       — reads job.emphasisKeyframes (from captions) for reactive zoom
+  // 9. broll           — reads job.brollPlacements (pre-computed by IPC handler)
+  //
+  // Cross-feature data flow:
+  //   captions ──emphasisKeyframes──▸ auto-zoom (reactive mode)
+  //   filler-removal ──wordTimestamps──▸ captions (remapped timestamps)
+  //   IPC handler ──brollPlacements──▸ broll (postProcess)
+  //   IPC handler ──soundPlacements──▸ sound-design (base render filter_complex)
+  //   IPC handler ──editEvents──▸ sound-design (B-Roll transitions + jump-cuts)
   const features: RenderFeature[] = [
     createFillerRemovalFeature(),
     brandKitFeature,

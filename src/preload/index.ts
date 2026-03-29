@@ -140,6 +140,9 @@ const api = {
   // B-Roll
   generateBRollPlacements: invoke(I.BROLL_GENERATE_PLACEMENTS),
 
+  // Shot Segmentation
+  segmentClipIntoShots: invoke(I.SHOT_SEGMENT_CLIP),
+
   // Emoji Burst / Reaction Overlay
   identifyEmojiMoments: invoke(I.OVERLAY_IDENTIFY_EMOJI_MOMENTS),
   buildEmojiBurstFilters: invoke(I.OVERLAY_BUILD_EMOJI_BURST_FILTERS),

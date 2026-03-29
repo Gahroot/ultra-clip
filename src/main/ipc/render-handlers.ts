@@ -7,6 +7,11 @@ import { analyzeEmphasisHeuristic } from '../word-emphasis'
 import { buildBlurBackgroundFilter, type BlurBackgroundConfig } from '../layouts/blur-background'
 import { buildSplitScreenFilter } from '../layouts/split-screen'
 import type { SplitScreenLayout, VideoSource, SplitScreenConfig } from '../layouts/split-screen'
+import { extractBRollKeywords } from '../broll-keywords'
+import type { WordTimestamp as BRollWordTimestamp } from '../broll-keywords'
+import { fetchBRollClips } from '../broll-pexels'
+import { buildBRollPlacements } from '../broll-placement'
+import type { BRollSettings as BRollSettingsConfig } from '../broll-placement'
 import {
   analyzeLoopPotential,
   optimizeForLoop,
@@ -46,7 +51,118 @@ export function registerRenderHandlers(): void {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) throw new Error('No BrowserWindow found for render request')
 
-    // If sound design is enabled globally, compute emphasis-aware placements for each clip
+    // ── Phase 1: B-Roll placement generation ────────────────────────────────
+    // When B-Roll is enabled, generate placements for each clip. This runs
+    // BEFORE sound design so that B-Roll transition edit events are available
+    // for the sound design placement engine to consume.
+    if (options.broll?.enabled && options.broll.pexelsApiKey) {
+      for (const job of options.jobs) {
+        // Skip clips that already have pre-computed placements
+        if (job.brollPlacements && job.brollPlacements.length > 0) continue
+
+        const clipDuration = job.endTime - job.startTime
+        const clipWords = (job.wordTimestamps ?? []).filter(
+          (w) => w.start >= job.startTime && w.end <= job.endTime
+        )
+
+        try {
+          // Use AI edit plan B-Roll suggestions as keyword source when available,
+          // otherwise extract keywords from the transcript using Gemini.
+          let keywords: Array<{ keyword: string; timestamp: number }>
+
+          if (job.brollSuggestions && job.brollSuggestions.length > 0) {
+            // Convert AI edit plan B-Roll suggestions to keyword format
+            keywords = job.brollSuggestions.map((s) => ({
+              keyword: s.keyword,
+              timestamp: s.timestamp
+            }))
+            console.log(
+              `[B-Roll] Clip ${job.clipId}: using ${keywords.length} AI edit plan keywords`
+            )
+          } else {
+            // Extract keywords via Gemini (requires transcript text)
+            const localWords = clipWords.map((w) => ({
+              text: w.text,
+              start: w.start - job.startTime,
+              end: w.end - job.startTime
+            }))
+            const transcriptText = clipWords.map((w) => w.text).join(' ')
+            keywords = await extractBRollKeywords(
+              transcriptText,
+              localWords,
+              0,
+              clipDuration,
+              options.broll.pexelsApiKey
+            )
+          }
+
+          if (keywords.length === 0) {
+            console.log(`[B-Roll] Clip ${job.clipId}: no keywords — skipping`)
+            continue
+          }
+
+          // Download Pexels footage for unique keywords
+          const uniqueKeywords = [...new Set(keywords.map((k) => k.keyword))]
+          const downloadedClips = await fetchBRollClips(
+            uniqueKeywords,
+            options.broll.pexelsApiKey,
+            options.broll.clipDuration
+          )
+
+          if (downloadedClips.size === 0) {
+            console.log(`[B-Roll] Clip ${job.clipId}: no clips downloaded — skipping`)
+            continue
+          }
+
+          // Build placements from keywords + downloaded footage
+          const brollSettings: BRollSettingsConfig = {
+            enabled: true,
+            pexelsApiKey: options.broll.pexelsApiKey,
+            intervalSeconds: options.broll.intervalSeconds,
+            clipDuration: options.broll.clipDuration,
+            displayMode: options.broll.displayMode,
+            transition: options.broll.transition,
+            pipSize: options.broll.pipSize,
+            pipPosition: options.broll.pipPosition
+          }
+
+          job.brollPlacements = buildBRollPlacements(
+            clipDuration,
+            keywords,
+            downloadedClips,
+            brollSettings
+          )
+
+          // When AI edit plan provided B-Roll suggestions, override the display
+          // mode and transition for each placement to match the AI's recommendation
+          if (job.brollSuggestions && job.brollSuggestions.length > 0) {
+            for (const placement of job.brollPlacements) {
+              const suggestion = job.brollSuggestions.find(
+                (s) => s.keyword === placement.keyword &&
+                  Math.abs(s.timestamp - placement.startTime) < placement.duration
+              )
+              if (suggestion) {
+                placement.displayMode = suggestion.displayMode
+                placement.transition = suggestion.transition
+              }
+            }
+          }
+
+          console.log(
+            `[B-Roll] Clip ${job.clipId}: generated ${job.brollPlacements.length} placement(s)`
+          )
+        } catch (brollErr) {
+          const msg = brollErr instanceof Error ? brollErr.message : String(brollErr)
+          console.warn(`[B-Roll] Clip ${job.clipId}: placement generation failed — ${msg}`)
+          // Don't abort the whole batch — just skip B-Roll for this clip
+        }
+      }
+    }
+
+    // ── Phase 2: Sound design placement generation ──────────────────────────
+    // When sound design is enabled, compute emphasis-aware placements for each
+    // clip. Uses B-Roll placements (from Phase 1) to derive transition edit
+    // events, and AI edit plan SFX suggestions for additional sound cues.
     if (options.soundDesign?.enabled) {
       for (const job of options.jobs) {
         const soundDesignOv = job.clipOverrides?.enableSoundDesign
@@ -71,7 +187,7 @@ export function registerRenderHandlers(): void {
           ? job.wordEmphasis
           : analyzeEmphasisHeuristic(localWords)
 
-        // Derive edit events from B-Roll placements and auto-zoom jump-cut mode
+        // ── Derive edit events from all sources ───────────────────────────
         const editEvents: EditEvent[] = []
 
         // Pre-computed edit events from the renderer (e.g. AI edit plan SFX sync)
@@ -79,7 +195,19 @@ export function registerRenderHandlers(): void {
           editEvents.push(...job.editEvents)
         }
 
-        // B-Roll transition events
+        // AI edit plan SFX suggestions → edit events for sound design sync
+        if (job.aiSfxSuggestions && job.aiSfxSuggestions.length > 0) {
+          for (const sfx of job.aiSfxSuggestions) {
+            // Map AI SFX suggestion types to sound design edit event types.
+            // The sound design engine picks the right SFX file based on the type.
+            editEvents.push({
+              type: 'broll-transition', // reuse broll-transition for synced SFX
+              time: sfx.timestamp
+            })
+          }
+        }
+
+        // B-Roll transition events (from Phase 1 placement generation)
         if (job.brollPlacements && job.brollPlacements.length > 0) {
           for (const br of job.brollPlacements) {
             editEvents.push({

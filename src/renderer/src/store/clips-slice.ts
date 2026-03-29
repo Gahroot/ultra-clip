@@ -9,7 +9,7 @@ import type {
   StitchedClipCandidate,
   StoryArcUI,
 } from './types'
-import type { AIEditPlan } from '@shared/types'
+import type { AIEditPlan, ShotSegment } from '@shared/types'
 import { updateItemById } from './helpers'
 import { _pushUndo } from './history-slice'
 
@@ -47,6 +47,8 @@ export interface ClipsSlice {
   rescoreClip: (sourceId: string, clipId: string, newScore: number, newReasoning: string, newHookText?: string) => void
   setClipAIEditPlan: (sourceId: string, clipId: string, plan: AIEditPlan) => void
   clearClipAIEditPlan: (sourceId: string, clipId: string) => void
+  setClipShots: (sourceId: string, clipId: string, shots: ShotSegment[]) => void
+  clearClipShots: (sourceId: string, clipId: string) => void
   approveAll: (sourceId: string) => void
   approveClipsAboveScore: (sourceId: string, minScore: number) => { approved: number; rejected: number }
   rejectAll: (sourceId: string) => void
@@ -388,6 +390,30 @@ export const createClipsSlice: StateCreator<
         clips: {
           ...state.clips,
           [sourceId]: updateItemById(sourceClips, clipId, { aiEditPlan: undefined })
+        }
+      }
+    }),
+
+  setClipShots: (sourceId, clipId, shots) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      return {
+        clips: {
+          ...state.clips,
+          [sourceId]: updateItemById(sourceClips, clipId, { shots })
+        }
+      }
+    }),
+
+  clearClipShots: (sourceId, clipId) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      return {
+        clips: {
+          ...state.clips,
+          [sourceId]: updateItemById(sourceClips, clipId, { shots: undefined })
         }
       }
     }),

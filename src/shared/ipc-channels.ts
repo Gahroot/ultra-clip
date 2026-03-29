@@ -108,6 +108,9 @@ export const InvokeChannels = {
   OVERLAY_GENERATE_FAKE_COMMENT: 'overlay:generateFakeComment',
   OVERLAY_BUILD_FAKE_COMMENT_FILTER: 'overlay:buildFakeCommentFilter',
 
+  // Shot Segmentation
+  SHOT_SEGMENT_CLIP: 'shot:segmentClip',
+
   // B-Roll
   BROLL_GENERATE_PLACEMENTS: 'broll:generatePlacements',
 

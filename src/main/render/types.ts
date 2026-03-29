@@ -9,7 +9,7 @@ import type { HookTitleConfig } from '../hook-title'
 import type { RehookConfig, OverlayVisualSettings } from '../overlays/rehook'
 import type { ProgressBarConfig } from '../overlays/progress-bar'
 import type { ClipDescription } from '../ai/description-generator'
-import type { BRollPlacement } from '../broll-placement'
+import type { BRollPlacement, BRollDisplayMode, BRollTransition } from '../broll-placement'
 import type { FillerDetectionSettings } from '../filler-detection'
 import type { CaptionStyleInput } from '../captions'
 import type { SegmentRole } from '../ai/clip-stitcher'
@@ -28,6 +28,8 @@ export type {
   ProgressBarConfig,
   ClipDescription,
   BRollPlacement,
+  BRollDisplayMode,
+  BRollTransition,
   FillerDetectionSettings,
   CaptionStyleInput,
   OutputAspectRatio,
@@ -186,6 +188,21 @@ export interface RenderClipJob {
    */
   aiSfxSuggestions?: Array<{ timestamp: number; type: string }>
   /**
+   * AI Edit Plan B-Roll suggestions.
+   * When present and B-Roll is enabled, the IPC handler uses these to
+   * seed the Pexels keyword search and placement engine instead of
+   * running keyword extraction from scratch. Each suggestion specifies
+   * a timestamp, duration, keyword, display mode, and transition style.
+   * Times are clip-relative (0-based, in seconds).
+   */
+  brollSuggestions?: Array<{
+    timestamp: number
+    duration: number
+    keyword: string
+    displayMode: BRollDisplayMode
+    transition: BRollTransition
+  }>
+  /**
    * Pre-computed emphasis data for this clip.
    *
    * When present, the captions feature uses this as the canonical word
@@ -298,6 +315,22 @@ export interface RenderBatchOptions {
   captionStyle?: CaptionStyleInput
   /** Whether captions are enabled (needed to know whether to re-sync captions) */
   captionsEnabled?: boolean
+  /**
+   * B-Roll overlay settings. When enabled, the IPC handler generates B-Roll
+   * placements for each clip (using AI edit plan suggestions or keyword
+   * extraction), downloads Pexels footage, and stores placements on each job
+   * for the broll feature's postProcess phase.
+   */
+  broll?: {
+    enabled: boolean
+    pexelsApiKey: string
+    intervalSeconds: number
+    clipDuration: number
+    displayMode: BRollDisplayMode
+    transition: BRollTransition
+    pipSize: number
+    pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  }
   /**
    * Source video metadata for the export manifest. When provided, the render
    * pipeline writes manifest.json + manifest.csv to the output directory at

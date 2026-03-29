@@ -35,6 +35,8 @@ import { resolveHookFont } from '../hook-title'
 import { analyzeWordEmphasis } from '../word-emphasis'
 import { generateEditPlan } from '../ai/edit-plan'
 import { clearEditPlanCache, getEditPlanCacheSize } from '../ai/edit-plan-cache'
+import { segmentClipIntoShots } from '../shot-segmentation'
+import type { ShotSegmentationResult } from '@shared/types'
 import type { WordTimestamp } from '@shared/types'
 
 const AI_VALIDATION_MODEL = 'gemini-2.5-flash-lite'
@@ -359,6 +361,20 @@ export function registerAiHandlers(): void {
     wrapHandler(Ch.Invoke.OVERLAY_BUILD_FAKE_COMMENT_FILTER, async (_event, comment: FakeCommentData, config: FakeCommentConfig) => {
       const fontFilePath = await resolveHookFont()
       return buildFakeCommentFilter(comment, config, fontFilePath)
+    })
+  )
+
+  // Shot Segmentation — segment a clip's transcript into 4-6 second "shots"
+  ipcMain.handle(
+    Ch.Invoke.SHOT_SEGMENT_CLIP,
+    wrapHandler(Ch.Invoke.SHOT_SEGMENT_CLIP, (
+      _event,
+      words: WordTimestamp[],
+      clipStart: number,
+      clipEnd: number,
+      config?: { targetDuration?: number; minDuration?: number; maxDuration?: number }
+    ): ShotSegmentationResult => {
+      return segmentClipIntoShots(words, clipStart, clipEnd, config)
     })
   )
 }
