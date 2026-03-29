@@ -1,10 +1,31 @@
 import { useRef, useCallback } from 'react'
-import { v4 as uuidv4 } from 'uuid'
 import { useStore } from '../store'
-import type { SourceVideo, ClipCandidate } from '../store'
+import type { SourceVideo, PipelineStage } from '../store'
+import type { PipelineContext } from './pipeline-stages/types'
+import {
+  downloadStage,
+  transcriptionStage,
+  clipMappingStage,
+  thumbnailStage,
+  loopOptimizationStage,
+  variantGenerationStage,
+  stitchGenerationStage,
+  faceDetectionStage,
+  storyArcStage,
+  notificationStage
+} from './pipeline-stages'
 
-// Track the last source ID auto-mode ran on to prevent double-runs
-const _autoModeRanForSource = new Set<string>()
+/** Ordered list of pipeline stages used to determine skip logic. */
+const PIPELINE_STAGE_ORDER: PipelineStage[] = [
+  'downloading',
+  'transcribing',
+  'scoring',
+  'optimizing-loops',
+  'generating-variants',
+  'stitching',
+  'detecting-faces',
+  'detecting-arcs'
+]
 
 export function usePipeline() {
   const setPipeline = useStore((s) => s.setPipeline)
@@ -13,15 +34,21 @@ export function usePipeline() {
   const updateClipCrop = useStore((s) => s.updateClipCrop)
   const updateClipLoop = useStore((s) => s.updateClipLoop)
   const updateClipTrim = useStore((s) => s.updateClipTrim)
+  const updateClipThumbnail = useStore((s) => s.updateClipThumbnail)
   const addError = useStore((s) => s.addError)
   const setClipVariants = useStore((s) => s.setClipVariants)
   const setStitchedClips = useStore((s) => s.setStitchedClips)
   const setStoryArcs = useStore((s) => s.setStoryArcs)
   const setClipPartInfo = useStore((s) => s.setClipPartInfo)
-  const settings = useStore((s) => s.settings)
-  const processingConfig = useStore((s) => s.processingConfig)
+  const markStageCompleted = useStore((s) => s.markStageCompleted)
+  const setFailedPipelineStage = useStore((s) => s.setFailedPipelineStage)
+  const setCachedSourcePath = useStore((s) => s.setCachedSourcePath)
+  const clearPipelineCache = useStore((s) => s.clearPipelineCache)
+  const snapshotSettings = useStore((s) => s.snapshotSettings)
 
   const cancelledRef = useRef(false)
+  // Track which source IDs auto-mode has already run on (tied to component lifecycle)
+  const autoModeRanRef = useRef(new Set<string>())
 
   const cancelProcessing = useCallback(() => {
     cancelledRef.current = true
@@ -29,8 +56,27 @@ export function usePipeline() {
   }, [setPipeline])
 
   const processVideo = useCallback(
-    async (source: SourceVideo) => {
+    async (source: SourceVideo, resumeFrom?: PipelineStage) => {
       cancelledRef.current = false
+
+      // Track the last active stage so we know which stage failed
+      let currentStage: PipelineStage = 'idle'
+
+      try {
+      console.log('[usePipeline] processVideo START', { sourceId: source.id, resumeFrom })
+      if (!resumeFrom) {
+        clearPipelineCache()
+      }
+
+      snapshotSettings()
+      console.log('[usePipeline] settings snapshot OK')
+
+      const shouldSkip = (stage: PipelineStage): boolean => {
+        if (!resumeFrom) return false
+        const resumeIdx = PIPELINE_STAGE_ORDER.indexOf(resumeFrom)
+        const stageIdx = PIPELINE_STAGE_ORDER.indexOf(stage)
+        return stageIdx < resumeIdx
+      }
 
       const check = () => {
         if (cancelledRef.current) throw new Error('Processing cancelled')
@@ -44,472 +90,105 @@ export function usePipeline() {
         return
       }
 
-      try {
-        let sourcePath = source.path
-        const isYouTube = source.origin === 'youtube'
+      // Intentionally reading latest state at execution time — settings and
+      // processingConfig are read imperatively via getState() so the callback
+      // doesn't need them in its dependency array.  This avoids unnecessary
+      // re-creation of processVideo on every settings keystroke while ensuring
+      // we always use the values that were current when the user clicked "Run".
+      const currentState = useStore.getState()
 
-        // ── Step 1: Download (YouTube only) ──────────────────────────────────
-        if (isYouTube && source.youtubeUrl && !source.path) {
-          setPipeline({ stage: 'downloading', message: 'Starting download…', percent: 0 })
-          check()
-
-          const unsubYT = window.api.onYouTubeProgress(({ percent }) => {
-            setPipeline({
-              stage: 'downloading',
-              message: `Downloading… ${Math.round(percent)}%`,
-              percent: Math.round(percent)
-            })
-          })
-
-          try {
-            const result = await window.api.downloadYouTube(source.youtubeUrl)
-            sourcePath = result.path
-          } finally {
-            unsubYT()
-          }
-          check()
-        } else if (isYouTube) {
-          setPipeline({ stage: 'downloading', message: 'Video already downloaded', percent: 100 })
+      const ctx: PipelineContext = {
+        source,
+        check,
+        setPipeline,
+        addError,
+        markStageCompleted,
+        shouldSkip,
+        getState: () => useStore.getState(),
+        store: {
+          setTranscription,
+          setClips,
+          updateClipCrop,
+          updateClipLoop,
+          updateClipTrim,
+          updateClipThumbnail,
+          setClipVariants,
+          setStitchedClips,
+          setStoryArcs,
+          setClipPartInfo,
+          setCachedSourcePath
+        },
+        geminiApiKey: currentState.settings.geminiApiKey,
+        processingConfig: {
+          targetDuration: currentState.processingConfig.targetDuration,
+          enablePerfectLoop: currentState.processingConfig.enablePerfectLoop,
+          clipEndMode: currentState.processingConfig.clipEndMode,
+          enableVariants: currentState.processingConfig.enableVariants,
+          enableClipStitching: currentState.processingConfig.enableClipStitching,
+          enableMultiPart: currentState.processingConfig.enableMultiPart
         }
+      }
+        // ── Step 1: Download (YouTube only) ──────────────────────────
+        currentStage = 'downloading'
+        const { sourcePath } = await downloadStage(ctx)
 
-        // ── Step 2: Transcribe ────────────────────────────────────────────────
-        setPipeline({ stage: 'transcribing', message: 'Extracting audio…', percent: 0 })
-        check()
+        // ── Step 2: Transcribe ───────────────────────────────────────
+        currentStage = 'transcribing'
+        const transcription = await transcriptionStage(ctx, sourcePath)
 
-        const stagePercents: Record<string, number> = {
-          'extracting-audio': 10,
-          'downloading-model': 20,
-          'loading-model': 50,
-          transcribing: 70
-        }
+        // ── Step 3: Score + map to clips ─────────────────────────────
+        currentStage = 'scoring'
+        let clips = await clipMappingStage(ctx, transcription)
 
-        const unsubTranscribe = window.api.onTranscribeProgress(({ stage, message, percent }) => {
-          let resolvedPercent = stagePercents[stage] ?? 50
-          // For model download, blend base percent with actual download progress
-          if (stage === 'downloading-model' && typeof percent === 'number') {
-            // Download occupies the 20–50% band
-            resolvedPercent = Math.round(20 + (percent / 100) * 30)
-          }
-          setPipeline({
-            stage: 'transcribing',
-            message,
-            percent: resolvedPercent
-          })
-        })
+        // ── Step 3.1: Generate thumbnails ────────────────────────────
+        await thumbnailStage(ctx, sourcePath, clips)
 
-        let transcriptionResult
-        try {
-          transcriptionResult = await window.api.transcribeVideo(sourcePath)
-        } finally {
-          unsubTranscribe()
-        }
-        check()
+        // ── Step 3.5: Clip boundary optimization ─────────────────────
+        currentStage = 'optimizing-loops'
+        clips = await loopOptimizationStage(ctx, transcription, clips)
 
-        const formattedForAI = await window.api.formatTranscriptForAI(transcriptionResult)
-        check()
+        // ── Step 3.6: Variant generation ─────────────────────────────
+        currentStage = 'generating-variants'
+        await variantGenerationStage(ctx, transcription, clips)
 
-        const transcriptionData = {
-          text: transcriptionResult.text,
-          words: transcriptionResult.words,
-          segments: transcriptionResult.segments,
-          formattedForAI
-        }
-        setTranscription(source.id, transcriptionData)
+        // ── Step 3.7: Clip stitching ─────────────────────────────────
+        currentStage = 'stitching'
+        await stitchGenerationStage(ctx, transcription)
 
-        setPipeline({ stage: 'transcribing', message: 'Transcription complete', percent: 100 })
+        // ── Step 4: Face detection ───────────────────────────────────
+        currentStage = 'detecting-faces'
+        await faceDetectionStage(ctx, sourcePath, clips)
 
-        // ── Step 3: Score ─────────────────────────────────────────────────────
-        setPipeline({ stage: 'scoring', message: 'Sending to Gemini…', percent: 0 })
-        check()
+        // ── Step 5: Story arc detection ──────────────────────────────
+        currentStage = 'detecting-arcs'
+        await storyArcStage(ctx, transcription, clips)
 
-        const scoringStagePercents: Record<string, number> = {
-          sending: 10,
-          analyzing: 50,
-          validating: 90
-        }
+        // ── Done ─────────────────────────────────────────────────────
+        notificationStage(ctx, clips, autoModeRanRef)
 
-        const unsubScoring = window.api.onScoringProgress(({ stage, message }) => {
-          setPipeline({
-            stage: 'scoring',
-            message,
-            percent: scoringStagePercents[stage] ?? 50
-          })
-        })
-
-        let scoringResult
-        try {
-          scoringResult = await window.api.scoreTranscript(
-            settings.geminiApiKey,
-            formattedForAI,
-            source.duration,
-            processingConfig.targetDuration
-          )
-        } finally {
-          unsubScoring()
-        }
-        check()
-
-        const clips: ClipCandidate[] = scoringResult.segments.map((seg) => ({
-          id: uuidv4(),
-          sourceId: source.id,
-          startTime: seg.startTime,
-          endTime: seg.endTime,
-          duration: seg.endTime - seg.startTime,
-          text: seg.text,
-          score: seg.score,
-          hookText: seg.hookText,
-          reasoning: seg.reasoning,
-          status: 'pending' as const,
-          wordTimestamps: transcriptionResult.words.filter(
-            (w: { start: number; end: number }) => w.start >= seg.startTime && w.end <= seg.endTime
-          )
-        }))
-
-        setClips(source.id, clips)
-        setPipeline({ stage: 'scoring', message: 'Scoring complete', percent: 100 })
-
-        // ── Step 3.5: Loop Optimization (conditional) ─────────────────────────
-        if (processingConfig.enablePerfectLoop) {
-          setPipeline({ stage: 'optimizing-loops', message: 'Analyzing loop potential…', percent: 0 })
-          check()
-
-          for (let i = 0; i < clips.length; i++) {
-            const clip = clips[i]
-            const percent = Math.round(((i + 1) / clips.length) * 100)
-            setPipeline({
-              stage: 'optimizing-loops',
-              message: `Optimizing clip ${i + 1}/${clips.length}…`,
-              percent
-            })
-
-            try {
-              // Analyze loop potential via Gemini AI
-              const analysis = await window.api.analyzeLoopPotential(
-                settings.geminiApiKey,
-                transcriptionResult,
-                clip.startTime,
-                clip.endTime
-              )
-              check()
-
-              // Compute composite loop quality score
-              const loopScore = await window.api.scoreLoopQuality(analysis)
-
-              if (loopScore >= 50) {
-                // Optimize boundaries for seamless looping
-                const optimized = await window.api.optimizeForLoop(
-                  clip.startTime,
-                  clip.endTime,
-                  transcriptionResult,
-                  analysis
-                )
-
-                // Update clip boundaries if they changed
-                if (optimized.start !== clip.startTime || optimized.end !== clip.endTime) {
-                  updateClipTrim(source.id, clip.id, optimized.start, optimized.end)
-                  // Also update local reference for face detection step
-                  clips[i] = {
-                    ...clip,
-                    startTime: optimized.start,
-                    endTime: optimized.end,
-                    duration: optimized.end - optimized.start
-                  }
-                }
-
-                updateClipLoop(source.id, clip.id, {
-                  loopScore,
-                  loopStrategy: optimized.strategy,
-                  loopOptimized: optimized.start !== clip.startTime || optimized.end !== clip.endTime,
-                  crossfadeDuration: optimized.crossfadeDuration
-                })
-              } else {
-                // Score too low to optimize, but still store the score
-                updateClipLoop(source.id, clip.id, {
-                  loopScore,
-                  loopStrategy: analysis.strategy,
-                  loopOptimized: false
-                })
-              }
-            } catch (loopErr) {
-              // Non-fatal: log error but continue with original boundaries
-              const msg = loopErr instanceof Error ? loopErr.message : String(loopErr)
-              if (msg === 'Processing cancelled') throw loopErr
-              addError({ source: 'pipeline', message: `Loop optimization failed for clip ${i + 1}: ${msg}` })
-            }
-          }
-
-          setPipeline({ stage: 'optimizing-loops', message: 'Loop optimization complete', percent: 100 })
-        }
-
-        // ── Step 3.6: Variant Generation (conditional) ────────────────────────
-        if (processingConfig.enableVariants) {
-          setPipeline({ stage: 'generating-variants', message: 'Generating clip variants…', percent: 0 })
-          check()
-
-          for (let i = 0; i < clips.length; i++) {
-            const clip = clips[i]
-            const percent = Math.round(((i + 1) / clips.length) * 100)
-            setPipeline({
-              stage: 'generating-variants',
-              message: `Generating variants… ${i + 1}/${clips.length}`,
-              percent
-            })
-
-            try {
-              const variants = await window.api.generateClipVariants(
-                settings.geminiApiKey,
-                { startTime: clip.startTime, endTime: clip.endTime, score: clip.score, text: clip.text, hookText: clip.hookText, reasoning: clip.reasoning },
-                transcriptionResult,
-                { hookTitle: settings.hookTitleOverlay.enabled, rehook: settings.rehookOverlay.enabled, progressBar: settings.progressBarOverlay.enabled }
-              )
-              check()
-
-              const shortLabels = ['A', 'B', 'C', 'D', 'E']
-              const uiVariants = variants.map((v, idx) => ({
-                id: v.id,
-                label: v.label,
-                shortLabel: shortLabels[idx] || String.fromCharCode(65 + idx),
-                hookText: v.hookText || '',
-                startTime: v.startTime,
-                endTime: v.endTime,
-                overlays: v.overlays.map((o) => o.type),
-                captionStyle: v.captionStyle !== 'default' ? v.captionStyle : undefined,
-                description: v.description,
-                status: 'pending' as const
-              }))
-
-              setClipVariants(source.id, clip.id, uiVariants)
-            } catch (variantErr) {
-              const msg = variantErr instanceof Error ? variantErr.message : String(variantErr)
-              if (msg === 'Processing cancelled') throw variantErr
-              addError({ source: 'pipeline', message: `Variant generation failed for clip ${i + 1}: ${msg}` })
-            }
-          }
-
-          setPipeline({ stage: 'generating-variants', message: 'Variant generation complete', percent: 100 })
-        }
-
-        // ── Step 3.7: Clip Stitching (conditional) ────────────────────────────
-        if (processingConfig.enableClipStitching) {
-          setPipeline({ stage: 'stitching', message: 'AI is composing stitched clips…', percent: 0 })
-          check()
-
-          const unsubStitch = window.api.onStitchingProgress(({ stage, message }) => {
-            const stagePercents: Record<string, number> = {
-              analyzing: 20,
-              composing: 60,
-              validating: 90
-            }
-            setPipeline({
-              stage: 'stitching',
-              message,
-              percent: stagePercents[stage] ?? 50
-            })
-          })
-
-          try {
-            const stitchResult = await window.api.generateStitchedClips(
-              settings.geminiApiKey,
-              formattedForAI,
-              source.duration,
-              transcriptionResult.words
-            )
-            check()
-
-            if (stitchResult.clips.length > 0) {
-              const stitchedCandidates = stitchResult.clips.map((clip) => ({
-                id: clip.id,
-                sourceId: source.id,
-                segments: clip.segments.map((s) => ({
-                  startTime: s.startTime,
-                  endTime: s.endTime,
-                  text: s.text,
-                  role: s.role as 'hook' | 'context' | 'payoff' | 'rehook' | 'bridge'
-                })),
-                totalDuration: clip.totalDuration,
-                narrative: clip.narrative,
-                hookText: clip.hookText,
-                score: clip.score,
-                reasoning: clip.reasoning,
-                status: 'pending' as const
-              }))
-              setStitchedClips(source.id, stitchedCandidates)
-            }
-
-            setPipeline({ stage: 'stitching', message: `Found ${stitchResult.clips.length} stitched clips`, percent: 100 })
-          } catch (stitchErr) {
-            const msg = stitchErr instanceof Error ? stitchErr.message : String(stitchErr)
-            if (msg === 'Processing cancelled') throw stitchErr
-            addError({ source: 'pipeline', message: `Clip stitching failed: ${msg}` })
-          } finally {
-            unsubStitch()
-          }
-        }
-
-        // ── Step 4: Face detection ────────────────────────────────────────────
-        setPipeline({ stage: 'detecting-faces', message: 'Starting face detection…', percent: 0 })
-        check()
-
-        const segments = clips.map((c) => ({ start: c.startTime, end: c.endTime }))
-
-        const unsubFace = window.api.onFaceDetectionProgress(({ segment, total }) => {
-          const percent = total > 0 ? Math.round((segment / total) * 100) : 0
-          setPipeline({
-            stage: 'detecting-faces',
-            message: `Detecting faces… ${segment}/${total}`,
-            percent
-          })
-        })
-
-        let cropRegions
-        try {
-          cropRegions = await window.api.detectFaceCrops(sourcePath, segments)
-        } finally {
-          unsubFace()
-        }
-        check()
-
-        // Apply crop regions to clips
-        cropRegions.forEach((crop, index) => {
-          if (index < clips.length) {
-            updateClipCrop(source.id, clips[index].id, crop)
-          }
-        })
-
-        // ── Step 5: Story Arc Detection (conditional) ─────────────────────────
-        if (processingConfig.enableMultiPart) {
-          setPipeline({ stage: 'detecting-arcs', message: 'Analyzing narrative structure…', percent: 0 })
-          check()
-
-          try {
-            // Build clip data for the story arc detector
-            const clipData = clips.map((c) => ({
-              startTime: c.startTime,
-              endTime: c.endTime,
-              score: c.score,
-              text: c.text,
-              hookText: c.hookText,
-              reasoning: c.reasoning
-            }))
-
-            const arcs = await window.api.detectStoryArcs(
-              settings.geminiApiKey,
-              transcriptionResult,
-              clipData
-            )
-            check()
-
-            if (arcs.length > 0) {
-              // Map arcs to store format and assign part info to clips
-              const storyArcData = arcs.map((arc, arcIndex) => {
-                setPipeline({
-                  stage: 'detecting-arcs',
-                  message: `Processing arc ${arcIndex + 1}/${arcs.length}: ${arc.title}`,
-                  percent: Math.round(((arcIndex + 1) / arcs.length) * 100)
-                })
-
-                // Generate series metadata (part numbers, titles, end-card text)
-                // generateSeriesMetadata is a sync function on the main process
-                // but exposed as async via IPC
-                const arcClipIds: string[] = []
-
-                // Match returned arc clips to our local clips by startTime
-                for (const arcClip of arc.clips) {
-                  const match = clips.find(
-                    (c) =>
-                      Math.abs(c.startTime - arcClip.startTime) < 1 &&
-                      Math.abs(c.endTime - arcClip.endTime) < 1
-                  )
-                  if (match) arcClipIds.push(match.id)
-                }
-
-                return {
-                  id: arc.id,
-                  title: arc.title,
-                  clipIds: arcClipIds,
-                  narrativeDescription: arc.narrativeDescription
-                }
-              })
-
-              setStoryArcs(source.id, storyArcData)
-
-              // Now generate series metadata and assign part info per arc
-              for (const arcData of storyArcData) {
-                if (arcData.clipIds.length < 2) continue
-
-                try {
-                  // Find the original arc object to pass to generateSeriesMetadata
-                  const originalArc = arcs.find((a) => a.id === arcData.id)
-                  if (!originalArc) continue
-
-                  const metadata = await window.api.generateSeriesMetadata(originalArc)
-
-                  // Assign part info to each clip in the arc
-                  arcData.clipIds.forEach((clipId, partIndex) => {
-                    if (partIndex < metadata.parts.length) {
-                      const part = metadata.parts[partIndex]
-                      setClipPartInfo(source.id, clipId, {
-                        arcId: arcData.id,
-                        partNumber: part.partNumber,
-                        totalParts: part.totalParts,
-                        partTitle: part.title,
-                        endCardText: part.endCardText
-                      })
-                    }
-                  })
-                } catch (metaErr) {
-                  const msg = metaErr instanceof Error ? metaErr.message : String(metaErr)
-                  if (msg === 'Processing cancelled') throw metaErr
-                  addError({ source: 'pipeline', message: `Series metadata failed for "${arcData.title}": ${msg}` })
-                }
-              }
-            }
-
-            setPipeline({ stage: 'detecting-arcs', message: `Found ${arcs.length} story arc${arcs.length !== 1 ? 's' : ''}`, percent: 100 })
-          } catch (arcErr) {
-            const msg = arcErr instanceof Error ? arcErr.message : String(arcErr)
-            if (msg === 'Processing cancelled') throw arcErr
-            addError({ source: 'pipeline', message: `Story arc detection failed: ${msg}` })
-          }
-        }
-
-        // ── Done ─────────────────────────────────────────────────────────────
-        setPipeline({ stage: 'ready', message: `Found ${clips.length} clip candidates`, percent: 100 })
-
-        // Send OS notification when pipeline finishes (only when window is not focused)
-        if (useStore.getState().settings.enableNotifications && !document.hasFocus()) {
-          const maxScore = clips.length > 0 ? Math.max(...clips.map((c) => c.score)) : 0
-          window.api.sendNotification({
-            title: 'Processing Complete',
-            body: `Found ${clips.length} clips with scores up to ${maxScore}`
-          })
-        }
-
-        // ── Auto Mode ────────────────────────────────────────────────────────
-        const { autoMode, approveClipsAboveScore, setAutoModeResult } = useStore.getState()
-        if (autoMode.enabled && !_autoModeRanForSource.has(source.id)) {
-          _autoModeRanForSource.add(source.id)
-          const { approved, rejected } = approveClipsAboveScore(source.id, autoMode.approveThreshold)
-          console.log(
-            `[Auto-mode] Approved ${approved} clip${approved !== 1 ? 's' : ''}, ` +
-            `rejected ${rejected} — score threshold ≥ ${autoMode.approveThreshold}` +
-            (autoMode.autoRender && approved > 0 ? ', starting render…' : '')
-          )
-          setAutoModeResult({
-            sourceId: source.id,
-            approved,
-            threshold: autoMode.approveThreshold,
-            didRender: autoMode.autoRender && approved > 0
-          })
-        }
+        // Pipeline succeeded — clear the failed stage
+        clearPipelineCache()
       } catch (err) {
         if (cancelledRef.current) return
         const message = err instanceof Error ? err.message : String(err)
+        if (currentStage !== 'idle') {
+          setFailedPipelineStage(currentStage)
+        }
         setPipeline({ stage: 'error', message, percent: 0 })
         addError({ source: 'pipeline', message })
       }
     },
-    [setPipeline, setTranscription, setClips, updateClipCrop, updateClipLoop, updateClipTrim, addError, setClipVariants, setStitchedClips, setStoryArcs, setClipPartInfo, settings.geminiApiKey, processingConfig.targetDuration, processingConfig.enablePerfectLoop, processingConfig.enableVariants, processingConfig.enableClipStitching, processingConfig.enableMultiPart]
+    // Only stable Zustand action references are listed here.  Reactive values
+    // like settings and processingConfig are intentionally omitted — they are
+    // read imperatively via useStore.getState() at the start of each run so the
+    // callback always sees the latest values without re-creating on every edit.
+    [
+      setPipeline, setTranscription, setClips, updateClipCrop, updateClipLoop,
+      updateClipTrim, updateClipThumbnail, addError, setClipVariants,
+      setStitchedClips, setStoryArcs, setClipPartInfo, markStageCompleted,
+      setFailedPipelineStage, setCachedSourcePath, clearPipelineCache,
+      snapshotSettings
+    ]
   )
 
   const isProcessing = useCallback(() => {

@@ -85,6 +85,12 @@ export interface OverlayPassResult {
   name: string
   /** FFmpeg video filter string to apply */
   filter: string
+  /**
+   * When true, `filter` is a filter_complex string (must map [0:v] → [outv])
+   * instead of a simple -vf chain. Required for filters that need multiple
+   * inputs (e.g. color source + overlay for animated progress bar).
+   */
+  filterComplex?: boolean
 }
 
 /** Context passed to postProcess() */

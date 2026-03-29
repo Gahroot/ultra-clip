@@ -1,14 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import type { WordTimestamp } from '@shared/types'
 
 // ---------------------------------------------------------------------------
-// Types
+// Types (WordTimestamp canonical definition lives in @shared/types)
 // ---------------------------------------------------------------------------
 
-export interface WordTimestamp {
-  text: string
-  start: number
-  end: number
-}
+export type { WordTimestamp }
 
 export interface KeywordAtTimestamp {
   /** The visual keyword to search for on Pexels */

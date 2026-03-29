@@ -2,30 +2,11 @@ import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
 import { emitUsageFromResponse } from './ai-usage'
 
 // ---------------------------------------------------------------------------
-// Types
+// Types (canonical definitions live in @shared/types)
 // ---------------------------------------------------------------------------
 
-export type TargetDuration = 'auto' | '15-30' | '30-60' | '60-90' | '90-120'
-
-export interface ScoredSegment {
-  startTime: number  // seconds
-  endTime: number    // seconds
-  text: string       // transcript text for this segment
-  score: number      // 0-100 viral potential score
-  hookText: string   // suggested hook/title text for the clip
-  reasoning: string  // why this segment is viral-worthy
-}
-
-export interface ScoringResult {
-  segments: ScoredSegment[]
-  summary: string
-  keyTopics: string[]
-}
-
-export interface ScoringProgress {
-  stage: 'sending' | 'analyzing' | 'validating'
-  message: string
-}
+import type { TargetDuration, ScoredSegment, ScoringResult, ScoringProgress } from '@shared/types'
+export type { TargetDuration, ScoredSegment, ScoringResult, ScoringProgress }
 
 // ---------------------------------------------------------------------------
 // System prompt

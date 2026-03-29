@@ -8,6 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { BrowserWindow } from 'electron'
+import { Ch } from '@shared/ipc-channels'
 import { basename, dirname, extname } from 'path'
 import { existsSync, mkdirSync, unlinkSync } from 'fs'
 import type { FfmpegCommand } from 'fluent-ffmpeg'
@@ -170,7 +171,7 @@ export async function startBatchRender(
       mkdirSync(clipOutputDir, { recursive: true })
     }
 
-    window.webContents.send('render:clipStart', {
+    window.webContents.send(Ch.Send.RENDER_CLIP_START, {
       clipId: job.clipId,
       index: i,
       total,
@@ -225,14 +226,14 @@ export async function startBatchRender(
 
         await renderStitchedClip(stitchedJob, outputPath, (percent) => {
           if (!cancelRequested) {
-            window.webContents.send('render:clipProgress', { clipId: job.clipId, percent })
+            window.webContents.send(Ch.Send.RENDER_CLIP_PROGRESS, { clipId: job.clipId, percent })
           }
         })
 
         manifestResults.set(job.clipId, outputPath)
         manifestRenderTimes.set(job.clipId, Date.now() - clipStartTime)
         completed++
-        window.webContents.send('render:clipDone', { clipId: job.clipId, outputPath })
+        window.webContents.send(Ch.Send.RENDER_CLIP_DONE, { clipId: job.clipId, outputPath })
         return
       }
 
@@ -334,14 +335,14 @@ export async function startBatchRender(
         videoFilter,
         (percent) => {
           if (!cancelRequested) {
-            window.webContents.send('render:clipProgress', { clipId: job.clipId, percent })
+            window.webContents.send(Ch.Send.RENDER_CLIP_PROGRESS, { clipId: job.clipId, percent })
           }
         },
         (cmd) => {
           capturedCommand = cmd
           if (options.developerMode) {
             console.log(`[DevMode] Clip ${job.clipId} FFmpeg:`, cmd)
-            window.webContents.send('render:clipError', {
+            window.webContents.send(Ch.Send.RENDER_CLIP_ERROR, {
               clipId: `${job.clipId}__devmode`,
               error: `[DevMode] FFmpeg command for clip ${job.clipId}`,
               ffmpegCommand: cmd
@@ -384,7 +385,7 @@ export async function startBatchRender(
       manifestResults.set(job.clipId, outputPath)
       manifestRenderTimes.set(job.clipId, Date.now() - clipStartTime)
       completed++
-      window.webContents.send('render:clipDone', { clipId: job.clipId, outputPath })
+      window.webContents.send(Ch.Send.RENDER_CLIP_DONE, { clipId: job.clipId, outputPath })
     } catch (err) {
       // Clean up partial output file on failure
       try {
@@ -399,7 +400,7 @@ export async function startBatchRender(
       manifestRenderTimes.set(job.clipId, Date.now() - clipStartTime)
       failed++
       const message = err instanceof Error ? err.message : String(err)
-      window.webContents.send('render:clipError', {
+      window.webContents.send(Ch.Send.RENDER_CLIP_ERROR, {
         clipId: job.clipId,
         error: message,
         ffmpegCommand: capturedCommand
@@ -417,7 +418,7 @@ export async function startBatchRender(
     // Sequential path (no overhead)
     for (let i = 0; i < jobs.length; i++) {
       if (cancelRequested) {
-        window.webContents.send('render:cancelled', { completed, failed, total })
+        window.webContents.send(Ch.Send.RENDER_CANCELLED, { completed, failed, total })
         return
       }
       await processJob(jobs[i], i)
@@ -439,7 +440,7 @@ export async function startBatchRender(
     await Promise.all(Array.from({ length: effectiveConcurrency }, worker))
 
     if (cancelRequested) {
-      window.webContents.send('render:cancelled', { completed, failed, total })
+      window.webContents.send(Ch.Send.RENDER_CANCELLED, { completed, failed, total })
       return
     }
   }
@@ -477,5 +478,5 @@ export async function startBatchRender(
     }
   }
 
-  window.webContents.send('render:batchDone', { completed, failed, total })
+  window.webContents.send(Ch.Send.RENDER_BATCH_DONE, { completed, failed, total })
 }

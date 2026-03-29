@@ -233,16 +233,32 @@ export function createFillerRemovalFeature(): RenderFeature {
             )
             if (remapped.length > 0) {
               const arCfg = ASPECT_RATIO_CONFIGS[batchOptions.outputAspectRatio ?? '9:16']
+
+              // Respect template layout subtitle position (same calc as captions.feature.ts)
+              const marginVOverride = batchOptions.templateLayout?.subtitles
+                ? Math.round((1 - batchOptions.templateLayout.subtitles.y / 100) * arCfg.height)
+                : undefined
+
               const newAssPath = await generateCaptions(
                 remapped,
                 batchOptions.captionStyle,
                 undefined,
                 arCfg.width,
-                arCfg.height
+                arCfg.height,
+                marginVOverride
               )
               console.log(`[FillerRemoval] Clip ${job.clipId}: captions re-synced → ${newAssPath}`)
               job.assFilePath = newAssPath
               tempFiles.push(newAssPath)
+
+              // Update word timestamps to remapped 0-based values so downstream
+              // features (captions.feature.ts) see words matching the new time range
+              // and don't silently skip or overwrite with wrong positioning.
+              job.wordTimestamps = remapped.map((w) => ({
+                text: w.text,
+                start: w.start,
+                end: w.end
+              }))
             }
           } catch (captionErr) {
             console.warn(`[FillerRemoval] Clip ${job.clipId}: caption re-sync failed:`, captionErr)

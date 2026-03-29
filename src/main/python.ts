@@ -8,6 +8,9 @@ import { getResolvedFfmpegPath } from './ffmpeg'
 
 const execFileAsync = promisify(execFile)
 
+/** Timeout for the quick Python import check (30 seconds). */
+const PYTHON_CHECK_TIMEOUT_MS = 30_000
+
 // ---------------------------------------------------------------------------
 // Path resolution
 // ---------------------------------------------------------------------------
@@ -204,7 +207,7 @@ export async function isPythonAvailable(): Promise<boolean> {
   try {
     // Quick import check for the two heavyweight packages
     await execFileAsync(pythonBin, ['-c', 'import nemo; import mediapipe; import yt_dlp'], {
-      timeout: 30_000,
+      timeout: PYTHON_CHECK_TIMEOUT_MS,
       env: { ...process.env, PYTHONUNBUFFERED: '1' }
     })
     console.log('[Python] Environment OK:', pythonBin)

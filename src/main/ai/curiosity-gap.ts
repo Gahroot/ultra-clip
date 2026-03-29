@@ -1,46 +1,11 @@
 import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
 import type { TranscriptionResult } from '../transcription'
 import { emitUsageFromResponse } from '../ai-usage'
+import type { CuriosityGap, ClipBoundary, CuriosityClipCandidate, ClipEndMode } from '@shared/types'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface CuriosityGap {
-  /** Timestamp (seconds) where the gap opens — question asked, story begins, claim made */
-  openTimestamp: number
-  /** Timestamp (seconds) where the gap resolves — answer given, payoff lands */
-  resolveTimestamp: number
-  /** Structural type of the curiosity trigger */
-  type: 'question' | 'story' | 'claim' | 'pivot' | 'tease'
-  /** Engagement strength 1–10 */
-  score: number
-  /** Human-readable explanation of what makes this moment compelling */
-  description: string
-}
-
-export interface ClipBoundary {
-  /** Adjusted clip start in seconds */
-  start: number
-  /** Adjusted clip end in seconds */
-  end: number
-  /** Short explanation of why the boundaries were chosen */
-  reason: string
-}
-
-export interface ClipCandidate {
-  startTime: number
-  endTime: number
-  /** Original virality score 0–100 */
-  score: number
-  text?: string
-  hookText?: string
-  reasoning?: string
-  /** Curiosity gap strength 1–10 injected by rankClipsByCuriosity */
-  curiosityScore?: number
-  /** Combined engagement rank score used for final ordering */
-  combinedScore?: number
-}
+// Re-export shared types for existing consumers + backward-compat alias
+export type { CuriosityGap, ClipBoundary, CuriosityClipCandidate }
+export type ClipCandidate = CuriosityClipCandidate
 
 // ---------------------------------------------------------------------------
 // System prompt
@@ -429,4 +394,257 @@ export function rankClipsByCuriosity(
   })
 
   return ranked
+}
+
+// ---------------------------------------------------------------------------
+// Clip End Mode — boundary optimization strategies
+// ---------------------------------------------------------------------------
+
+export type { ClipEndMode }
+
+/** Characters that signal the end of a sentence. */
+const SENTENCE_ENDINGS = /[.!?]$|\.{3}$/
+
+/**
+ * For "completion-first" mode — snaps clip boundaries so the clip starts and
+ * ends on complete sentence / thought boundaries.
+ *
+ * Strategy:
+ * - Walk backward from the last word to find a sentence-ending punctuation mark
+ *   or a word followed by a significant pause (> 0.7 s).
+ * - Walk forward from the first word to find the start of a sentence.
+ * - Enforces a minimum 5 s clip duration; falls back to original boundaries
+ *   when no suitable sentence boundary is found.
+ */
+export function snapToSentenceBoundary(
+  clipStart: number,
+  clipEnd: number,
+  transcript: TranscriptionResult
+): ClipBoundary {
+  const MIN_DURATION = 5
+  const PAUSE_THRESHOLD = 0.7
+  const END_BUFFER = 0.15
+
+  // Gather words within the clip window
+  const words = transcript.words.filter((w) => w.start >= clipStart && w.end <= clipEnd)
+
+  if (words.length === 0) {
+    return { start: clipStart, end: clipEnd, reason: 'No transcript words within clip — kept original boundaries' }
+  }
+
+  // --- Snap END to sentence boundary (walk backward) ---
+  let snappedEnd: number | null = null
+  let endReason = ''
+
+  for (let i = words.length - 1; i >= 0; i--) {
+    const trimmed = words[i].text.trimEnd()
+
+    // Check for sentence-ending punctuation
+    if (SENTENCE_ENDINGS.test(trimmed)) {
+      snappedEnd = words[i].end + END_BUFFER
+      endReason = `end snapped to sentence boundary ("${trimmed}")`
+      break
+    }
+
+    // Check for a significant pause after this word (natural thought boundary)
+    if (i < words.length - 1) {
+      const gapToNext = words[i + 1].start - words[i].end
+      if (gapToNext > PAUSE_THRESHOLD) {
+        snappedEnd = words[i].end + END_BUFFER
+        endReason = `end snapped to natural pause (${gapToNext.toFixed(1)}s gap)`
+        break
+      }
+    }
+  }
+
+  // --- Snap START to sentence boundary (walk forward) ---
+  let snappedStart: number | null = null
+  let startReason = ''
+
+  for (let i = 0; i < words.length; i++) {
+    // The very first word in the clip range is always a valid sentence start
+    if (i === 0) {
+      // Check if it's also the first word of the transcript or preceded by
+      // sentence-ending punctuation / pause. We'll accept it by default if
+      // nothing better is found later (but keep looking for a stronger signal).
+      const wordIndex = transcript.words.indexOf(words[i])
+
+      if (wordIndex <= 0) {
+        // First word in the transcript — valid sentence start
+        snappedStart = words[i].start
+        startReason = 'start at first transcript word'
+        break
+      }
+
+      const prevWord = transcript.words[wordIndex - 1]
+      const pauseBefore = words[i].start - prevWord.end
+      const prevTrimmed = prevWord.text.trimEnd()
+
+      if (SENTENCE_ENDINGS.test(prevTrimmed) || pauseBefore > PAUSE_THRESHOLD) {
+        snappedStart = words[i].start
+        startReason = 'start aligned to sentence beginning'
+        break
+      }
+
+      // Not a clear sentence start — keep searching forward
+      continue
+    }
+
+    // For subsequent words: check if the previous word ends a sentence or has a pause
+    const prevWord = words[i - 1]
+    const prevTrimmed = prevWord.text.trimEnd()
+    const pauseBefore = words[i].start - prevWord.end
+
+    if (SENTENCE_ENDINGS.test(prevTrimmed) || pauseBefore > PAUSE_THRESHOLD) {
+      snappedStart = words[i].start
+      startReason = 'start snapped forward to sentence beginning'
+      break
+    }
+  }
+
+  // Fall back if no boundaries found
+  if (snappedStart === null) {
+    snappedStart = clipStart
+    startReason = 'start kept at original (no clear sentence boundary found)'
+  }
+  if (snappedEnd === null) {
+    return {
+      start: clipStart,
+      end: clipEnd,
+      reason: 'No sentence boundary found near clip end — kept original boundaries'
+    }
+  }
+
+  // Enforce minimum duration
+  if (snappedEnd - snappedStart < MIN_DURATION) {
+    return {
+      start: clipStart,
+      end: clipEnd,
+      reason: 'Sentence-snapped clip too short (< 5s) — kept original boundaries'
+    }
+  }
+
+  return {
+    start: snappedStart,
+    end: snappedEnd,
+    reason: `Completion-first: ${startReason}; ${endReason}`
+  }
+}
+
+/**
+ * For "cliffhanger" mode — ends the clip at peak tension, roughly 30 % into the
+ * curiosity gap, BEFORE the resolution lands.
+ *
+ * Strategy:
+ * - Target end ≈ openTimestamp + 30 % of (resolve − open), snapped forward to
+ *   the nearest word boundary but never past resolveTimestamp − 2 s.
+ * - Start ≈ openTimestamp − 3 s, snapped backward to the nearest word boundary.
+ * - Everything clamped within [clipStart, clipEnd].
+ * - Minimum 5 s clip duration enforced.
+ */
+export function optimizeForCliffhanger(
+  gap: CuriosityGap,
+  clipStart: number,
+  clipEnd: number,
+  transcript: TranscriptionResult
+): ClipBoundary {
+  const MIN_DURATION = 5
+  const TENSION_RATIO = 0.3
+  const CONTEXT_BEFORE = 3
+  const RESOLVE_GUARD = 2
+
+  const gapSpan = gap.resolveTimestamp - gap.openTimestamp
+  const rawTargetEnd = gap.openTimestamp + gapSpan * TENSION_RATIO
+  const maxEnd = gap.resolveTimestamp - RESOLVE_GUARD
+
+  // Snap target end forward to the nearest word boundary (word.end >= targetEnd)
+  let targetEnd = Math.min(rawTargetEnd, maxEnd)
+  let endWord: { text: string; end: number } | null = null
+
+  for (const w of transcript.words) {
+    if (w.end >= targetEnd) {
+      // Don't overshoot past the resolve guard
+      if (w.end <= maxEnd) {
+        targetEnd = w.end
+        endWord = w
+      }
+      break
+    }
+  }
+
+  // Snap start backward to the nearest word boundary
+  const rawTargetStart = gap.openTimestamp - CONTEXT_BEFORE
+  let targetStart = rawTargetStart
+
+  if (transcript.words.length > 0) {
+    const wordsBefore = transcript.words.filter((w) => w.start <= rawTargetStart)
+    if (wordsBefore.length > 0) {
+      targetStart = wordsBefore[wordsBefore.length - 1].start
+    } else {
+      targetStart = transcript.words[0].start
+    }
+  }
+
+  // Clamp within original clip boundaries
+  const clampedStart = Math.max(clipStart, targetStart)
+  const clampedEnd = Math.min(clipEnd, targetEnd)
+
+  // Safety: ensure valid range
+  const finalStart = clampedStart < clampedEnd ? clampedStart : clipStart
+  const finalEnd = clampedStart < clampedEnd ? clampedEnd : clipEnd
+
+  // Enforce minimum duration — fall back to original boundaries
+  if (finalEnd - finalStart < MIN_DURATION) {
+    return {
+      start: clipStart,
+      end: clipEnd,
+      reason: 'Cliffhanger cut too short (< 5s) — kept original boundaries'
+    }
+  }
+
+  const endDesc = endWord
+    ? `end cut at "${endWord.text}" (~${Math.round(TENSION_RATIO * 100)}% into gap)`
+    : `end cut ~${Math.round(TENSION_RATIO * 100)}% into gap`
+
+  return {
+    start: finalStart,
+    end: finalEnd,
+    reason: `Cliffhanger: ${endDesc}, before resolution at ${gap.resolveTimestamp.toFixed(1)}s — peak tension, viewer must seek the full video`
+  }
+}
+
+/**
+ * Convenience dispatcher — selects the right boundary-optimization strategy
+ * based on the chosen clip-end mode.
+ *
+ * - `loop-first`: No adjustment (loop optimiser handles it).
+ * - `completion-first`: Snap to sentence endings via {@link snapToSentenceBoundary}.
+ * - `cliffhanger`: Cut at peak tension via {@link optimizeForCliffhanger};
+ *   falls back to `completion-first` when no gap is provided.
+ */
+export function optimizeClipEndpoints(
+  mode: ClipEndMode,
+  clipStart: number,
+  clipEnd: number,
+  transcript: TranscriptionResult,
+  gap?: CuriosityGap
+): ClipBoundary {
+  switch (mode) {
+    case 'completion-first':
+      return snapToSentenceBoundary(clipStart, clipEnd, transcript)
+
+    case 'cliffhanger':
+      if (gap) {
+        return optimizeForCliffhanger(gap, clipStart, clipEnd, transcript)
+      }
+      // No gap available — best-effort fallback to sentence boundary
+      return snapToSentenceBoundary(clipStart, clipEnd, transcript)
+
+    case 'loop-first':
+      return {
+        start: clipStart,
+        end: clipEnd,
+        reason: 'Loop-first mode — boundaries handled by loop optimizer'
+      }
+  }
 }

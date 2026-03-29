@@ -253,11 +253,29 @@ def main() -> None:
         write_output(args.output, {"error": f"Failed to load model: {e}"})
         sys.exit(1)
 
+    # Report device info and move model to GPU if available
+    import torch
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A'
+    emit_progress("loading-model", f"Model loaded on {device.upper()}" + (f" ({gpu_name})" if device == 'cuda' else " (no CUDA available)"))
+
+    # Move model to GPU if available
+    if torch.cuda.is_available():
+        try:
+            asr_model = asr_model.cuda()
+            emit_progress("loading-model", f"Model moved to GPU: {gpu_name}")
+        except Exception as e:
+            emit_progress("loading-model", f"GPU move failed, using CPU: {e}")
+
     # Signal that model is loaded (after potential download)
     emit({"type": "progress", "stage": "loading-model",
           "message": f"Model loaded successfully"})
 
     duration_sec = get_audio_duration_seconds(args.input)
+    if torch.cuda.is_available():
+        emit_progress("transcribing", f"Transcribing on GPU ({torch.cuda.get_device_name(0)})...")
+    else:
+        emit_progress("transcribing", f"Transcribing on CPU (install CUDA PyTorch for 10-50x speedup)...")
     emit_progress("transcribing", f"Transcribing audio ({duration_sec/60:.1f} min)...")
 
     try:

@@ -1,4 +1,5 @@
 import { useRef, useCallback, useMemo } from 'react'
+import { MAX_ETA_HISTORY } from '@shared/constants'
 
 interface ETAResult {
   /** Estimated seconds remaining, or null if not enough data */
@@ -13,8 +14,6 @@ interface DataPoint {
   time: number
   progress: number
 }
-
-const MAX_HISTORY = 10
 
 function formatDuration(seconds: number): string {
   if (seconds < 1) return '< 1s'
@@ -64,8 +63,8 @@ export function useETA(): {
     const last = history[history.length - 1]
     if (!last || last.progress !== progress) {
       history.push({ time: now, progress })
-      // Keep only last MAX_HISTORY entries
-      if (history.length > MAX_HISTORY) {
+      // Keep only last MAX_ETA_HISTORY entries
+      if (history.length > MAX_ETA_HISTORY) {
         history.shift()
       }
     }

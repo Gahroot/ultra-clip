@@ -438,6 +438,82 @@ function buildWordBoxLines(
   return lines
 }
 
+/**
+ * Elastic bounce: each word starts invisible and oversized, then snaps in with
+ * a playful spring overshoot — like it's tossed onto the screen and bounces
+ * into place. Emphasis words bounce harder (bigger initial scale and wider
+ * oscillation), supersize words are even more dramatic.
+ *
+ * The elastic curve is modeled as a series of \t() keyframes:
+ *   0 → t1  : invisible + oversized → visible + undershoot (shrink past 100%)
+ *   t1 → t2 : undershoot → slight overshoot
+ *   t2 → t3 : slight overshoot → settle at 100%
+ */
+function buildElasticBounceLines(
+  group: WordGroup,
+  style: CaptionStyleInput,
+  baseFontSize: number
+): string[] {
+  const lines: string[] = []
+  const highlightASS = hexToASS(style.highlightColor)
+  const primaryASS = hexToASS(style.primaryColor)
+
+  const start = formatASSTime(group.start)
+  const end = formatASSTime(group.end)
+
+  const parts = group.words.map((w, idx) => {
+    const wordStart = Math.round((w.start - group.start) * 100)
+    const wordDur = Math.round((w.end - w.start) * 100)
+    const isLast = idx === group.words.length - 1
+
+    const emp = buildEmphasisTags(w, style, baseFontSize)
+    const level = w.emphasis ?? 'normal'
+
+    // Elastic parameters per emphasis level
+    // initialScale: how big the word starts (oversized, invisible)
+    // undershoot:   how small it bounces past 100% on the way down
+    // overshoot:    slight bounce back above 100%
+    const params =
+      level === 'supersize'
+        ? { initial: 180, undershoot: 88, overshoot: 108, totalCs: 24 }
+        : level === 'emphasis'
+          ? { initial: 155, undershoot: 91, overshoot: 106, totalCs: 20 }
+          : { initial: 135, undershoot: 93, overshoot: 104, totalCs: 16 }
+
+    // Clamp total elastic duration to word duration
+    const total = Math.min(params.totalCs, wordDur)
+
+    // Phase timing (fractions of total elastic duration)
+    const t1 = Math.round(total * 0.40) // snap-in phase (biggest motion)
+    const t2 = Math.round(total * 0.70) // undershoot → overshoot
+    const t3 = total                      // overshoot → settle
+
+    // Color animation: highlight while active, reset after (skip for emphasis/supersize)
+    const activeColor = level !== 'normal' ? '' : `\\t(${wordStart},${wordStart + wordDur},\\1c${highlightASS})`
+    const resetColor = level !== 'normal' ? '' : `\\t(${wordStart + wordDur},${wordStart + wordDur},\\1c${primaryASS})`
+
+    const suffix = isLast ? '' : ' '
+
+    return (
+      `{${emp.prefix}` +
+      // Initial state: invisible + oversized
+      `\\alpha&HFF&\\fscx${params.initial}\\fscy${params.initial}` +
+      // Phase 1: snap in — become visible + shrink to undershoot
+      `\\t(${wordStart},${wordStart + t1},\\alpha&H00&\\fscx${params.undershoot}\\fscy${params.undershoot})` +
+      // Phase 2: bounce up from undershoot to slight overshoot
+      `\\t(${wordStart + t1},${wordStart + t2},\\fscx${params.overshoot}\\fscy${params.overshoot})` +
+      // Phase 3: settle to 100%
+      `\\t(${wordStart + t2},${wordStart + t3},\\fscx100\\fscy100)` +
+      `${activeColor}` +
+      `${resetColor}}` +
+      `${w.text}${emp.suffix ? `{${emp.suffix}}` : ''}${suffix}`
+    )
+  })
+
+  lines.push(`Dialogue: 0,${start},${end},Default,,0,0,0,,${parts.join('')}`)
+  return lines
+}
+
 // ---------------------------------------------------------------------------
 // ASS document generator
 // ---------------------------------------------------------------------------
@@ -502,6 +578,9 @@ function buildASSDocument(
         dialogueLines.push(
           ...buildWordBoxLines(group, style, fontSize, frameWidth, frameHeight, marginV)
         )
+        break
+      case 'elastic-bounce':
+        dialogueLines.push(...buildElasticBounceLines(group, style, fontSize))
         break
     }
   }

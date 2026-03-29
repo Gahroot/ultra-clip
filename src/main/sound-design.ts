@@ -1,10 +1,13 @@
 import { join } from 'path'
 import { app } from 'electron'
 import { existsSync } from 'fs'
+import type { MusicTrack, WordTimestamp } from '@shared/types'
 
 // ---------------------------------------------------------------------------
-// Types
+// Types (MusicTrack canonical definition lives in @shared/types)
 // ---------------------------------------------------------------------------
+
+export type { MusicTrack }
 
 export type SFXType =
   | 'whoosh-soft'
@@ -13,8 +16,6 @@ export type SFXType =
   | 'impact-high'
   | 'rise-tension'
   | 'notification-pop'
-
-export type MusicTrack = 'ambient-tech' | 'ambient-motivational' | 'ambient-chill'
 
 export interface SoundPlacementData {
   type: 'sfx' | 'music'
@@ -31,11 +32,8 @@ export interface SoundDesignOptions {
   musicVolume: number // 0–1
 }
 
-export interface WordTimestampInput {
-  text: string
-  start: number
-  end: number
-}
+/** @deprecated Use WordTimestamp from @shared/types instead */
+export type WordTimestampInput = WordTimestamp
 
 // ---------------------------------------------------------------------------
 // Path resolution

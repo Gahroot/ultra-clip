@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { join } from 'path'
-import { unlinkSync, writeFileSync } from 'fs'
+import { unlinkSync, writeFileSync, renameSync } from 'fs'
 import { tmpdir } from 'os'
 import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, getVideoMetadata } from '../ffmpeg'
 import type { RenderStitchedClipJob } from './types'
@@ -368,9 +368,8 @@ export async function renderStitchedClip(
         function runSegmentEncode(enc: string, flags: string[]): void {
           const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
 
-          if (enc === 'h264_nvenc') {
-            cmd.inputOptions(['-hwaccel', 'auto'])
-          }
+          // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
+          cmd.inputOptions(['-hwaccel', 'auto'])
 
           cmd
             .seekInput(seg.startTime)
@@ -456,7 +455,6 @@ export async function renderStitchedClip(
         onProgress(95)
       } else if (concatOutputPath !== outputPath) {
         // No filter needed — just rename
-        const { renameSync } = await import('fs')
         renameSync(concatOutputPath, outputPath)
       }
     }

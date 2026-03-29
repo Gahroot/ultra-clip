@@ -9,7 +9,11 @@ import type { RenderClipJob, RenderBatchOptions } from '../types'
 /**
  * Renders an animated thin bar (top or bottom of frame) that fills left→right
  * over the clip duration, exploiting the "completion commitment" psychological
- * effect. Uses FFmpeg's `drawbox` filter — no temp files needed.
+ * effect.
+ *
+ * Uses a filter_complex approach: color source → crop (per-frame animated
+ * width) → overlay. The crop filter evaluates its width expression every
+ * frame using the `t` (PTS) variable, which drawbox does NOT do in FFmpeg ≤6.x.
  */
 export const progressBarFeature: RenderFeature = {
   name: 'progress-bar',
@@ -42,9 +46,14 @@ export const progressBarFeature: RenderFeature = {
   ): OverlayPassResult | null {
     if (!job.progressBarConfig?.enabled) return null
 
-    const barFilter = buildProgressBarFilter(context.clipDuration, job.progressBarConfig)
+    const barFilter = buildProgressBarFilter(
+      context.clipDuration,
+      job.progressBarConfig,
+      context.targetWidth,
+      context.targetHeight
+    )
     if (!barFilter) return null
 
-    return { name: 'progress-bar', filter: barFilter }
+    return { name: 'progress-bar', filter: barFilter, filterComplex: true }
   }
 }

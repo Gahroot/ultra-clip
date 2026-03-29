@@ -104,7 +104,7 @@ export function buildOutputPath(
     return join(outputDirectory, `${base}${ext}`)
   }
   const srcBase = basename(job.sourceVideoPath, extname(job.sourceVideoPath))
-  const template = filenameTemplate ?? '{source}_clip{index}_{score}'
+  const template = filenameTemplate ?? DEFAULT_FILENAME_TEMPLATE
   const name = resolveFilenameTemplate(template, {
     source: srcBase,
     index: index + 1,

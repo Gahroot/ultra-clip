@@ -11,7 +11,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { unlinkSync, renameSync } from 'fs'
 import type { FfmpegCommand } from 'fluent-ffmpeg'
-import { ffmpeg, getSoftwareEncoder, isGpuSessionError } from '../ffmpeg'
+import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError } from '../ffmpeg'
 import { toFFmpegPath } from './helpers'
 import type { OverlayPassResult } from './features/feature'
 
@@ -43,10 +43,15 @@ export function applyFilterPass(
   videoFilter: string
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const { encoder, presetFlag } = getSoftwareEncoder({ crf: 15, preset: 'ultrafast' })
+    const { encoder, presetFlag } = getEncoder({ crf: 15, preset: 'ultrafast' })
 
     function runPass(enc: string, flags: string[]): void {
       const cmd = ffmpeg(toFFmpegPath(inputPath))
+
+      // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
+      cmd.inputOptions(['-hwaccel', 'auto'])
+
+      cmd
         .videoFilters(videoFilter)
         .outputOptions([
           '-c:v',
@@ -60,6 +65,62 @@ export function applyFilterPass(
         ])
         .on('start', (cmdLine: string) => {
           console.log(`[Overlay] FFmpeg command: ${cmdLine}`)
+        })
+        .on('end', () => resolve())
+        .on('error', (err: Error) => {
+          if (isGpuSessionError(err.message)) {
+            const sw = getSoftwareEncoder({ crf: 15, preset: 'ultrafast' })
+            runPass(sw.encoder, sw.presetFlag)
+          } else {
+            reject(err)
+          }
+        })
+        .save(toFFmpegPath(outputPath))
+
+      activeCommands.add(cmd)
+      cmd.on('end', () => activeCommands.delete(cmd))
+      cmd.on('error', () => activeCommands.delete(cmd))
+    }
+
+    runPass(encoder, presetFlag)
+  })
+}
+
+/**
+ * Run a single FFmpeg filter_complex pass: read inputPath, apply a
+ * filter_complex that maps [0:v] → [outv], write to outputPath.
+ *
+ * Used for overlays that need multiple filter inputs (e.g. animated
+ * progress bar using color source + crop + overlay). Audio is
+ * stream-copied from input 0.
+ */
+export function applyFilterComplexPass(
+  inputPath: string,
+  outputPath: string,
+  filterComplex: string
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const { encoder, presetFlag } = getEncoder({ crf: 15, preset: 'ultrafast' })
+
+    function runPass(enc: string, flags: string[]): void {
+      const cmd = ffmpeg(toFFmpegPath(inputPath))
+
+      // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
+      cmd.inputOptions(['-hwaccel', 'auto'])
+
+      cmd
+        .outputOptions([
+          '-filter_complex', filterComplex,
+          '-map', '[outv]',
+          '-map', '0:a',
+          '-c:v', enc,
+          ...flags,
+          '-c:a', 'copy',
+          '-movflags', '+faststart',
+          '-y'
+        ])
+        .on('start', (cmdLine: string) => {
+          console.log(`[Overlay] FFmpeg filter_complex command: ${cmdLine}`)
         })
         .on('end', () => resolve())
         .on('error', (err: Error) => {
@@ -127,7 +188,11 @@ export async function runOverlayPasses(
       const tempOut = join(tmpdir(), `batchcontent-${step.name}-${Date.now()}.mp4`)
       console.log(`[Overlay] Applying ${step.name} pass`)
 
-      await applyFilterPass(currentPath, tempOut, step.filter)
+      if (step.filterComplex) {
+        await applyFilterComplexPass(currentPath, tempOut, step.filter)
+      } else {
+        await applyFilterPass(currentPath, tempOut, step.filter)
+      }
 
       // Queue previous intermediate for cleanup (but not the original input)
       if (currentPath !== inputPath) {

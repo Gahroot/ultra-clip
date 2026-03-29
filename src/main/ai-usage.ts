@@ -7,6 +7,7 @@
  */
 
 import type { WebContents } from 'electron'
+import { Ch } from '@shared/ipc-channels'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,7 +44,7 @@ export function setUsageWebContents(wc: WebContents): void {
 export function reportTokenUsage(event: TokenUsageEvent): void {
   if (!_webContents || _webContents.isDestroyed()) return
   try {
-    _webContents.send('ai:tokenUsage', event)
+    _webContents.send(Ch.Send.AI_TOKEN_USAGE, event)
   } catch {
     // Renderer may have been destroyed; ignore
   }

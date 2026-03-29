@@ -19,6 +19,7 @@ import {
   getEncoder,
   getSoftwareEncoder,
   isGpuSessionError,
+  hasScaleCuda,
   type QualityParams
 } from '../ffmpeg'
 import { computeCenterCropForRatio } from '../aspect-ratios'
@@ -77,9 +78,24 @@ export function buildVideoFilter(
     cropFilter = `crop=${width}:${height}:${x}:${y}`
   }
 
-  const scaleFilter = `scale=${outW}:${outH}`
+  // GPU scale is only used for the base crop+scale. Feature video filters
+  // (auto-zoom, etc.) that append to this string will work because
+  // hwdownload+format=nv12 at the end returns frames to CPU format that
+  // subsequent filters can process.
+  //
+  // Since we use `-hwaccel auto` (not `-hwaccel_output_format cuda`), decoded
+  // frames arrive in CPU memory. The pipeline is therefore:
+  //   crop (CPU) → hwupload_cuda → scale_cuda (GPU) → hwdownload → format=nv12
+  const useGpuScale = hasScaleCuda()
 
-  return `${cropFilter},${scaleFilter}`
+  if (useGpuScale) {
+    // Hybrid pipeline: CPU crop → upload to GPU → GPU scale → download back
+    const scaleFilter = `hwupload_cuda,scale_cuda=${outW}:${outH}:interp_algo=lanczos,hwdownload,format=nv12`
+    return `${cropFilter},${scaleFilter}`
+  } else {
+    const scaleFilter = `scale=${outW}:${outH}`
+    return `${cropFilter},${scaleFilter}`
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -172,10 +188,8 @@ export function renderClip(
         function runWithSoundEncoder(enc: string, flags: string[]): FfmpegCommand {
           const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
 
-          // Enable hardware-accelerated decoding when using NVENC
-          if (enc === 'h264_nvenc') {
-            cmd.inputOptions(['-hwaccel', 'auto'])
-          }
+          // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
+          cmd.inputOptions(['-hwaccel', 'auto'])
 
           cmd
             .seekInput(job.startTime)
@@ -251,10 +265,8 @@ export function renderClip(
         function runWithLogoEncoder(enc: string, flags: string[]): FfmpegCommand {
           const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
 
-          // Enable hardware-accelerated decoding when using NVENC
-          if (enc === 'h264_nvenc') {
-            cmd.inputOptions(['-hwaccel', 'auto'])
-          }
+          // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
+          cmd.inputOptions(['-hwaccel', 'auto'])
 
           cmd
             .seekInput(job.startTime)
@@ -311,10 +323,8 @@ export function renderClip(
         function runWithEncoder(enc: string, flags: string[]): FfmpegCommand {
           const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
 
-          // Enable hardware-accelerated decoding when using NVENC
-          if (enc === 'h264_nvenc') {
-            cmd.inputOptions(['-hwaccel', 'auto'])
-          }
+          // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
+          cmd.inputOptions(['-hwaccel', 'auto'])
 
           cmd
             .seekInput(job.startTime)

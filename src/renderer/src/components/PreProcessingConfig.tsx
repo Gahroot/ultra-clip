@@ -1,8 +1,8 @@
-import { Clock, Repeat, Layers, BookOpen, Scissors, Wand2 } from 'lucide-react'
+import { Clock, Repeat, Repeat2, CheckCircle2, Zap, Layers, BookOpen, Scissors, Wand2 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
-import { useStore, type TargetDuration } from '@/store'
+import { useStore, type TargetDuration, type ClipEndMode } from '@/store'
 import { cn } from '@/lib/utils'
 
 // ── Duration options ─────────────────────────────────────────────────────────
@@ -47,6 +47,14 @@ const FEATURE_TOGGLES: {
     description: 'Combine non-contiguous segments into composite clips',
     icon: <Scissors className="w-3.5 h-3.5" />
   }
+]
+
+// ── Clip end mode options ────────────────────────────────────────────────────
+
+const CLIP_END_MODE_OPTIONS: { value: ClipEndMode; label: string; description: string; icon: React.ReactNode }[] = [
+  { value: 'loop-first', label: 'Loop', description: 'Prioritize seamless loop point', icon: <Repeat2 className="w-4 h-4" /> },
+  { value: 'completion-first', label: 'Complete', description: 'End at natural conclusion', icon: <CheckCircle2 className="w-4 h-4" /> },
+  { value: 'cliffhanger', label: 'Cliffhanger', description: 'Cut mid-thought for suspense', icon: <Zap className="w-4 h-4" /> }
 ]
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -204,6 +212,36 @@ export function PreProcessingConfig() {
           ))}
         </div>
       </div>
+
+      {/* Clip End Strategy — visible when Perfect Loop is enabled */}
+      {config.enablePerfectLoop && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <Scissors className="w-3.5 h-3.5 text-muted-foreground" />
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Clip End Strategy
+            </Label>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {CLIP_END_MODE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setConfig({ clipEndMode: opt.value })}
+                className={cn(
+                  'flex flex-col items-center gap-0.5 rounded-md border px-2 py-2 text-center transition-colors',
+                  config.clipEndMode === opt.value
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border bg-muted/30 text-muted-foreground hover:bg-muted/50'
+                )}
+              >
+                <span className="text-muted-foreground">{opt.icon}</span>
+                <span className="text-xs font-medium leading-none">{opt.label}</span>
+                <span className="text-[10px] leading-tight opacity-70">{opt.description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
