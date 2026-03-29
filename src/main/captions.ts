@@ -958,13 +958,14 @@ function buildCaptionsAILines(
 
     if (level === 'emphasis') {
       // EMPHASIS: pop — snap to visible at 130%, fast settle to 100%.
-      const empSize = Math.round(baseFontSize * EMPHASIS_SCALE)
+      const empSize = Math.round(baseFontSize * resolveEmphasisScale(style))
       const popScale = 130
       const snapDur = Math.min(4, wordDurCs) // 40ms instant snap
       const settleDur = Math.min(10, wordDurCs) // 100ms spring settle
+      const empBold = style.emphasisFontWeight && style.emphasisFontWeight > 400 ? '\\b1' : '\\b1'
 
       return (
-        `{\\fs${empSize}\\1c${emphasisASS}\\b1` +
+        `{\\fs${empSize}\\1c${emphasisASS}${empBold}` +
         `\\alpha&HFF&\\fscx${popScale}\\fscy${popScale}` +
         // Instant snap to visible
         `\\t(${wordStartCs},${wordStartCs + snapDur},\\alpha&H00&)` +
@@ -972,6 +973,22 @@ function buildCaptionsAILines(
         `\\t(${wordStartCs + snapDur},${wordStartCs + snapDur + Math.round(settleDur * 0.6)},\\fscx95\\fscy95)` +
         `\\t(${wordStartCs + snapDur + Math.round(settleDur * 0.6)},${wordStartCs + snapDur + settleDur},\\fscx100\\fscy100)}` +
         `${w.text}{\\r}${suffix}`
+      )
+    }
+
+    if (level === 'box') {
+      // BOX: word on opaque colored rectangle — pop in like emphasis.
+      const emp = buildEmphasisTags(w, style, baseFontSize)
+      const snapDur = Math.min(4, wordDurCs)
+      const settleDur = Math.min(10, wordDurCs)
+      const popScale = 115
+
+      return (
+        `{${emp.prefix}` +
+        `\\alpha&HFF&\\fscx${popScale}\\fscy${popScale}` +
+        `\\t(${wordStartCs},${wordStartCs + snapDur},\\alpha&H00&)` +
+        `\\t(${wordStartCs + snapDur},${wordStartCs + snapDur + settleDur},\\fscx100\\fscy100)}` +
+        `${w.text}{${emp.suffix}}${suffix}`
       )
     }
 
