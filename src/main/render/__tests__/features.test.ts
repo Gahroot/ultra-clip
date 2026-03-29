@@ -85,6 +85,7 @@ import { brandKitFeature } from '../features/brand-kit.feature'
 import { soundDesignFeature } from '../features/sound-design.feature'
 import { wordEmphasisFeature } from '../features/word-emphasis.feature'
 import { brollFeature } from '../features/broll.feature'
+import { accentColorFeature } from '../features/accent-color.feature'
 import type { RenderClipJob, RenderBatchOptions } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -871,5 +872,109 @@ describe('BRollFeature', () => {
     const job = makeJob()
     const result = await brollFeature.prepare!(job, makeOptions())
     expect(result.modified).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AccentColorFeature
+// ---------------------------------------------------------------------------
+
+describe('AccentColorFeature', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('skips when no accentColor override is set', async () => {
+    const job = makeJob()
+    const options = makeOptions({
+      captionStyle: {
+        fontName: 'Arial', fontSize: 0.07, primaryColor: '#FFFFFF',
+        highlightColor: '#00FF00', outlineColor: '#000000', backColor: '#80000000',
+        outline: 4, shadow: 0, borderStyle: 4, wordsPerLine: 3, animation: 'word-pop'
+      }
+    })
+    const result = await accentColorFeature.prepare!(job, options)
+    expect(result.modified).toBe(false)
+    expect(options.captionStyle!.highlightColor).toBe('#00FF00') // unchanged
+  })
+
+  it('overrides caption highlightColor, emphasisColor, and supersizeColor', async () => {
+    const job = makeJob({ clipOverrides: { accentColor: '#FF6B35' } })
+    const options = makeOptions({
+      captionStyle: {
+        fontName: 'Arial', fontSize: 0.07, primaryColor: '#FFFFFF',
+        highlightColor: '#00FF00', outlineColor: '#000000', backColor: '#80000000',
+        outline: 4, shadow: 0, borderStyle: 4, wordsPerLine: 3, animation: 'word-pop'
+      }
+    })
+    const result = await accentColorFeature.prepare!(job, options)
+    expect(result.modified).toBe(true)
+    expect(options.captionStyle!.highlightColor).toBe('#FF6B35')
+    expect(options.captionStyle!.emphasisColor).toBe('#FF6B35')
+    // supersizeColor should be a lighter tint
+    expect(options.captionStyle!.supersizeColor).not.toBe('#FF6B35')
+    expect(options.captionStyle!.supersizeColor).toMatch(/^#[0-9a-f]{6}$/i)
+  })
+
+  it('overrides hook title textColor', async () => {
+    const job = makeJob({ clipOverrides: { accentColor: '#2563EB' } })
+    const options = makeOptions({
+      hookTitleOverlay: {
+        enabled: true, style: 'centered-bold' as any, textColor: '#FFFFFF',
+        outlineColor: '#000000', fontSize: 64, outlineWidth: 3,
+        displayDuration: 2, fadeIn: 0.3, fadeOut: 0.3, position: 'center' as any
+      }
+    })
+    const result = await accentColorFeature.prepare!(job, options)
+    expect(result.modified).toBe(true)
+    expect(options.hookTitleOverlay!.textColor).toBe('#2563EB')
+    // outlineColor should be untouched
+    expect(options.hookTitleOverlay!.outlineColor).toBe('#000000')
+  })
+
+  it('overrides progress bar color', async () => {
+    const job = makeJob({ clipOverrides: { accentColor: '#C8FF00' } })
+    const options = makeOptions({
+      progressBarOverlay: {
+        enabled: true, position: 'bottom' as any, height: 4,
+        style: 'solid' as any, color: '#FFFFFF', opacity: 0.9
+      }
+    })
+    const result = await accentColorFeature.prepare!(job, options)
+    expect(result.modified).toBe(true)
+    expect(options.progressBarOverlay!.color).toBe('#C8FF00')
+    // opacity should be untouched
+    expect(options.progressBarOverlay!.opacity).toBe(0.9)
+  })
+
+  it('overrides per-shot caption style colors', async () => {
+    const job = makeJob({
+      clipOverrides: { accentColor: '#FF2D2D' },
+      shotStyleConfigs: [
+        {
+          shotIndex: 0,
+          captionStyle: {
+            animation: 'word-pop', primaryColor: '#FFFFFF', highlightColor: '#00FF00',
+            outlineColor: '#000000'
+          }
+        }
+      ]
+    })
+    const result = await accentColorFeature.prepare!(job, makeOptions())
+    expect(result.modified).toBe(true)
+    expect(job.shotStyleConfigs![0].captionStyle!.highlightColor).toBe('#FF2D2D')
+    expect(job.shotStyleConfigs![0].captionStyle!.emphasisColor).toBe('#FF2D2D')
+  })
+
+  it('does not touch options when accentColor is absent from clipOverrides', async () => {
+    const job = makeJob({ clipOverrides: { enableCaptions: true } })
+    const options = makeOptions({
+      captionStyle: {
+        fontName: 'Arial', fontSize: 0.07, primaryColor: '#FFFFFF',
+        highlightColor: '#00FF00', outlineColor: '#000000', backColor: '#80000000',
+        outline: 4, shadow: 0, borderStyle: 4, wordsPerLine: 3, animation: 'word-pop'
+      }
+    })
+    const result = await accentColorFeature.prepare!(job, options)
+    expect(result.modified).toBe(false)
+    expect(options.captionStyle!.highlightColor).toBe('#00FF00')
   })
 })

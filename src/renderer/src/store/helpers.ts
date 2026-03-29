@@ -782,8 +782,8 @@ export const BUILT_IN_EDIT_STYLE_PRESETS: EditStylePreset[] = [
       progressBar: { enabled: true, style: 'glow', position: 'bottom', height: 4, color: '#FF6B35', opacity: 0.9 },
     },
     colorGrade: { preset: 'high-contrast' },
-    transitionIn: { type: 'zoom-in', duration: 0.25 },
-    transitionOut: { type: 'zoom-in', duration: 0.25 },
+    transitionIn: { type: 'zoom-punch', duration: 0.2 },
+    transitionOut: { type: 'zoom-punch', duration: 0.2 },
   },
   {
     id: 'tiktok-hype',

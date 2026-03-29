@@ -159,6 +159,13 @@ export interface ClipRenderSettings {
   enableBrandKit?: boolean
   /** 'default' = face-centred crop; 'blur-background' = letterboxed with blurred background */
   layout?: 'default' | 'blur-background'
+  /**
+   * Per-clip accent color (CSS hex, e.g. '#FF6B35').
+   * When set, overrides highlight/emphasis colors in captions, hook title
+   * text color, rehook text color, and progress bar color — painting the
+   * whole edit with one colour.
+   */
+  accentColor?: string
 }
 
 export interface ClipCandidate {

@@ -116,6 +116,57 @@ export function buildTransitionFilter(
       return zExpr
     }
 
+    case 'swipe-down': {
+      // Vertical crop shift downward at the boundary (inverse of swipe-up)
+      const s = fadeOutStart
+      const e = fadeInEnd
+      const cropExpr =
+        `crop=iw:ih:0:` +
+        `'if(between(t\\,${s.toFixed(3)}\\,${e.toFixed(3)})\\,` +
+        `-(ih*0.05)*(1-abs(2*(t-${boundaryTime.toFixed(3)})/${dur.toFixed(3)}))\\,0)':` +
+        `enable='between(t\\,${s.toFixed(3)}\\,${e.toFixed(3)})'`
+      return cropExpr
+    }
+
+    case 'zoom-punch': {
+      // Aggressive snap-zoom — punchy, energetic feel.
+      // Ramps up faster and snaps back harder than zoom-in.
+      // Uses a sharper ease curve (quadratic) and 10% zoom for impact.
+      const s = fadeOutStart
+      const e = fadeInEnd
+      const zoomFactor = 0.10 // 10% zoom — double the gentle zoom-in
+      // Quadratic ease: pow((1-abs(2*(t-boundary)/dur)), 2) — sharp snap-back
+      const easeExpr =
+        `pow((1-abs(2*(t-${boundaryTime.toFixed(3)})/${dur.toFixed(3)}))\\,2)`
+      const zExpr =
+        `crop=` +
+        `'iw-iw*${zoomFactor}*if(between(t\\,${s.toFixed(3)}\\,${e.toFixed(3)})\\,${easeExpr}\\,0)':` +
+        `'ih-ih*${zoomFactor}*if(between(t\\,${s.toFixed(3)}\\,${e.toFixed(3)})\\,${easeExpr}\\,0)':` +
+        `'iw*${zoomFactor / 2}*if(between(t\\,${s.toFixed(3)}\\,${e.toFixed(3)})\\,${easeExpr}\\,0)':` +
+        `'ih*${zoomFactor / 2}*if(between(t\\,${s.toFixed(3)}\\,${e.toFixed(3)})\\,${easeExpr}\\,0)'`
+      return zExpr
+    }
+
+    case 'glitch': {
+      // Digital glitch distortion — RGB channel shift + brief brightness spike.
+      // Implemented as: rgbashift (horizontal RGB separation) + noise burst,
+      // all time-limited to the transition window.
+      const s = fadeOutStart
+      const e = fadeInEnd
+      // rgbashift shifts red/blue channels horizontally for chromatic aberration
+      // The shift amount pulses from 0→max→0 across the transition
+      const shiftExpr =
+        `if(between(t\\,${s.toFixed(3)}\\,${e.toFixed(3)})\\,` +
+        `8*(1-abs(2*(t-${boundaryTime.toFixed(3)})/${dur.toFixed(3)}))\\,0)`
+      const glitchFilter = [
+        `rgbashift=rh='${shiftExpr}':bh='-${shiftExpr}':` +
+          `enable='between(t\\,${s.toFixed(3)}\\,${e.toFixed(3)})'`,
+        // Brief noise burst at the boundary — digital static feel
+        `noise=alls=30:allf=t:enable='between(t\\,${s.toFixed(3)}\\,${e.toFixed(3)})'`
+      ].join(',')
+      return glitchFilter
+    }
+
     default:
       return ''
   }
