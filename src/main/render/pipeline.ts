@@ -38,7 +38,10 @@ import { progressBarFeature } from './features/progress-bar.feature'
 import { autoZoomFeature } from './features/auto-zoom.feature'
 import { brandKitFeature } from './features/brand-kit.feature'
 import { soundDesignFeature } from './features/sound-design.feature'
+import { wordEmphasisFeature } from './features/word-emphasis.feature'
 import { brollFeature } from './features/broll.feature'
+import { colorGradeFeature } from './features/color-grade.feature'
+import { shotTransitionFeature } from './features/shot-transition.feature'
 
 // ---------------------------------------------------------------------------
 // Cancellation state
@@ -90,32 +93,39 @@ export async function startBatchRender(
   // Registration order determines prepare() execution order.
   // Data flows via job mutation — earlier features write, later ones read.
   //
-  // 1. filler-removal  — mutates job.sourceVideoPath, startTime, endTime, wordTimestamps
-  // 2. brand-kit       — writes job.brandKit (consumed by base-render)
-  // 3. sound-design    — validates job.soundPlacements (pre-computed by IPC handler)
-  // 4. captions        — writes job.emphasisKeyframes from wordEmphasis/heuristic
-  // 5. hook-title      — generates ASS overlay file
-  // 6. rehook          — reads hookTitleOverlay.displayDuration for appear time
-  // 7. progress-bar    — injects job.progressBarConfig
-  // 8. auto-zoom       — reads job.emphasisKeyframes (from captions) for reactive zoom
-  // 9. broll           — reads job.brollPlacements (pre-computed by IPC handler)
+  //  1. filler-removal    — mutates job.sourceVideoPath, startTime, endTime, wordTimestamps
+  //  2. brand-kit         — writes job.brandKit (consumed by base-render)
+  //  3. word-emphasis     — writes job.wordEmphasis + job.emphasisKeyframes
+  //  4. captions          — reads job.wordEmphasis, generates ASS, fallback emphasis
+  //  5. hook-title        — generates ASS overlay file
+  //  6. rehook            — reads hookTitleOverlay.displayDuration for appear time
+  //  7. progress-bar      — injects job.progressBarConfig
+  //  8. broll             — reads job.brollPlacements, emits job.editEvents
+  //  9. sound-design      — reads job.editEvents, validates job.soundPlacements
+  // 10. auto-zoom         — reads job.emphasisKeyframes for reactive zoom
+  // 11. color-grade       — applies color grading filters
+  // 12. shot-transition   — applies shot transition effects
   //
   // Cross-feature data flow:
-  //   captions ──emphasisKeyframes──▸ auto-zoom (reactive mode)
-  //   filler-removal ──wordTimestamps──▸ captions (remapped timestamps)
-  //   IPC handler ──brollPlacements──▸ broll (postProcess)
+  //   filler-removal ──wordTimestamps──▸ word-emphasis (remapped timestamps)
+  //   word-emphasis ──wordEmphasis──▸ captions (emphasis tags for ASS)
+  //   word-emphasis ──emphasisKeyframes──▸ auto-zoom (reactive mode)
+  //   IPC handler ──brollPlacements──▸ broll (postProcess + edit event emission)
+  //   broll ──editEvents──▸ sound-design (B-Roll transitions SFX sync)
   //   IPC handler ──soundPlacements──▸ sound-design (base render filter_complex)
-  //   IPC handler ──editEvents──▸ sound-design (B-Roll transitions + jump-cuts)
   const features: RenderFeature[] = [
     createFillerRemovalFeature(),
     brandKitFeature,
-    soundDesignFeature,
+    wordEmphasisFeature,
     createCaptionsFeature(),
     createHookTitleFeature(),
     createRehookFeature(),
     progressBarFeature,
+    brollFeature,
+    soundDesignFeature,
     autoZoomFeature,
-    brollFeature
+    colorGradeFeature,
+    shotTransitionFeature
   ]
 
   // ── Resolve batch-level config ────────────────────────────────────────────

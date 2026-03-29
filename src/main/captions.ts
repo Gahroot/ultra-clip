@@ -36,6 +36,24 @@ export interface WordInput {
 }
 
 // ---------------------------------------------------------------------------
+// Per-shot caption style override
+// ---------------------------------------------------------------------------
+
+/**
+ * Caption style override for a specific time range within a clip.
+ * When building an ASS document with per-shot variation, each ShotCaptionOverride
+ * defines a different animation or visual treatment for its time window.
+ */
+export interface ShotCaptionOverride {
+  /** Clip-relative start time in seconds. */
+  startTime: number
+  /** Clip-relative end time in seconds. */
+  endTime: number
+  /** Caption style to apply during this time range. */
+  style: CaptionStyleInput
+}
+
+// ---------------------------------------------------------------------------
 // Default canvas constants — 9:16 vertical frame
 // ---------------------------------------------------------------------------
 
@@ -917,7 +935,8 @@ function buildASSDocument(
   style: CaptionStyleInput,
   frameWidth: number = DEFAULT_FRAME_WIDTH,
   frameHeight: number = DEFAULT_FRAME_HEIGHT,
-  marginVOverride?: number
+  marginVOverride?: number,
+  shotOverrides?: ShotCaptionOverride[]
 ): string {
   const fontSize = Math.round(style.fontSize * frameHeight)
   const primaryASS = hexToASS(style.primaryColor)
@@ -926,6 +945,49 @@ function buildASSDocument(
 
   // Vertical alignment: bottom-center (AN2) with a comfortable margin
   const marginV = marginVOverride ?? Math.round(frameHeight * 0.12) // ~12% from bottom
+
+  // Collect all unique animations used (base + overrides) for ASS Style header
+  const animationsInUse = new Set<CaptionAnimation>()
+  animationsInUse.add(style.animation)
+  const wordBoxNeeded = style.animation === 'word-box'
+
+  if (shotOverrides && shotOverrides.length > 0) {
+    for (const ov of shotOverrides) {
+      animationsInUse.add(ov.style.animation)
+    }
+  }
+
+  // Build per-animation style entries: each animation that differs from Default
+  // gets its own named style in the ASS header so dialogue events can reference it.
+  const extraStyleLines: string[] = []
+  // Map from animation name to the ASS style name to use in Dialogue events
+  const animationToStyleName = new Map<CaptionAnimation, string>()
+  animationToStyleName.set(style.animation, 'Default')
+
+  for (const anim of animationsInUse) {
+    if (anim === style.animation) continue
+
+    // Find the shot override that uses this animation to get its visual params
+    const matchingOverride = shotOverrides!.find((ov) => ov.style.animation === anim)
+    const ovStyle = matchingOverride?.style ?? style
+    const ovFontSize = Math.round(ovStyle.fontSize * frameHeight)
+    const ovPrimary = hexToASS(ovStyle.primaryColor)
+    const ovOutline = hexToASS(ovStyle.outlineColor)
+    const ovBack = hexToASS(ovStyle.backColor)
+    const styleName = `Shot_${anim}`
+
+    extraStyleLines.push(
+      `Style: ${styleName},${ovStyle.fontName},${ovFontSize},${ovPrimary},${ovPrimary},${ovOutline},${ovBack},-1,0,0,0,100,100,0,0,${ovStyle.borderStyle},${ovStyle.outline},${ovStyle.shadow},2,40,40,${marginV},1`
+    )
+    animationToStyleName.set(anim, styleName)
+
+    // WordBox variant for this animation
+    if (anim === 'word-box') {
+      extraStyleLines.push(
+        `Style: WordBox_${anim},${ovStyle.fontName},${ovFontSize},${ovPrimary},${ovPrimary},${ovOutline},&H00000000,-1,0,0,0,100,100,0,0,3,${Math.max(8, Math.round(ovFontSize * 0.18))},0,5,0,0,0,1`
+      )
+    }
+  }
 
   const header = [
     '[Script Info]',
@@ -939,15 +1001,23 @@ function buildASSDocument(
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     `Style: Default,${style.fontName},${fontSize},${primaryASS},${primaryASS},${outlineASS},${backASS},-1,0,0,0,100,100,0,0,${style.borderStyle},${style.outline},${style.shadow},2,40,40,${marginV},1`,
     // WordBox style: BorderStyle=3 for per-word opaque boxes; padding via Outline field
-    ...(style.animation === 'word-box'
+    ...(wordBoxNeeded
       ? [
           `Style: WordBox,${style.fontName},${fontSize},${primaryASS},${primaryASS},${outlineASS},&H00000000,-1,0,0,0,100,100,0,0,3,${Math.max(8, Math.round(fontSize * 0.18))},0,5,0,0,0,1`
         ]
       : []),
+    ...extraStyleLines,
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
   ]
+
+  // ── Group words and build dialogue lines ──────────────────────────────────
+  //
+  // When shot overrides are present, each word group's effective style is
+  // determined by finding the shot override whose time range contains the
+  // group's midpoint. Groups not covered by any override fall back to the
+  // global style.
 
   const groups = groupWords(words, style.wordsPerLine)
   const dialogueLines: string[] = []
@@ -955,45 +1025,126 @@ function buildASSDocument(
   for (const group of groups) {
     if (group.words.length === 0) continue
 
-    switch (style.animation) {
-      case 'captions-ai':
-        dialogueLines.push(...buildCaptionsAILines(group, style, fontSize))
-        break
-      case 'karaoke-fill':
-        dialogueLines.push(buildKaraokeLine(group, style, fontSize))
-        break
-      case 'word-pop':
-        dialogueLines.push(...buildWordPopLines(group, style, fontSize))
-        break
-      case 'fade-in':
-        dialogueLines.push(...buildFadeInLines(group, style, fontSize))
-        break
-      case 'glow':
-        dialogueLines.push(...buildGlowLines(group, style, fontSize))
-        break
-      case 'word-box':
-        dialogueLines.push(
-          ...buildWordBoxLines(group, style, fontSize, frameWidth, frameHeight, marginV)
-        )
-        break
-      case 'elastic-bounce':
-        dialogueLines.push(...buildElasticBounceLines(group, style, fontSize))
-        break
-      case 'typewriter':
-        dialogueLines.push(...buildTypewriterLines(group, style, fontSize))
-        break
-      case 'impact-two':
-        dialogueLines.push(...buildImpactTwoLines(group, style, fontSize))
-        break
-      case 'cascade':
-        dialogueLines.push(
-          ...buildCascadeLines(group, style, fontSize, frameWidth, frameHeight, marginV)
-        )
-        break
+    // Determine effective style for this group
+    let effectiveStyle = style
+    let effectiveFontSize = fontSize
+    let effectiveStyleName: string | undefined // undefined = 'Default' (ASS default)
+
+    if (shotOverrides && shotOverrides.length > 0) {
+      const groupMid = (group.start + group.end) / 2
+      const matchingOverride = shotOverrides.find(
+        (ov) => groupMid >= ov.startTime && groupMid <= ov.endTime
+      )
+      if (matchingOverride) {
+        effectiveStyle = matchingOverride.style
+        effectiveFontSize = Math.round(matchingOverride.style.fontSize * frameHeight)
+        effectiveStyleName = animationToStyleName.get(matchingOverride.style.animation)
+      }
     }
+
+    // Build dialogue lines using the effective style
+    const lines = buildDialogueLinesForGroup(
+      group,
+      effectiveStyle,
+      effectiveFontSize,
+      frameWidth,
+      frameHeight,
+      marginV,
+      effectiveStyleName
+    )
+    dialogueLines.push(...lines)
   }
 
   return [...header, ...dialogueLines, ''].join('\n')
+}
+
+/**
+ * Build dialogue lines for a single word group using a specific animation style.
+ * Extracted from the main buildASSDocument loop to support per-shot style switching.
+ */
+function buildDialogueLinesForGroup(
+  group: WordGroup,
+  effectiveStyle: CaptionStyleInput,
+  effectiveFontSize: number,
+  frameWidth: number,
+  frameHeight: number,
+  marginV: number,
+  styleName?: string
+): string[] {
+  // Inject the style name into dialogue lines by replacing the Default style reference.
+  // All dialogue builders emit "Dialogue: 0,...,Default,..." — we swap 'Default' if needed.
+  const rawLines: string[] = []
+
+  switch (effectiveStyle.animation) {
+    case 'captions-ai':
+      rawLines.push(...buildCaptionsAILines(group, effectiveStyle, effectiveFontSize))
+      break
+    case 'karaoke-fill':
+      rawLines.push(buildKaraokeLine(group, effectiveStyle, effectiveFontSize))
+      break
+    case 'word-pop':
+      rawLines.push(...buildWordPopLines(group, effectiveStyle, effectiveFontSize))
+      break
+    case 'fade-in':
+      rawLines.push(...buildFadeInLines(group, effectiveStyle, effectiveFontSize))
+      break
+    case 'glow':
+      rawLines.push(...buildGlowLines(group, effectiveStyle, effectiveFontSize))
+      break
+    case 'word-box':
+      rawLines.push(
+        ...buildWordBoxLines(group, effectiveStyle, effectiveFontSize, frameWidth, frameHeight, marginV)
+      )
+      break
+    case 'elastic-bounce':
+      rawLines.push(...buildElasticBounceLines(group, effectiveStyle, effectiveFontSize))
+      break
+    case 'typewriter':
+      rawLines.push(...buildTypewriterLines(group, effectiveStyle, effectiveFontSize))
+      break
+    case 'impact-two':
+      rawLines.push(...buildImpactTwoLines(group, effectiveStyle, effectiveFontSize))
+      break
+    case 'cascade':
+      rawLines.push(
+        ...buildCascadeLines(group, effectiveStyle, effectiveFontSize, frameWidth, frameHeight, marginV)
+      )
+      break
+  }
+
+  // Swap the style name in dialogue lines if using a per-shot style
+  if (styleName && styleName !== 'Default') {
+    // Dialogue format: "Dialogue: Layer,Start,End,Style,..."
+    // The 4th comma-delimited field is the Style name
+    return rawLines.map((line) => {
+      // Find the 4th field (Style) and replace it
+      let commaCount = 0
+      for (let i = 0; i < line.length; i++) {
+        if (line[i] === ',') {
+          commaCount++
+          if (commaCount === 3) {
+            // We're right after the 3rd comma — find the next comma to get the style field
+            const styleStart = i + 1
+            const styleEnd = line.indexOf(',', styleStart)
+            if (styleEnd !== -1) {
+              const originalStyle = line.substring(styleStart, styleEnd)
+              if (originalStyle === 'Default') {
+                return line.substring(0, styleStart) + styleName + line.substring(styleEnd)
+              }
+              // Also handle WordBox style rename
+              if (originalStyle === 'WordBox') {
+                return line.substring(0, styleStart) + `WordBox_${effectiveStyle.animation}` + line.substring(styleEnd)
+              }
+            }
+            break
+          }
+        }
+      }
+      return line
+    })
+  }
+
+  return rawLines
 }
 
 // ---------------------------------------------------------------------------
@@ -1016,13 +1167,14 @@ export async function generateCaptions(
   outputPath?: string,
   frameWidth: number = DEFAULT_FRAME_WIDTH,
   frameHeight: number = DEFAULT_FRAME_HEIGHT,
-  marginVOverride?: number
+  marginVOverride?: number,
+  shotOverrides?: ShotCaptionOverride[]
 ): Promise<string> {
   if (words.length === 0) {
     throw new Error('No words provided for caption generation')
   }
 
-  const assContent = buildASSDocument(words, style, frameWidth, frameHeight, marginVOverride)
+  const assContent = buildASSDocument(words, style, frameWidth, frameHeight, marginVOverride, shotOverrides)
 
   const filePath =
     outputPath ?? join(tmpdir(), `batchcontent-captions-${Date.now()}.ass`)

@@ -9,7 +9,7 @@ import type {
   StitchedClipCandidate,
   StoryArcUI,
 } from './types'
-import type { AIEditPlan, ShotSegment } from '@shared/types'
+import type { AIEditPlan, ShotSegment, ShotStyleAssignment } from '@shared/types'
 import { updateItemById } from './helpers'
 import { _pushUndo } from './history-slice'
 
@@ -49,6 +49,14 @@ export interface ClipsSlice {
   clearClipAIEditPlan: (sourceId: string, clipId: string) => void
   setClipShots: (sourceId: string, clipId: string, shots: ShotSegment[]) => void
   clearClipShots: (sourceId: string, clipId: string) => void
+  /** Set the style preset assignment for a specific shot within a clip. */
+  setShotStyle: (sourceId: string, clipId: string, shotIndex: number, presetId: string) => void
+  /** Remove the style preset assignment for a specific shot (falls back to global). */
+  clearShotStyle: (sourceId: string, clipId: string, shotIndex: number) => void
+  /** Replace all shot style assignments for a clip at once. */
+  setClipShotStyles: (sourceId: string, clipId: string, assignments: ShotStyleAssignment[]) => void
+  /** Remove all per-shot style assignments (revert to global style). */
+  clearAllShotStyles: (sourceId: string, clipId: string) => void
   approveAll: (sourceId: string) => void
   approveClipsAboveScore: (sourceId: string, minScore: number) => { approved: number; rejected: number }
   rejectAll: (sourceId: string) => void
@@ -414,6 +422,67 @@ export const createClipsSlice: StateCreator<
         clips: {
           ...state.clips,
           [sourceId]: updateItemById(sourceClips, clipId, { shots: undefined })
+        }
+      }
+    }),
+
+  setShotStyle: (sourceId, clipId, shotIndex, presetId) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      const clip = sourceClips.find((c) => c.id === clipId)
+      if (!clip) return {}
+      const existing = clip.shotStyles ?? []
+      // Replace existing assignment for this shot index, or add new
+      const updated = existing.filter((a) => a.shotIndex !== shotIndex)
+      updated.push({ shotIndex, presetId })
+      return {
+        clips: {
+          ...state.clips,
+          [sourceId]: updateItemById(sourceClips, clipId, { shotStyles: updated })
+        }
+      }
+    }),
+
+  clearShotStyle: (sourceId, clipId, shotIndex) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      const clip = sourceClips.find((c) => c.id === clipId)
+      if (!clip?.shotStyles) return {}
+      const updated = clip.shotStyles.filter((a) => a.shotIndex !== shotIndex)
+      return {
+        clips: {
+          ...state.clips,
+          [sourceId]: updateItemById(sourceClips, clipId, {
+            shotStyles: updated.length > 0 ? updated : undefined
+          })
+        }
+      }
+    }),
+
+  setClipShotStyles: (sourceId, clipId, assignments) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      return {
+        clips: {
+          ...state.clips,
+          [sourceId]: updateItemById(sourceClips, clipId, {
+            shotStyles: assignments.length > 0 ? assignments : undefined
+          })
+        }
+      }
+    }),
+
+  clearAllShotStyles: (sourceId, clipId) =>
+    set((state) => {
+      const sourceClips = state.clips[sourceId]
+      if (!sourceClips) return {}
+      return {
+        clips: {
+          ...state.clips,
+          [sourceId]: updateItemById(sourceClips, clipId, { shotStyles: undefined })
         }
       }
     }),

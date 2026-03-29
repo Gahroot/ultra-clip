@@ -13,7 +13,7 @@ import type { BRollPlacement, BRollDisplayMode, BRollTransition } from '../broll
 import type { FillerDetectionSettings } from '../filler-detection'
 import type { CaptionStyleInput } from '../captions'
 import type { SegmentRole } from '../ai/clip-stitcher'
-import type { EmphasizedWord } from '@shared/types'
+import type { EmphasizedWord, ShotStyleConfig, ColorGradeConfig, ShotTransitionConfig } from '@shared/types'
 
 // Re-export pass-through types so consumers can import from one place
 export type {
@@ -33,7 +33,10 @@ export type {
   FillerDetectionSettings,
   CaptionStyleInput,
   OutputAspectRatio,
-  EmphasizedWord
+  EmphasizedWord,
+  ShotStyleConfig,
+  ColorGradeConfig,
+  ShotTransitionConfig
 }
 
 export interface BrandKitRenderOptions {
@@ -248,6 +251,34 @@ export interface RenderClipJob {
    * If absent, no style preset was active (user used manual settings).
    */
   stylePresetId?: string
+  /**
+   * Resolved per-shot style configurations for piecewise rendering.
+   *
+   * When present, the render pipeline applies different caption animations,
+   * zoom behaviors, and other style parameters to different time ranges
+   * within this single clip. Each config maps to a `ShotSegment` by index
+   * and carries the concrete rendering parameters for that time window.
+   *
+   * Shot indices not present in this array fall back to the global
+   * `RenderBatchOptions` style. When the entire array is absent or empty,
+   * the clip renders with uniform global style (no per-shot variation).
+   *
+   * Built by `resolveShotStyles()` at IPC time from `ShotStyleAssignment[]`
+   * on the clip + preset definitions from the store.
+   */
+  shotStyleConfigs?: ShotStyleConfig[]
+  /**
+   * Raw per-shot style assignments from the renderer (preset IDs).
+   * Resolved to `shotStyleConfigs` by the IPC handler using `resolveShotStyles()`.
+   * Not consumed directly by render features — they read `shotStyleConfigs`.
+   */
+  shotStyles?: Array<{ shotIndex: number; presetId: string }>
+  /**
+   * Shot segmentation for this clip. Used by the IPC handler to resolve
+   * per-shot style assignments into concrete time-ranged configs.
+   * When absent, per-shot style assignments have no effect.
+   */
+  shots?: Array<{ startTime: number; endTime: number }>
 }
 
 export interface RenderStitchedClipSegment {
@@ -398,4 +429,42 @@ export interface RenderBatchOptions {
    * Default (when omitted): '{source}_clip{index}_{score}'
    */
   filenameTemplate?: string
+  /**
+   * Style presets available for per-shot style resolution.
+   * When clips have `shotStyles` assignments, the IPC handler uses these presets
+   * to resolve preset IDs into concrete `ShotStyleConfig` objects.
+   * Each preset carries the caption and zoom configuration for a named style.
+   * When omitted, per-shot style assignments on jobs have no effect.
+   */
+  stylePresets?: Array<{
+    id: string
+    captions: {
+      enabled: boolean
+      style: {
+        animation: import('@shared/types').CaptionAnimation
+        primaryColor: string
+        highlightColor: string
+        outlineColor: string
+        emphasisColor?: string
+        supersizeColor?: string
+        fontSize: number
+        outline: number
+        shadow: number
+        borderStyle: number
+        wordsPerLine: number
+        fontName: string
+        backColor: string
+      }
+    }
+    zoom: {
+      enabled: boolean
+      mode: import('@shared/types').ZoomMode
+      intensity: import('@shared/types').ZoomIntensity
+      intervalSeconds: number
+    }
+    colorGrade?: import('@shared/types').ColorGradeConfig
+    transitionIn?: import('@shared/types').ShotTransitionConfig
+    transitionOut?: import('@shared/types').ShotTransitionConfig
+    brollMode?: 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
+  }>
 }

@@ -2,9 +2,8 @@
 // Auto-Zoom feature — Ken Burns-style zoom/pan via crop+scale filter
 // ---------------------------------------------------------------------------
 
-import { generateZoomFilter } from '../../auto-zoom'
+import { generateZoomFilter, generatePiecewiseZoomFilter } from '../../auto-zoom'
 import type { ZoomSettings } from '../../auto-zoom'
-import { analyzeEmphasisHeuristic } from '../../word-emphasis'
 import type { RenderFeature, PrepareResult, FilterContext } from './feature'
 import type { RenderClipJob, RenderBatchOptions } from '../types'
 
@@ -49,36 +48,20 @@ class AutoZoomFeature implements RenderFeature {
 
     const clipDuration = job.endTime - job.startTime
 
-    // For reactive mode, ensure emphasis keyframes are available on the job.
-    // Priority: pre-computed keyframes from job > captions feature output > heuristic fallback.
-    if (globalSettings.mode === 'reactive' && !job.emphasisKeyframes) {
-      // Check for pre-computed keyframes passed on the job
-      if (job.emphasisKeyframesInput && job.emphasisKeyframesInput.length > 0) {
-        job.emphasisKeyframes = job.emphasisKeyframesInput
+    // For reactive mode, emphasis keyframes should already be populated by the
+    // upstream word-emphasis feature. Log availability for diagnostics.
+    if (globalSettings.mode === 'reactive') {
+      if (job.emphasisKeyframes && job.emphasisKeyframes.length > 0) {
         console.log(
-          `[AutoZoom] Reactive mode — using ${job.emphasisKeyframes.length} pre-computed keyframes ` +
-            `for clip ${job.clipId}`
+          `[AutoZoom] Reactive mode — using ${job.emphasisKeyframes.length} emphasis keyframes ` +
+            `from upstream feature for clip ${job.clipId}`
         )
       } else {
-        // Fallback: compute from word timestamps using heuristic
-        const clipWords = (job.wordTimestamps ?? [])
-          .filter((w) => w.start >= job.startTime && w.end <= job.endTime)
-          .map((w) => ({
-            text: w.text,
-            start: w.start - job.startTime,
-            end: w.end - job.startTime
-          }))
-
-        if (clipWords.length > 0) {
-          const emphasized = analyzeEmphasisHeuristic(clipWords)
-          job.emphasisKeyframes = emphasized
-            .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize')
-            .map((w) => ({ time: w.start, end: w.end, level: w.emphasis as 'emphasis' | 'supersize' }))
-          console.log(
-            `[AutoZoom] Reactive mode — computed ${job.emphasisKeyframes.length} emphasis keyframes ` +
-              `for clip ${job.clipId} (captions were not active)`
-          )
-        }
+        // Fallback: no emphasis data available (e.g. no word timestamps)
+        console.log(
+          `[AutoZoom] Reactive mode — no emphasis keyframes available for clip ${job.clipId}, ` +
+            `falling back to ken-burns behavior`
+        )
       }
     }
 
@@ -94,15 +77,39 @@ class AutoZoomFeature implements RenderFeature {
     const settings = this.clipZoomSettings.get(job.clipId)
     if (!settings) return null
 
-    const filter = generateZoomFilter(
-      context.clipDuration,
-      settings,
-      0.38,
-      context.targetWidth,
-      context.targetHeight,
-      job.wordTimestamps,
-      job.emphasisKeyframes
-    )
+    let filter: string | undefined
+
+    // When per-shot style configs are present with zoom overrides, use piecewise zoom
+    if (job.shotStyleConfigs && job.shotStyleConfigs.length > 0) {
+      const shotsWithZoom = job.shotStyleConfigs.filter(
+        (s) => s.zoom !== null && s.zoom !== undefined
+      )
+      if (shotsWithZoom.length > 0) {
+        filter = generatePiecewiseZoomFilter(
+          context.clipDuration,
+          settings,
+          job.shotStyleConfigs,
+          0.38,
+          context.targetWidth,
+          context.targetHeight,
+          job.wordTimestamps,
+          job.emphasisKeyframes
+        )
+      }
+    }
+
+    // Fall back to uniform zoom for the entire clip
+    if (!filter) {
+      filter = generateZoomFilter(
+        context.clipDuration,
+        settings,
+        0.38,
+        context.targetWidth,
+        context.targetHeight,
+        job.wordTimestamps,
+        job.emphasisKeyframes
+      )
+    }
 
     // Clean up the stored settings now that we've consumed them
     this.clipZoomSettings.delete(job.clipId)

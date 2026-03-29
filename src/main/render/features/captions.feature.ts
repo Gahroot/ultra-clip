@@ -7,9 +7,10 @@ import { join } from 'path'
 import type { RenderFeature, PrepareResult, OverlayContext, OverlayPassResult } from './feature'
 import type { RenderClipJob, RenderBatchOptions } from '../types'
 import { buildASSFilter } from '../helpers'
-import { generateCaptions } from '../../captions'
+import { generateCaptions, type ShotCaptionOverride, type CaptionStyleInput } from '../../captions'
 import { analyzeEmphasisHeuristic } from '../../word-emphasis'
 import { ASPECT_RATIO_CONFIGS } from '../../aspect-ratios'
+import type { ShotStyleConfig } from '@shared/types'
 
 /**
  * Create a captions render feature.
@@ -77,38 +78,27 @@ export function createCaptionsFeature(): RenderFeature {
         end: w.end - job.startTime
       }))
 
-      // Resolve emphasis: prefer pre-computed emphasis on the job, then AI Edit
-      // Plan override, then fall back to heuristic analysis.
-      let emphasized: Array<{ text: string; start: number; end: number; emphasis: string }>
-      if (job.wordEmphasis && job.wordEmphasis.length > 0) {
-        // Pre-computed emphasis data (e.g. from AI edit plan) — use directly
-        emphasized = localWordsBase.map((w) => {
-          const match = job.wordEmphasis!.find(
-            (ov) => Math.abs(ov.start - w.start) < 0.05
-          )
-          return { ...w, emphasis: match?.emphasis ?? 'normal' }
-        })
-      } else if (job.wordEmphasisOverride && job.wordEmphasisOverride.length > 0) {
-        emphasized = localWordsBase.map((w) => {
-          const override = job.wordEmphasisOverride!.find(
-            (ov) => Math.abs(ov.start - w.start) < 0.05
-          )
-          return { ...w, emphasis: override?.emphasis ?? 'normal' }
-        })
-      } else {
-        emphasized = analyzeEmphasisHeuristic(localWordsBase)
-      }
+      // Read emphasis from upstream word-emphasis feature, or fall back to own heuristic
+      const emphasized = job.wordEmphasis && job.wordEmphasis.length > 0
+        ? localWordsBase.map((w) => {
+            const match = job.wordEmphasis!.find(
+              (ov) => Math.abs(ov.start - w.start) < 0.05
+            )
+            return { ...w, emphasis: match?.emphasis ?? 'normal' }
+          })
+        : analyzeEmphasisHeuristic(localWordsBase)
 
       const localWords = localWordsBase.map((w, i) => ({
         ...w,
         emphasis: (emphasized as Array<{ emphasis?: string }>)[i]?.emphasis ?? ('normal' as const) as 'normal' | 'emphasis' | 'supersize'
       }))
 
-      // Store emphasis keyframes on the job so other features (e.g., reactive
-      // zoom) can read them without re-running the analysis.
-      job.emphasisKeyframes = localWords
-        .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize')
-        .map((w) => ({ time: w.start, end: w.end, level: w.emphasis as 'emphasis' | 'supersize' }))
+      // If upstream word-emphasis feature didn't provide keyframes, compute them here as fallback
+      if (!job.emphasisKeyframes || job.emphasisKeyframes.length === 0) {
+        job.emphasisKeyframes = localWords
+          .filter((w) => w.emphasis === 'emphasis' || w.emphasis === 'supersize')
+          .map((w) => ({ time: w.start, end: w.end, level: w.emphasis as 'emphasis' | 'supersize' }))
+      }
 
       // Resolve fonts dir (cached after first call)
       await resolveFontsDir()
@@ -122,13 +112,20 @@ export function createCaptionsFeature(): RenderFeature {
           ? Math.round((1 - batchOptions.templateLayout.subtitles.y / 100) * arCfg.height)
           : undefined
 
+        // Build per-shot caption overrides from shotStyleConfigs
+        const shotCaptionOverrides = buildShotCaptionOverrides(
+          job.shotStyleConfigs,
+          batchOptions.captionStyle
+        )
+
         job.assFilePath = await generateCaptions(
           localWords,
           batchOptions.captionStyle,
           undefined,
           arCfg.width,
           arCfg.height,
-          marginVOverride
+          marginVOverride,
+          shotCaptionOverrides
         )
         console.log(`[Captions] Clip ${job.clipId}: generated ${job.assFilePath}`)
         return { tempFiles: [job.assFilePath], modified: true }
@@ -146,4 +143,50 @@ export function createCaptionsFeature(): RenderFeature {
       }
     }
   }
+}
+
+/**
+ * Build per-shot caption style overrides from resolved shot style configs.
+ *
+ * Each ShotStyleConfig that has a `captionStyle` override produces a
+ * ShotCaptionOverride that the ASS builder uses to switch animation/color
+ * for word groups within that shot's time range.
+ *
+ * @returns ShotCaptionOverride[] or undefined when no per-shot overrides apply
+ */
+function buildShotCaptionOverrides(
+  shotStyleConfigs?: ShotStyleConfig[],
+  globalStyle?: CaptionStyleInput
+): ShotCaptionOverride[] | undefined {
+  if (!shotStyleConfigs || shotStyleConfigs.length === 0 || !globalStyle) {
+    return undefined
+  }
+
+  const overrides: ShotCaptionOverride[] = []
+
+  for (const config of shotStyleConfigs) {
+    if (!config.captionStyle) continue
+
+    overrides.push({
+      startTime: config.startTime,
+      endTime: config.endTime,
+      style: {
+        fontName: config.captionStyle.fontName,
+        fontSize: config.captionStyle.fontSize,
+        primaryColor: config.captionStyle.primaryColor,
+        highlightColor: config.captionStyle.highlightColor,
+        outlineColor: config.captionStyle.outlineColor,
+        backColor: config.captionStyle.backColor,
+        outline: config.captionStyle.outline,
+        shadow: config.captionStyle.shadow,
+        borderStyle: config.captionStyle.borderStyle,
+        wordsPerLine: config.captionStyle.wordsPerLine,
+        animation: config.captionStyle.animation,
+        emphasisColor: config.captionStyle.emphasisColor,
+        supersizeColor: config.captionStyle.supersizeColor
+      }
+    })
+  }
+
+  return overrides.length > 0 ? overrides : undefined
 }

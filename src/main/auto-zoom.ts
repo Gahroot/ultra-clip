@@ -706,3 +706,187 @@ export function getZoomKeyframes(
 
   return keyframes
 }
+
+// ---------------------------------------------------------------------------
+// Piecewise Per-Shot Zoom — different zoom modes for different time ranges
+// ---------------------------------------------------------------------------
+
+import type { ShotStyleConfig } from '@shared/types'
+
+/**
+ * Generate a composite zoom filter that applies different zoom modes and
+ * intensities to different shot time ranges within a single clip.
+ *
+ * For each shot with a zoom override, the function builds that shot's zoom
+ * crop expressions, then composites them using `if(between(t,start,end), ...)`:
+ *
+ *   cropW = if(between(t,s1,e1), shot1CropW, if(between(t,s2,e2), shot2CropW, defaultCropW))
+ *   cropH = if(between(t,s1,e1), shot1CropH, if(between(t,s2,e2), shot2CropH, defaultCropH))
+ *   cropX = if(between(t,s1,e1), shot1CropX, ...)
+ *   cropY = if(between(t,s1,e1), shot1CropY, ...)
+ *
+ * @returns A crop+scale filter string, or empty string if no per-shot overrides apply.
+ */
+export function generatePiecewiseZoomFilter(
+  clipDuration: number,
+  globalSettings: ZoomSettings,
+  shotStyleConfigs: ShotStyleConfig[],
+  faceYNorm: number = 0.38,
+  outW: number = 1080,
+  outH: number = 1920,
+  wordTimestamps?: WordTimestamp[],
+  emphasisKeyframes?: EmphasisKeyframe[]
+): string {
+  if (!globalSettings.enabled || shotStyleConfigs.length === 0) return ''
+
+  // Filter to shots that have zoom overrides
+  const shotsWithZoom = shotStyleConfigs.filter((s) => s.zoom !== null && s.zoom !== undefined)
+  if (shotsWithZoom.length === 0) return ''
+
+  // Build the zoom expressions for each shot's time range
+  // We use if(between(t,s,e), shotExpr, ...) nesting
+  const PI_VAL = '3.141592653589793'
+
+  // Helper: build the crop expressions for a specific zoom config
+  function buildZoomExprs(
+    mode: ZoomMode,
+    intensity: ZoomIntensity,
+    intervalSeconds: number,
+    shotStartTime: number,
+    shotEndTime: number
+  ): { cropW: string; cropH: string; cropX: string; cropY: string } {
+    const cfg = INTENSITY_CONFIG[intensity]
+    const { amplitude, panFrac } = cfg
+
+    if (mode === 'ken-burns') {
+      const rawPeriod = intervalSeconds * 2
+      const period = Math.min(rawPeriod, (shotEndTime - shotStartTime) * 2 || rawPeriod)
+      const T = period.toFixed(2)
+      const A = amplitude.toFixed(4)
+      const FY = Math.max(0, Math.min(1, faceYNorm)).toFixed(3)
+      const PF = panFrac.toFixed(4)
+
+      const zExpr = `1+${A}*(0.5+0.5*cos(2*${PI_VAL}*(t-${shotStartTime.toFixed(3)})/${T}))`
+      const cropW = `iw/(${zExpr})`
+      const cropH = `ih/(${zExpr})`
+      let cropX: string
+      if (panFrac > 0) {
+        cropX = `iw/2-(iw/(${zExpr})/2)+${PF}*(iw/(${zExpr}))*sin(2*${PI_VAL}*(t-${shotStartTime.toFixed(3)})/${T}+${PI_VAL}/2)`
+      } else {
+        cropX = `iw/2-(iw/(${zExpr})/2)`
+      }
+      const ideal = `ih*${FY}-ih/(${zExpr})/2`
+      const hi = `ih-ih/(${zExpr})`
+      const minVal = `((${ideal})+(${hi})-abs((${ideal})-(${hi})))/2`
+      const cropY = `((${minVal})+abs(${minVal}))/2`
+
+      return { cropW, cropH, cropX, cropY }
+    }
+
+    if (mode === 'reactive') {
+      // Use the global reactive logic but shift emphasis keyframes to shot-relative
+      const shotKeyframes = (emphasisKeyframes ?? []).filter(
+        (kf) => kf.time >= shotStartTime && kf.time <= shotEndTime
+      )
+      const reactiveCfg = REACTIVE_CONFIG[intensity]
+
+      // Build a simple reactive expression for this shot
+      // For per-shot reactive, we generate a simplified piecewise zoom
+      const baseZ = reactiveCfg.base.toFixed(4)
+      if (shotKeyframes.length === 0) {
+        // No emphasis in this shot — just use base zoom
+        const zExpr = baseZ
+        const cropW = `iw/(${zExpr})`
+        const cropH = `ih/(${zExpr})`
+        const FY = Math.max(0, Math.min(1, faceYNorm)).toFixed(3)
+        const cropX = `iw/2-(iw/(${zExpr})/2)`
+        const ideal = `ih*${FY}-ih/(${zExpr})/2`
+        const hi = `ih-ih/(${zExpr})`
+        const minVal = `((${ideal})+(${hi})-abs((${ideal})-(${hi})))/2`
+        const cropY = `((${minVal})+abs(${minVal}))/2`
+        return { cropW, cropH, cropX, cropY }
+      }
+
+      // Build nested if expressions for reactive zoom
+      let zExpr = baseZ
+      for (const kf of shotKeyframes) {
+        const Z = (kf.level === 'supersize' ? reactiveCfg.supersize : reactiveCfg.emphasis).toFixed(4)
+        const s = kf.time.toFixed(3)
+        const e = kf.end.toFixed(3)
+        zExpr = `if(between(t\\,${s}\\,${e})\\,${Z}\\,${zExpr})`
+      }
+
+      const cropW = `iw/(${zExpr})`
+      const cropH = `ih/(${zExpr})`
+      const FY = Math.max(0, Math.min(1, faceYNorm)).toFixed(3)
+      const cropX = `iw/2-(iw/(${zExpr})/2)`
+      const ideal = `ih*${FY}-ih/(${zExpr})/2`
+      const hi = `ih-ih/(${zExpr})`
+      const minVal = `((${ideal})+(${hi})-abs((${ideal})-(${hi})))/2`
+      const cropY = `((${minVal})+abs(${minVal}))/2`
+      return { cropW, cropH, cropX, cropY }
+    }
+
+    if (mode === 'jump-cut') {
+      // Simple step-function zoom for this shot
+      const z = (1 + amplitude).toFixed(4)
+      const FY = Math.max(0, Math.min(1, faceYNorm)).toFixed(3)
+      const cropW = `iw/${z}`
+      const cropH = `ih/${z}`
+      const cropX = `iw/2-(iw/${z}/2)`
+      const ideal = `ih*${FY}-ih/${z}/2`
+      const hi = `ih-ih/${z}`
+      const minVal = `((${ideal})+(${hi})-abs((${ideal})-(${hi})))/2`
+      const cropY = `((${minVal})+abs(${minVal}))/2`
+      return { cropW, cropH, cropX, cropY }
+    }
+
+    // Fallback: no zoom
+    return {
+      cropW: 'iw', cropH: 'ih',
+      cropX: '0', cropY: '0'
+    }
+  }
+
+  // Build the global (default) zoom expressions for time ranges without overrides
+  const globalExprs = buildZoomExprs(
+    globalSettings.mode,
+    globalSettings.intensity,
+    globalSettings.intervalSeconds,
+    0,
+    clipDuration
+  )
+
+  // Build per-shot expressions
+  const shotExprs = shotsWithZoom.map((shot) => ({
+    startTime: shot.startTime,
+    endTime: shot.endTime,
+    exprs: buildZoomExprs(
+      shot.zoom!.mode,
+      shot.zoom!.intensity,
+      shot.zoom!.intervalSeconds,
+      shot.startTime,
+      shot.endTime
+    )
+  }))
+
+  // Composite: nest if(between(t,s,e), shotExpr, ...) for each shot
+  // We need separate composites for cropW, cropH, cropX, cropY
+  let cropW = globalExprs.cropW
+  let cropH = globalExprs.cropH
+  let cropX = globalExprs.cropX
+  let cropY = globalExprs.cropY
+
+  // Build inside-out: innermost shot first, wrapping with if()
+  for (let i = shotExprs.length - 1; i >= 0; i--) {
+    const s = shotExprs[i]
+    const sStart = s.startTime.toFixed(3)
+    const sEnd = s.endTime.toFixed(3)
+    cropW = `if(between(t\\,${sStart}\\,${sEnd})\\,${s.exprs.cropW}\\,${cropW})`
+    cropH = `if(between(t\\,${sStart}\\,${sEnd})\\,${s.exprs.cropH}\\,${cropH})`
+    cropX = `if(between(t\\,${sStart}\\,${sEnd})\\,${s.exprs.cropX}\\,${cropX})`
+    cropY = `if(between(t\\,${sStart}\\,${sEnd})\\,${s.exprs.cropY}\\,${cropY})`
+  }
+
+  return `crop=w='${cropW}':h='${cropH}':x='${cropX}':y='${cropY}',scale=${outW}:${outH}`
+}
