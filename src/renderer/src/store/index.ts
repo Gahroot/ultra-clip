@@ -272,6 +272,8 @@ useStore.subscribe((state, prevState) => {
   if (
     state.clips !== prevState.clips ||
     state.stitchedClips !== prevState.stitchedClips ||
+    state.storyArcs !== prevState.storyArcs ||
+    state.clipOrder !== prevState.clipOrder ||
     state.settings.minScore !== prevState.settings.minScore
   ) {
     queueMicrotask(() => useStore.setState({ isDirty: true }))

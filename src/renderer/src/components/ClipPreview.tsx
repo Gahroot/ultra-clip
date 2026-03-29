@@ -21,7 +21,10 @@ import {
   Smartphone,
   Camera,
   Eye,
-  RotateCw
+  RotateCw,
+  Palette,
+  Crown,
+  Type
 } from 'lucide-react'
 import {
   Dialog,
@@ -42,8 +45,9 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { useStore, DEFAULT_HOOK_TEMPLATES, applyHookTemplate } from '../store'
-import type { ClipCandidate, ClipRenderSettings } from '../store'
+import { useStore, DEFAULT_HOOK_TEMPLATES, applyHookTemplate, CAPTION_PRESETS, BUILT_IN_EDIT_STYLE_PRESETS } from '../store'
+import type { ClipCandidate, ClipRenderSettings, CaptionStyle } from '../store'
+import type { EditStyleCategory } from '../store/types'
 import { EditableTime, formatTime } from './EditableTime'
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard'
 import { WaveformDisplay } from './WaveformDisplay'
