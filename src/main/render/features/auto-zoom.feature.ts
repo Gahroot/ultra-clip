@@ -77,18 +77,33 @@ class AutoZoomFeature implements RenderFeature {
     const settings = this.clipZoomSettings.get(job.clipId)
     if (!settings) return null
 
-    let filter: string | undefined
+    try {
+      let filter: string | undefined
 
-    // When per-shot style configs are present with zoom overrides, use piecewise zoom
-    if (job.shotStyleConfigs && job.shotStyleConfigs.length > 0) {
-      const shotsWithZoom = job.shotStyleConfigs.filter(
-        (s) => s.zoom !== null && s.zoom !== undefined
-      )
-      if (shotsWithZoom.length > 0) {
-        filter = generatePiecewiseZoomFilter(
+      // When per-shot style configs are present with zoom overrides, use piecewise zoom
+      if (job.shotStyleConfigs && job.shotStyleConfigs.length > 0) {
+        const shotsWithZoom = job.shotStyleConfigs.filter(
+          (s) => s.zoom !== null && s.zoom !== undefined
+        )
+        if (shotsWithZoom.length > 0) {
+          filter = generatePiecewiseZoomFilter(
+            context.clipDuration,
+            settings,
+            job.shotStyleConfigs,
+            0.38,
+            context.targetWidth,
+            context.targetHeight,
+            job.wordTimestamps,
+            job.emphasisKeyframes
+          )
+        }
+      }
+
+      // Fall back to uniform zoom for the entire clip
+      if (!filter) {
+        filter = generateZoomFilter(
           context.clipDuration,
           settings,
-          job.shotStyleConfigs,
           0.38,
           context.targetWidth,
           context.targetHeight,
@@ -96,25 +111,16 @@ class AutoZoomFeature implements RenderFeature {
           job.emphasisKeyframes
         )
       }
+
+      // Clean up the stored settings now that we've consumed them
+      this.clipZoomSettings.delete(job.clipId)
+
+      return filter || null
+    } catch (err) {
+      console.error(`[AutoZoom] Filter generation failed for clip ${job.clipId}, skipping zoom:`, err)
+      this.clipZoomSettings.delete(job.clipId)
+      return null
     }
-
-    // Fall back to uniform zoom for the entire clip
-    if (!filter) {
-      filter = generateZoomFilter(
-        context.clipDuration,
-        settings,
-        0.38,
-        context.targetWidth,
-        context.targetHeight,
-        job.wordTimestamps,
-        job.emphasisKeyframes
-      )
-    }
-
-    // Clean up the stored settings now that we've consumed them
-    this.clipZoomSettings.delete(job.clipId)
-
-    return filter || null
   }
 }
 

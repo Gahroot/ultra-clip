@@ -129,36 +129,41 @@ export const soundDesignFeature: RenderFeature = {
       return { tempFiles: [], modified: false }
     }
 
-    // Log edit events from upstream features (B-Roll transitions, shot transitions, jump-cuts)
-    const editEventCount = job.editEvents?.length ?? 0
-    const brollEvents = job.editEvents?.filter((e) => e.type === 'broll-transition').length ?? 0
-    const shotTransitionEvents = job.editEvents?.filter((e) => e.type === 'shot-transition').length ?? 0
-    const jumpCutEvents = job.editEvents?.filter((e) => e.type === 'jump-cut').length ?? 0
+    try {
+      // Log edit events from upstream features (B-Roll transitions, shot transitions, jump-cuts)
+      const editEventCount = job.editEvents?.length ?? 0
+      const brollEvents = job.editEvents?.filter((e) => e.type === 'broll-transition').length ?? 0
+      const shotTransitionEvents = job.editEvents?.filter((e) => e.type === 'shot-transition').length ?? 0
+      const jumpCutEvents = job.editEvents?.filter((e) => e.type === 'jump-cut').length ?? 0
 
-    const musicCount = job.soundPlacements!.filter(p => p.type === 'music').length
-    const sfxPlacements = job.soundPlacements!.filter(p => p.type === 'sfx')
+      const musicCount = job.soundPlacements!.filter(p => p.type === 'music').length
+      const sfxPlacements = job.soundPlacements!.filter(p => p.type === 'sfx')
 
-    // Categorize SFX for diagnostic logging
-    const categories = {
-      pops: sfxPlacements.filter(p => p.filePath.includes('word-pop')).length,
-      impacts: sfxPlacements.filter(p =>
-        p.filePath.includes('impact-high') || p.filePath.includes('bass-drop') || p.filePath.includes('impact-low')
-      ).length,
-      tension: sfxPlacements.filter(p => p.filePath.includes('rise-tension')).length,
-      transitions: sfxPlacements.filter(p => p.filePath.includes('swipe')).length,
-      shutters: sfxPlacements.filter(p => p.filePath.includes('camera-shutter')).length,
-      whooshes: sfxPlacements.filter(p => p.filePath.includes('whoosh')).length,
+      // Categorize SFX for diagnostic logging
+      const categories = {
+        pops: sfxPlacements.filter(p => p.filePath.includes('word-pop')).length,
+        impacts: sfxPlacements.filter(p =>
+          p.filePath.includes('impact-high') || p.filePath.includes('bass-drop') || p.filePath.includes('impact-low')
+        ).length,
+        tension: sfxPlacements.filter(p => p.filePath.includes('rise-tension')).length,
+        transitions: sfxPlacements.filter(p => p.filePath.includes('swipe')).length,
+        shutters: sfxPlacements.filter(p => p.filePath.includes('camera-shutter')).length,
+        whooshes: sfxPlacements.filter(p => p.filePath.includes('whoosh')).length,
+      }
+
+      console.log(
+        `[SoundDesign] Clip ${job.clipId}: ${musicCount} music, ${sfxPlacements.length} sfx ` +
+        `(${categories.pops} pops, ${categories.impacts} impacts, ${categories.tension} tension, ` +
+        `${categories.transitions} transitions, ${categories.shutters} shutters, ${categories.whooshes} whooshes)` +
+        (editEventCount > 0
+          ? ` — synced to ${editEventCount} edit events (${brollEvents} broll, ${shotTransitionEvents} shot-transition, ${jumpCutEvents} jump-cut)`
+          : '')
+      )
+
+      return { tempFiles: [], modified: true }
+    } catch (err) {
+      console.error(`[SoundDesign] Prepare failed for clip ${job.clipId}, skipping sound:`, err)
+      return { tempFiles: [], modified: false }
     }
-
-    console.log(
-      `[SoundDesign] Clip ${job.clipId}: ${musicCount} music, ${sfxPlacements.length} sfx ` +
-      `(${categories.pops} pops, ${categories.impacts} impacts, ${categories.tension} tension, ` +
-      `${categories.transitions} transitions, ${categories.shutters} shutters, ${categories.whooshes} whooshes)` +
-      (editEventCount > 0
-        ? ` — synced to ${editEventCount} edit events (${brollEvents} broll, ${shotTransitionEvents} shot-transition, ${jumpCutEvents} jump-cut)`
-        : '')
-    )
-
-    return { tempFiles: [], modified: true }
   }
 }

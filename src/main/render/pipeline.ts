@@ -295,15 +295,30 @@ export async function startBatchRender(
       }
 
       // ── Phase 1: Prepare — call feature.prepare() ──────────────────────
+      // Each feature is isolated: a failure in one feature does NOT prevent
+      // the remaining features from preparing. The clip still renders, just
+      // without that one feature's contribution.
       for (const feature of features) {
         if (cancelRequested) return
         if (feature.prepare) {
-          const result = await feature.prepare(job, options)
-          if (result.tempFiles.length > 0) {
-            allTempFiles.push(...result.tempFiles)
-          }
-          if (result.modified) {
-            console.log(`[Pipeline] ${feature.name}: prepared clip ${job.clipId}`)
+          try {
+            const result = await feature.prepare(job, options)
+            if (result.tempFiles.length > 0) {
+              allTempFiles.push(...result.tempFiles)
+            }
+            if (result.modified) {
+              console.log(`[Pipeline] ${feature.name}: prepared clip ${job.clipId}`)
+            }
+          } catch (featureErr) {
+            const msg = featureErr instanceof Error ? featureErr.message : String(featureErr)
+            console.error(
+              `[Pipeline] ${feature.name} prepare() failed for clip ${job.clipId}, skipping: ${msg}`
+            )
+            window.webContents.send(Ch.Send.RENDER_CLIP_ERROR, {
+              clipId: job.clipId,
+              error: `[${feature.name}] prepare failed (clip will render without this feature): ${msg}`,
+              ffmpegCommand: null
+            })
           }
         }
       }
@@ -346,9 +361,16 @@ export async function startBatchRender(
 
       for (const feature of features) {
         if (feature.videoFilter) {
-          const featureFilter = feature.videoFilter(job, filterContext)
-          if (featureFilter) {
-            videoFilter = videoFilter + ',' + featureFilter
+          try {
+            const featureFilter = feature.videoFilter(job, filterContext)
+            if (featureFilter) {
+              videoFilter = videoFilter + ',' + featureFilter
+            }
+          } catch (featureErr) {
+            const msg = featureErr instanceof Error ? featureErr.message : String(featureErr)
+            console.error(
+              `[Pipeline] ${feature.name} videoFilter() failed for clip ${job.clipId}, skipping: ${msg}`
+            )
           }
         }
       }
@@ -363,9 +385,16 @@ export async function startBatchRender(
       const overlaySteps: OverlayPassResult[] = []
       for (const feature of features) {
         if (feature.overlayPass) {
-          const step = feature.overlayPass(job, overlayContext)
-          if (step) {
-            overlaySteps.push(step)
+          try {
+            const step = feature.overlayPass(job, overlayContext)
+            if (step) {
+              overlaySteps.push(step)
+            }
+          } catch (featureErr) {
+            const msg = featureErr instanceof Error ? featureErr.message : String(featureErr)
+            console.error(
+              `[Pipeline] ${feature.name} overlayPass() failed for clip ${job.clipId}, skipping: ${msg}`
+            )
           }
         }
       }
@@ -409,7 +438,19 @@ export async function startBatchRender(
       for (const feature of features) {
         if (cancelRequested) return
         if (feature.postProcess) {
-          await feature.postProcess(job, outputPath, postContext)
+          try {
+            await feature.postProcess(job, outputPath, postContext)
+          } catch (featureErr) {
+            const msg = featureErr instanceof Error ? featureErr.message : String(featureErr)
+            console.error(
+              `[Pipeline] ${feature.name} postProcess() failed for clip ${job.clipId}, skipping: ${msg}`
+            )
+            window.webContents.send(Ch.Send.RENDER_CLIP_ERROR, {
+              clipId: job.clipId,
+              error: `[${feature.name}] postProcess failed (clip may be incomplete): ${msg}`,
+              ffmpegCommand: null
+            })
+          }
         }
       }
 

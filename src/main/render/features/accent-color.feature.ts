@@ -50,73 +50,90 @@ export const accentColorFeature: RenderFeature = {
       return { tempFiles: [], modified: false }
     }
 
-    // ── Save originals before mutation ─────────────────────────────────────
-    // Shallow-clone each object so downstream features can read the mutated
-    // version while we retain the originals for postProcess() restore.
-    const snapshot: BatchSnapshot = {}
-    if (batchOptions.captionStyle) {
-      snapshot.captionStyle = { ...batchOptions.captionStyle }
-    }
-    if (batchOptions.hookTitleOverlay) {
-      snapshot.hookTitleOverlay = { ...batchOptions.hookTitleOverlay }
-    }
-    if (batchOptions.progressBarOverlay) {
-      snapshot.progressBarOverlay = { ...batchOptions.progressBarOverlay }
-    }
-    // Stash on the job so postProcess can find it (per-clip state).
-    ;(job as Record<string, unknown>).__accentSnapshot = snapshot
-
-    const supersizeColor = lightenColor(accent, 0.4)
-
-    // ── Caption style overrides ────────────────────────────────────────────
-    if (batchOptions.captionStyle) {
-      batchOptions.captionStyle = {
-        ...batchOptions.captionStyle,
-        highlightColor: accent,
-        emphasisColor: accent,
-        supersizeColor
+    try {
+      // Validate the accent color is a parseable hex string
+      const cleanAccent = accent.replace('#', '')
+      if (!/^[0-9a-fA-F]{6}$/.test(cleanAccent)) {
+        console.warn(
+          `[AccentColor] Clip ${job.clipId}: invalid accent color "${accent}", skipping accent override`
+        )
+        return { tempFiles: [], modified: false }
       }
-    }
 
-    // ── Hook title overlay — accent becomes text color ─────────────────────
-    if (batchOptions.hookTitleOverlay) {
-      batchOptions.hookTitleOverlay = {
-        ...batchOptions.hookTitleOverlay,
-        textColor: accent
+      // ── Save originals before mutation ─────────────────────────────────────
+      // Shallow-clone each object so downstream features can read the mutated
+      // version while we retain the originals for postProcess() restore.
+      const snapshot: BatchSnapshot = {}
+      if (batchOptions.captionStyle) {
+        snapshot.captionStyle = { ...batchOptions.captionStyle }
       }
-    }
-
-    // Note: rehook overlay inherits textColor from hookTitleOverlay (see
-    // rehook.feature.ts:153), so no separate override is needed here.
-
-    // ── Progress bar — accent becomes bar color ────────────────────────────
-    if (batchOptions.progressBarOverlay) {
-      batchOptions.progressBarOverlay = {
-        ...batchOptions.progressBarOverlay,
-        color: accent
+      if (batchOptions.hookTitleOverlay) {
+        snapshot.hookTitleOverlay = { ...batchOptions.hookTitleOverlay }
       }
-    }
+      if (batchOptions.progressBarOverlay) {
+        snapshot.progressBarOverlay = { ...batchOptions.progressBarOverlay }
+      }
+      // Stash on the job so postProcess can find it (per-clip state).
+      ;(job as Record<string, unknown>).__accentSnapshot = snapshot
 
-    // ── Per-shot style configs — tint caption colors in each shot ──────────
-    if (job.shotStyleConfigs && job.shotStyleConfigs.length > 0) {
-      for (const shotConfig of job.shotStyleConfigs) {
-        if (shotConfig.captionStyle) {
-          shotConfig.captionStyle = {
-            ...shotConfig.captionStyle,
-            highlightColor: accent,
-            emphasisColor: accent,
-            supersizeColor
+      const supersizeColor = lightenColor(accent, 0.4)
+
+      // ── Caption style overrides ────────────────────────────────────────────
+      if (batchOptions.captionStyle) {
+        batchOptions.captionStyle = {
+          ...batchOptions.captionStyle,
+          highlightColor: accent,
+          emphasisColor: accent,
+          supersizeColor
+        }
+      }
+
+      // ── Hook title overlay — accent becomes text color ─────────────────────
+      if (batchOptions.hookTitleOverlay) {
+        batchOptions.hookTitleOverlay = {
+          ...batchOptions.hookTitleOverlay,
+          textColor: accent
+        }
+      }
+
+      // Note: rehook overlay inherits textColor from hookTitleOverlay (see
+      // rehook.feature.ts:153), so no separate override is needed here.
+
+      // ── Progress bar — accent becomes bar color ────────────────────────────
+      if (batchOptions.progressBarOverlay) {
+        batchOptions.progressBarOverlay = {
+          ...batchOptions.progressBarOverlay,
+          color: accent
+        }
+      }
+
+      // ── Per-shot style configs — tint caption colors in each shot ──────────
+      if (job.shotStyleConfigs && job.shotStyleConfigs.length > 0) {
+        for (const shotConfig of job.shotStyleConfigs) {
+          if (shotConfig.captionStyle) {
+            shotConfig.captionStyle = {
+              ...shotConfig.captionStyle,
+              highlightColor: accent,
+              emphasisColor: accent,
+              supersizeColor
+            }
           }
         }
       }
+
+      console.log(
+        `[AccentColor] Clip ${job.clipId}: applying accent ${accent} → ` +
+        `captions, hook title (+rehook), progress bar, per-shot styles`
+      )
+
+      return { tempFiles: [], modified: true }
+    } catch (err) {
+      console.error(
+        `[AccentColor] Failed to apply accent color for clip ${job.clipId}, skipping:`,
+        err
+      )
+      return { tempFiles: [], modified: false }
     }
-
-    console.log(
-      `[AccentColor] Clip ${job.clipId}: applying accent ${accent} → ` +
-      `captions, hook title (+rehook), progress bar, per-shot styles`
-    )
-
-    return { tempFiles: [], modified: true }
   },
 
   /**

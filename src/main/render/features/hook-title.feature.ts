@@ -120,15 +120,20 @@ export function createHookTitleFeature(): RenderFeature {
         return { tempFiles: [], modified: false }
       }
 
-      const frameHeight = 1920
-      const yPositionPx = batchOptions.templateLayout?.titleText
-        ? Math.round((batchOptions.templateLayout.titleText.y / 100) * frameHeight)
-        : undefined
+      try {
+        const frameHeight = 1920
+        const yPositionPx = batchOptions.templateLayout?.titleText
+          ? Math.round((batchOptions.templateLayout.titleText.y / 100) * frameHeight)
+          : undefined
 
-      const assPath = generateHookTitleASSFile(job.hookTitleText, job.hookTitleConfig, 1080, frameHeight, yPositionPx)
-      assPathMap.set(job.clipId, assPath)
-      console.log(`[HookTitle] Generated ASS overlay: ${assPath}`)
-      return { tempFiles: [assPath], modified: true }
+        const assPath = generateHookTitleASSFile(job.hookTitleText, job.hookTitleConfig, 1080, frameHeight, yPositionPx)
+        assPathMap.set(job.clipId, assPath)
+        console.log(`[HookTitle] Generated ASS overlay: ${assPath}`)
+        return { tempFiles: [assPath], modified: true }
+      } catch (err) {
+        console.error(`[HookTitle] Failed to generate ASS overlay for clip ${job.clipId}:`, err)
+        return { tempFiles: [], modified: false }
+      }
     },
 
     overlayPass(job: RenderClipJob, _context: OverlayContext): OverlayPassResult | null {

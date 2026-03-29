@@ -249,7 +249,12 @@ export async function renderStitchedClip(
   const fontsDir = resolveFontsDir()
 
   // Get source video metadata for crop/scale
-  const meta = await getVideoMetadata(job.sourceVideoPath)
+  let meta: { width: number; height: number; codec: string; fps: number; audioCodec: string; duration: number }
+  try {
+    meta = await getVideoMetadata(job.sourceVideoPath)
+  } catch (err) {
+    throw new Error(`Failed to read source video metadata for stitched render: ${err instanceof Error ? err.message : String(err)}`)
+  }
 
   // Reserve progress: 80% for segments, 5% for concat, 15% for post-concat passes
   const hasPostConcat = job.progressBarConfig?.enabled

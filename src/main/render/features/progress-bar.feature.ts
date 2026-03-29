@@ -46,14 +46,19 @@ export const progressBarFeature: RenderFeature = {
   ): OverlayPassResult | null {
     if (!job.progressBarConfig?.enabled) return null
 
-    const barFilter = buildProgressBarFilter(
-      context.clipDuration,
-      job.progressBarConfig,
-      context.targetWidth,
-      context.targetHeight
-    )
-    if (!barFilter) return null
+    try {
+      const barFilter = buildProgressBarFilter(
+        context.clipDuration,
+        job.progressBarConfig,
+        context.targetWidth,
+        context.targetHeight
+      )
+      if (!barFilter) return null
 
-    return { name: 'progress-bar', filter: barFilter, filterComplex: true }
+      return { name: 'progress-bar', filter: barFilter, filterComplex: true }
+    } catch (err) {
+      console.error(`[ProgressBar] Failed to build filter for clip ${job.clipId}, skipping:`, err)
+      return null
+    }
   }
 }

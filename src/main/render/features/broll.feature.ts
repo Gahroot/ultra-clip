@@ -35,61 +35,66 @@ export const brollFeature: RenderFeature = {
       return { tempFiles: [], modified: false }
     }
 
-    // Initialize editEvents array if not present
-    if (!job.editEvents) {
-      job.editEvents = []
-    }
+    try {
+      // Initialize editEvents array if not present
+      if (!job.editEvents) {
+        job.editEvents = []
+      }
 
-    // Apply per-shot brollMode overrides from shotStyleConfigs.
-    // When a shot has an explicit brollMode, B-Roll placements that fall
-    // within that shot's time range inherit the override display mode.
-    let modesOverridden = 0
-    if (job.shotStyleConfigs && job.shotStyleConfigs.length > 0) {
-      for (const br of job.brollPlacements) {
-        const brMidpoint = br.startTime + br.duration / 2
-        const matchingShot = job.shotStyleConfigs.find(
-          (s) =>
-            s.brollMode !== null &&
-            s.brollMode !== undefined &&
-            brMidpoint >= s.startTime &&
-            brMidpoint <= s.endTime
-        )
-        if (matchingShot && matchingShot.brollMode && matchingShot.brollMode !== br.displayMode) {
-          br.displayMode = matchingShot.brollMode
-          modesOverridden++
+      // Apply per-shot brollMode overrides from shotStyleConfigs.
+      // When a shot has an explicit brollMode, B-Roll placements that fall
+      // within that shot's time range inherit the override display mode.
+      let modesOverridden = 0
+      if (job.shotStyleConfigs && job.shotStyleConfigs.length > 0) {
+        for (const br of job.brollPlacements) {
+          const brMidpoint = br.startTime + br.duration / 2
+          const matchingShot = job.shotStyleConfigs.find(
+            (s) =>
+              s.brollMode !== null &&
+              s.brollMode !== undefined &&
+              brMidpoint >= s.startTime &&
+              brMidpoint <= s.endTime
+          )
+          if (matchingShot && matchingShot.brollMode && matchingShot.brollMode !== br.displayMode) {
+            br.displayMode = matchingShot.brollMode
+            modesOverridden++
+          }
+        }
+        if (modesOverridden > 0) {
+          console.log(
+            `[B-Roll] Clip ${job.clipId}: overrode display mode for ${modesOverridden} placement(s) from per-shot style`
+          )
         }
       }
-      if (modesOverridden > 0) {
+
+      // Derive broll-transition edit events from each placement
+      let emitted = 0
+      for (const br of job.brollPlacements) {
+        // Check if an edit event for this time already exists (from IPC handler pre-computation)
+        const alreadyExists = job.editEvents.some(
+          (e) => e.type === 'broll-transition' && Math.abs(e.time - br.startTime) < 0.05
+        )
+        if (!alreadyExists) {
+          job.editEvents.push({
+            type: 'broll-transition',
+            time: br.startTime,
+            transition: br.transition
+          })
+          emitted++
+        }
+      }
+
+      if (emitted > 0) {
         console.log(
-          `[B-Roll] Clip ${job.clipId}: overrode display mode for ${modesOverridden} placement(s) from per-shot style`
+          `[B-Roll] Clip ${job.clipId}: emitted ${emitted} edit event(s) from ${job.brollPlacements.length} placement(s)`
         )
       }
-    }
 
-    // Derive broll-transition edit events from each placement
-    let emitted = 0
-    for (const br of job.brollPlacements) {
-      // Check if an edit event for this time already exists (from IPC handler pre-computation)
-      const alreadyExists = job.editEvents.some(
-        (e) => e.type === 'broll-transition' && Math.abs(e.time - br.startTime) < 0.05
-      )
-      if (!alreadyExists) {
-        job.editEvents.push({
-          type: 'broll-transition',
-          time: br.startTime,
-          transition: br.transition
-        })
-        emitted++
-      }
+      return { tempFiles: [], modified: emitted > 0 || modesOverridden > 0 }
+    } catch (err) {
+      console.error(`[B-Roll] Prepare failed for clip ${job.clipId}, skipping B-Roll:`, err)
+      return { tempFiles: [], modified: false }
     }
-
-    if (emitted > 0) {
-      console.log(
-        `[B-Roll] Clip ${job.clipId}: emitted ${emitted} edit event(s) from ${job.brollPlacements.length} placement(s)`
-      )
-    }
-
-    return { tempFiles: [], modified: emitted > 0 || modesOverridden > 0 }
   },
 
   async postProcess(
