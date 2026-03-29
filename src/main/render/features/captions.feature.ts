@@ -77,17 +77,27 @@ export function createCaptionsFeature(): RenderFeature {
         end: w.end - job.startTime
       }))
 
-      // Resolve emphasis: use AI Edit Plan override when available, otherwise
-      // fall back to the heuristic analysis so render time stays deterministic.
-      const emphasized = job.wordEmphasisOverride && job.wordEmphasisOverride.length > 0
-        ? localWordsBase.map((w) => {
-            // Match by clip-relative start time (within 50ms tolerance)
-            const override = job.wordEmphasisOverride!.find(
-              (ov) => Math.abs(ov.start - w.start) < 0.05
-            )
-            return { ...w, emphasis: override?.emphasis ?? ('normal' as const) }
-          })
-        : analyzeEmphasisHeuristic(localWordsBase)
+      // Resolve emphasis: prefer pre-computed emphasis on the job, then AI Edit
+      // Plan override, then fall back to heuristic analysis.
+      let emphasized: Array<{ text: string; start: number; end: number; emphasis: string }>
+      if (job.wordEmphasis && job.wordEmphasis.length > 0) {
+        // Pre-computed emphasis data (e.g. from AI edit plan) — use directly
+        emphasized = localWordsBase.map((w) => {
+          const match = job.wordEmphasis!.find(
+            (ov) => Math.abs(ov.start - w.start) < 0.05
+          )
+          return { ...w, emphasis: match?.emphasis ?? 'normal' }
+        })
+      } else if (job.wordEmphasisOverride && job.wordEmphasisOverride.length > 0) {
+        emphasized = localWordsBase.map((w) => {
+          const override = job.wordEmphasisOverride!.find(
+            (ov) => Math.abs(ov.start - w.start) < 0.05
+          )
+          return { ...w, emphasis: override?.emphasis ?? 'normal' }
+        })
+      } else {
+        emphasized = analyzeEmphasisHeuristic(localWordsBase)
+      }
 
       const localWords = localWordsBase.map((w, i) => ({
         ...w,

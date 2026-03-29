@@ -256,6 +256,7 @@ export function ClipGrid() {
   const pipeline = useStore((s) => s.pipeline)
   const setRenderError = useStore((s) => s.setRenderError)
   const transcriptions = useStore((s) => s.transcriptions)
+  const activeStylePresetId = useStore((s) => s.activeStylePresetId)
 
   // Batch multi-select
   const selectedClipIds = useStore((s) => s.selectedClipIds)
@@ -578,7 +579,18 @@ export function ClipGrid() {
       // AI Edit Plan SFX suggestions — injected into sound design engine
       aiSfxSuggestions: clip.aiEditPlan?.sfxSuggestions?.length
         ? clip.aiEditPlan.sfxSuggestions.map((s) => ({ timestamp: s.timestamp, type: s.type }))
-        : undefined
+        : undefined,
+      // Pre-computed word emphasis from AI Edit Plan — bypasses heuristic at render time
+      wordEmphasis: clip.aiEditPlan?.wordEmphasis?.length
+        ? clip.aiEditPlan.wordEmphasis.map((e) => ({
+            text: e.text,
+            start: e.start,
+            end: e.end,
+            emphasis: e.level as 'emphasis' | 'supersize'
+          }))
+        : undefined,
+      // Active style preset ID — informational, recorded in manifest
+      stylePresetId: clip.aiEditPlan?.stylePresetId ?? activeStylePresetId ?? undefined,
     }))
 
     // Add variant render jobs

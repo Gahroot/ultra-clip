@@ -65,11 +65,19 @@ export function registerRenderHandlers(): void {
           end: w.end - job.startTime
         }))
 
-        // Run emphasis heuristic to classify words as normal / emphasis / supersize
-        const emphasized = analyzeEmphasisHeuristic(localWords)
+        // Use pre-computed emphasis from the job when available (e.g. AI edit plan),
+        // otherwise run the heuristic to classify words as normal / emphasis / supersize
+        const emphasized = job.wordEmphasis && job.wordEmphasis.length > 0
+          ? job.wordEmphasis
+          : analyzeEmphasisHeuristic(localWords)
 
         // Derive edit events from B-Roll placements and auto-zoom jump-cut mode
         const editEvents: EditEvent[] = []
+
+        // Pre-computed edit events from the renderer (e.g. AI edit plan SFX sync)
+        if (job.editEvents && job.editEvents.length > 0) {
+          editEvents.push(...job.editEvents)
+        }
 
         // B-Roll transition events
         if (job.brollPlacements && job.brollPlacements.length > 0) {
