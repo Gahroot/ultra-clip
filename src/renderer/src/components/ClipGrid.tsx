@@ -622,6 +622,10 @@ export function ClipGrid() {
       // different style presets to different shot segments within this clip
       shotStyles: clip.shotStyles && clip.shotStyles.length > 0 ? clip.shotStyles : undefined,
       shots: clip.shots && clip.shots.length > 0 ? clip.shots : undefined,
+      // Pre-computed filler segments (user-curated, with restored ones already excluded)
+      precomputedFillerSegments: clip.fillerSegments && clip.fillerSegments.length > 0
+        ? clip.fillerSegments.filter((_, i) => !(clip.restoredFillerIndices ?? []).includes(i))
+        : undefined,
     }))
 
     // Add variant render jobs
@@ -896,7 +900,10 @@ export function ClipGrid() {
             : undefined,
           wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
           hookTitleText: clip.hookText || undefined,
-          clipOverrides: clip.overrides && Object.keys(clip.overrides).length > 0 ? clip.overrides : undefined
+          clipOverrides: clip.overrides && Object.keys(clip.overrides).length > 0 ? clip.overrides : undefined,
+          precomputedFillerSegments: clip.fillerSegments && clip.fillerSegments.length > 0
+            ? clip.fillerSegments.filter((_, i) => !(clip.restoredFillerIndices ?? []).includes(i))
+            : undefined
         })
       }
       // Check variant job IDs

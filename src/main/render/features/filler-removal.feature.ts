@@ -44,6 +44,10 @@ function trimSegment(
     const cmd = createFfmpeg(sourcePath)
       .setStartTime(startTime)
       .setDuration(duration)
+      .audioFilters([
+        `afade=t=in:st=0:d=0.015`,
+        `afade=t=out:st=${Math.max(0, duration - 0.015)}:d=0.015`
+      ])
       .outputOptions(['-y', '-c:v', encoder, ...presetFlag, '-c:a', 'aac', '-b:a', '192k'])
       .on('end', () => resolve())
       .on('error', (err: Error) => {
@@ -53,6 +57,10 @@ function trimSegment(
           createFfmpeg(sourcePath)
             .setStartTime(startTime)
             .setDuration(duration)
+            .audioFilters([
+              `afade=t=in:st=0:d=0.015`,
+              `afade=t=out:st=${Math.max(0, duration - 0.015)}:d=0.015`
+            ])
             .outputOptions(['-y', '-c:v', sw.encoder, ...sw.presetFlag, '-c:a', 'aac', '-b:a', '192k'])
             .on('end', () => resolve())
             .on('error', reject)
@@ -123,32 +131,43 @@ export function createFillerRemovalFeature(): RenderFeature {
         return { tempFiles: [], modified: false }
       }
 
-      // Build detection settings from batch options
-      const fr = batchOptions.fillerRemoval
-      const detectionSettings = {
-        removeFillerWords: fr.removeFillerWords,
-        trimSilences: fr.trimSilences,
-        removeRepeats: fr.removeRepeats,
-        silenceThreshold: fr.silenceThreshold,
-        silenceTargetGap: fr.silenceTargetGap ?? 0.15,
-        fillerWords: fr.fillerWords
-      }
+      // Use precomputed (user-curated) segments when available, otherwise detect
+      let fillerSegments: Array<{ start: number; end: number; type: string; label: string }>
+      if (job.precomputedFillerSegments && job.precomputedFillerSegments.length > 0) {
+        fillerSegments = job.precomputedFillerSegments
+        console.log(
+          `[FillerRemoval] Clip ${job.clipId}: using ${fillerSegments.length} precomputed segments`
+        )
+      } else {
+        // Build detection settings from batch options
+        const fr = batchOptions.fillerRemoval
+        const detectionSettings = {
+          removeFillerWords: fr.removeFillerWords,
+          trimSilences: fr.trimSilences,
+          removeRepeats: fr.removeRepeats,
+          silenceThreshold: fr.silenceThreshold,
+          silenceTargetGap: fr.silenceTargetGap ?? 0.15,
+          fillerWords: fr.fillerWords
+        }
 
-      // Detect fillers
-      const detection = detectFillers(clipWords, detectionSettings)
-      if (detection.segments.length === 0) {
-        console.log(`[FillerRemoval] Clip ${job.clipId}: no fillers detected`)
-        return { tempFiles: [], modified: false }
-      }
+        // Detect fillers
+        const detection = detectFillers(clipWords, detectionSettings)
+        if (detection.segments.length === 0) {
+          console.log(`[FillerRemoval] Clip ${job.clipId}: no fillers detected`)
+          return { tempFiles: [], modified: false }
+        }
 
-      console.log(
-        `[FillerRemoval] Clip ${job.clipId}: found ${detection.segments.length} segments ` +
-        `(${detection.counts.filler} fillers, ${detection.counts.silence} silences, ` +
-        `${detection.counts.repeat} repeats) — saving ${detection.timeSaved.toFixed(1)}s`
-      )
+        fillerSegments = detection.segments
+
+        console.log(
+          `[FillerRemoval] Clip ${job.clipId}: found ${detection.segments.length} segments ` +
+          `(${detection.counts.filler} fillers, ${detection.counts.silence} silences, ` +
+          `${detection.counts.repeat} repeats) — saving ${detection.timeSaved.toFixed(1)}s`
+        )
+      }
 
       // Build keep segments (0-based relative to clip start)
-      const keepSegments = buildKeepSegments(job.startTime, job.endTime, detection.segments)
+      const keepSegments = buildKeepSegments(job.startTime, job.endTime, fillerSegments as Array<{ start: number; end: number; type: 'filler' | 'silence' | 'repeat'; label: string }>)
       if (keepSegments.length === 0) {
         console.warn(`[FillerRemoval] Clip ${job.clipId}: no keep segments — skipping`)
         return { tempFiles: [], modified: false }
@@ -229,7 +248,7 @@ export function createFillerRemovalFeature(): RenderFeature {
               clipWords,
               originalStart,
               originalEnd,
-              detection.segments
+              fillerSegments as Array<{ start: number; end: number; type: 'filler' | 'silence' | 'repeat'; label: string }>
             )
             if (remapped.length > 0) {
               const arCfg = ASPECT_RATIO_CONFIGS[batchOptions.outputAspectRatio ?? '9:16']

@@ -117,6 +117,7 @@ export interface SettingsSlice {
   setBRollTransition: (transition: BRollTransition) => void
   setBRollPipSize: (size: number) => void
   setBRollPipPosition: (position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => void
+  setBRollSourceMode: (sourceMode: 'stock' | 'ai-generated' | 'auto') => void
   setFillerRemovalEnabled: (enabled: boolean) => void
   setFillerRemovalFillerWords: (enabled: boolean) => void
   setFillerRemovalSilences: (enabled: boolean) => void
@@ -441,6 +442,11 @@ export const createSettingsSlice: StateCreator<
   setBRollPipPosition: (pipPosition) =>
     set((state) => ({
       settings: { ...state.settings, broll: { ...state.settings.broll, pipPosition } }
+    })),
+
+  setBRollSourceMode: (sourceMode) =>
+    set((state) => ({
+      settings: { ...state.settings, broll: { ...state.settings.broll, sourceMode } }
     })),
 
   // --- Filler Removal ---

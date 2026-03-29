@@ -107,8 +107,12 @@ export async function startBatchRender(
   //  9. auto-zoom         — reads job.emphasisKeyframes for reactive zoom (prepare stores settings)
   // 10. broll             — reads job.brollPlacements + shotStyleConfigs.brollMode,
   //                         emits 'broll-transition' editEvents
-  // 11. shot-transition   — reads shotStyleConfigs, emits 'shot-transition' editEvents
-  // 12. color-grade       — reads shotStyleConfigs, validates + logs color grade configs
+  // 11. color-grade       — reads shotStyleConfigs, validates + logs color grade configs;
+  //                         videoFilter applies per-shot eq/hue — must run BEFORE transitions
+  //                         so crossfades blend between properly color-graded shots
+  // 12. shot-transition   — reads shotStyleConfigs, emits 'shot-transition' editEvents;
+  //                         videoFilter applies crossfade/swipe — runs AFTER color-grade
+  //                         so transitions blend between styled shots
   // 13. sound-design      — reads ALL editEvents (broll + shot-transition + jump-cut),
   //                         validates job.soundPlacements
   //
@@ -134,8 +138,8 @@ export async function startBatchRender(
     progressBarFeature,
     autoZoomFeature,
     brollFeature,
-    shotTransitionFeature,
     colorGradeFeature,
+    shotTransitionFeature,
     soundDesignFeature
   ]
 

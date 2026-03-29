@@ -545,6 +545,9 @@ export function ClipPreview({
       wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
       hookTitleText: localHook || undefined,
       clipOverrides: clip.overrides && Object.keys(clip.overrides).length > 0 ? clip.overrides : undefined,
+      precomputedFillerSegments: clip.fillerSegments && clip.fillerSegments.length > 0
+        ? clip.fillerSegments.filter((_, i) => !(clip.restoredFillerIndices ?? []).includes(i))
+        : undefined,
     }
     setSingleRenderState({ clipId: clip.id, progress: 0, status: 'rendering', outputPath: null, error: null })
     const cleanups: Array<() => void> = []

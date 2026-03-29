@@ -1132,6 +1132,7 @@ export interface AppState {
   setBRollPexelsApiKey: (key: string) => void
   setBRollIntervalSeconds: (seconds: number) => void
   setBRollClipDuration: (seconds: number) => void
+  setBRollSourceMode: (mode: 'stock' | 'ai-generated' | 'auto') => void
 
   // Actions — Filler Removal
   setFillerRemovalEnabled: (enabled: boolean) => void

@@ -60,6 +60,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 5,
       clipDuration: 3,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -182,6 +184,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 6,
       clipDuration: 4,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -302,6 +306,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 4,
       clipDuration: 3,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -432,6 +438,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 6,
       clipDuration: 4,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -554,6 +562,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 4,
       clipDuration: 2,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -676,6 +686,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 8,
       clipDuration: 5,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -797,6 +809,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 6,
       clipDuration: 4,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -920,6 +934,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 4,
       clipDuration: 2,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -1042,6 +1058,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 5,
       clipDuration: 4,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -1172,6 +1190,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 7,
       clipDuration: 4,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -1299,6 +1319,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 4,
       clipDuration: 2,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -1419,6 +1441,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 5,
       clipDuration: 3,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -1539,6 +1563,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 5,
       clipDuration: 3,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -1659,6 +1685,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 4,
       clipDuration: 2,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -1779,6 +1807,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 5,
       clipDuration: 3,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -1899,6 +1929,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 4,
       clipDuration: 2,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -2019,6 +2051,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 5,
       clipDuration: 3,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -2139,6 +2173,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 5,
       clipDuration: 3,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -2260,6 +2296,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 5,
       clipDuration: 3,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -2380,6 +2418,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 5,
       clipDuration: 3,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -2502,6 +2542,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 8,
       clipDuration: 5,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -2622,6 +2664,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 9,
       clipDuration: 5,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -2742,6 +2786,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 8,
       clipDuration: 5,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -2862,6 +2908,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 6,
       clipDuration: 4,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -2982,6 +3030,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 10,
       clipDuration: 5,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -3102,6 +3152,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 10,
       clipDuration: 6,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -3222,6 +3274,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 8,
       clipDuration: 5,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -3342,6 +3396,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 8,
       clipDuration: 5,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -3462,6 +3518,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 8,
       clipDuration: 5,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
@@ -3582,6 +3640,8 @@ export const EDIT_STYLE_PRESETS: EditStylePreset[] = [
       pipPosition: 'bottom-right',
       intervalSeconds: 7,
       clipDuration: 5,
+      sourceMode: 'auto' as const,
+      sourceMode: 'auto' as const,
     },
 
     sound: {
