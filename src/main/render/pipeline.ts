@@ -221,6 +221,13 @@ export async function startBatchRender(
       encoderIsHardware
     })
 
+    // Initial prepare-phase progress
+    window.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+      clipId: job.clipId,
+      message: 'Preparing clip…',
+      percent: 0
+    })
+
     const clipStartTime = Date.now()
     let capturedCommand: string | undefined
     const allTempFiles: string[] = []
@@ -246,6 +253,8 @@ export async function startBatchRender(
           captionsEnabled: options.captionsEnabled,
           captionStyle: options.captionStyle,
           wordTimestamps: job.wordTimestamps,
+          wordEmphasis: job.wordEmphasis,
+          wordEmphasisOverride: job.wordEmphasisOverride,
           templateLayout: options.templateLayout,
           brandKit: options.brandKit?.enabled ? {
             logoPath: options.brandKit.logoPath,
@@ -298,11 +307,24 @@ export async function startBatchRender(
       // Each feature is isolated: a failure in one feature does NOT prevent
       // the remaining features from preparing. The clip still renders, just
       // without that one feature's contribution.
-      for (const feature of features) {
+      const featureCount = features.length
+      for (let fi = 0; fi < featureCount; fi++) {
+        const feature = features[fi]
         if (cancelRequested) return
         if (feature.prepare) {
+          window.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+            clipId: job.clipId,
+            message: `Preparing ${feature.name}…`,
+            percent: Math.round(((fi + 1) / featureCount) * 50)
+          })
           try {
-            const result = await feature.prepare(job, options)
+            const result = await feature.prepare(job, options, (message, percent) => {
+              window.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+                clipId: job.clipId,
+                message,
+                percent
+              })
+            })
             if (result.tempFiles.length > 0) {
               allTempFiles.push(...result.tempFiles)
             }
@@ -400,6 +422,11 @@ export async function startBatchRender(
       }
 
       // ── Phase 4: Base render ───────────────────────────────────────────
+      window.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+        clipId: job.clipId,
+        message: 'Encoding…',
+        percent: 50
+      })
       await renderClip(
         job,
         outputPath,

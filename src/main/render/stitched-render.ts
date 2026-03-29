@@ -16,6 +16,7 @@ import type { HookTitleConfig } from '../hook-title'
 import type { RehookConfig, OverlayVisualSettings } from '../overlays/rehook'
 import { toFFmpegPath, formatASSTimestamp, cssHexToASS, buildASSFilter } from './helpers'
 import { generateCaptions } from '../captions'
+import { analyzeEmphasisHeuristic } from '../word-emphasis'
 import { resolveFontsDir } from '../font-registry'
 import { buildProgressBarFilter } from '../overlays/progress-bar'
 import { applyFilterComplexPass } from './overlay-runner'
@@ -322,11 +323,40 @@ export async function renderStitchedClip(
           (w) => w.start >= seg.startTime && w.end <= seg.endTime
         )
         if (segWords.length > 0) {
-          const localWords = segWords.map((w) => ({
+          const localWordsBase = segWords.map((w) => ({
             text: w.text,
             start: w.start - seg.startTime,
             end: w.end - seg.startTime
           }))
+
+          // Resolve emphasis: prefer pre-computed > override > heuristic
+          let emphasisLevels: string[]
+          if (job.wordEmphasis && job.wordEmphasis.length > 0) {
+            emphasisLevels = localWordsBase.map((w) => {
+              const match = job.wordEmphasis!.find(
+                (ov) => Math.abs(ov.start - (w.start + seg.startTime)) < 0.05
+                    || Math.abs(ov.start - w.start) < 0.05
+              )
+              return match?.emphasis ?? 'normal'
+            })
+          } else if (job.wordEmphasisOverride && job.wordEmphasisOverride.length > 0) {
+            emphasisLevels = localWordsBase.map((w) => {
+              const match = job.wordEmphasisOverride!.find(
+                (ov) => Math.abs(ov.start - (w.start + seg.startTime)) < 0.05
+                    || Math.abs(ov.start - w.start) < 0.05
+              )
+              return match?.emphasis ?? 'normal'
+            })
+          } else {
+            const heuristic = analyzeEmphasisHeuristic(localWordsBase)
+            emphasisLevels = heuristic.map((h) => h.emphasis)
+          }
+
+          const localWords = localWordsBase.map((w, idx) => ({
+            ...w,
+            emphasis: emphasisLevels[idx] as 'normal' | 'emphasis' | 'supersize' | 'box'
+          }))
+
           try {
             const marginVOverride = job.templateLayout?.subtitles
               ? Math.round((1 - job.templateLayout.subtitles.y / 100) * 1920)
