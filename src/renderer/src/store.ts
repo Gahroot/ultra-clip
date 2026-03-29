@@ -33,6 +33,8 @@ export type {
   RehookOverlaySettings,
   ProgressBarOverlaySettings,
   BRollSettings,
+  BRollDisplayMode,
+  BRollTransition,
   FillerRemovalSettings,
   RenderQualityPreset,
   OutputResolution,

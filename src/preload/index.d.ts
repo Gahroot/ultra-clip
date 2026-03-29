@@ -883,8 +883,24 @@ interface Api {
     wordTimestamps: WordTimestamp[],
     clipStart: number,
     clipEnd: number,
-    settings: { intervalSeconds: number; clipDuration: number }
-  ) => Promise<Array<{ startTime: number; duration: number; videoPath: string; keyword: string }>>
+    settings: {
+      intervalSeconds: number
+      clipDuration: number
+      displayMode?: 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
+      transition?: 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
+      pipSize?: number
+      pipPosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+    }
+  ) => Promise<Array<{
+    startTime: number
+    duration: number
+    videoPath: string
+    keyword: string
+    displayMode: 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
+    transition: 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
+    pipSize: number
+    pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  }>>
   // Emoji Burst / Reaction Overlay
   identifyEmojiMoments: (
     apiKey: string,

@@ -24,7 +24,7 @@ import { extractBRollKeywords } from '../broll-keywords'
 import type { WordTimestamp as BRollWordTimestamp } from '../broll-keywords'
 import { fetchBRollClips } from '../broll-pexels'
 import { buildBRollPlacements } from '../broll-placement'
-import type { BRollSettings as BRollSettingsConfig } from '../broll-placement'
+import type { BRollSettings as BRollSettingsConfig, BRollDisplayMode, BRollTransition } from '../broll-placement'
 import { checkPythonSetup, runFullSetup } from '../python-setup'
 
 export function registerMediaHandlers(): void {
@@ -150,13 +150,24 @@ export function registerMediaHandlers(): void {
       wordTimestamps: BRollWordTimestamp[],
       clipStart: number,
       clipEnd: number,
-      settings: { intervalSeconds: number; clipDuration: number }
+      settings: {
+        intervalSeconds: number
+        clipDuration: number
+        displayMode: BRollDisplayMode
+        transition: BRollTransition
+        pipSize: number
+        pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+      }
     ) => {
       const brollSettings: BRollSettingsConfig = {
         enabled: true,
         pexelsApiKey,
         intervalSeconds: settings.intervalSeconds,
-        clipDuration: settings.clipDuration
+        clipDuration: settings.clipDuration,
+        displayMode: settings.displayMode,
+        transition: settings.transition,
+        pipSize: settings.pipSize,
+        pipPosition: settings.pipPosition
       }
 
       const clipDuration = clipEnd - clipStart
