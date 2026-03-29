@@ -222,6 +222,24 @@ function OverrideRow({ label, overrideKey, globalValue, overrides, onChange }: O
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Editor keyboard shortcut helpers — style presets for 1-9 quick-apply
+// ---------------------------------------------------------------------------
+
+/** First 9 premium edit style presets, keyed by number key 1-9. */
+const QUICK_STYLE_PRESETS = BUILT_IN_EDIT_STYLE_PRESETS.slice(0, 9)
+
+/** Returns true if the active element is a text input, textarea, or contenteditable. */
+function isTypingInField(): boolean {
+  const el = document.activeElement
+  if (!el) return false
+  const tag = el.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return true
+  if ((el as HTMLElement).isContentEditable) return true
+  return false
+}
+
+// ---------------------------------------------------------------------------
 // Style tab persistence — remembers last tab across open/close
 // ---------------------------------------------------------------------------
 
@@ -361,7 +379,20 @@ function StylePickerTabs() {
   const handleTabChange = useCallback((tab: StyleTab) => {
     setActiveTab(tab)
     persistStyleTab(tab)
+    setIsExpanded(true)
   }, [])
+
+  // Listen for keyboard shortcut tab-switch events from the editor shortcuts handler
+  useEffect(() => {
+    function onSwitchTab(e: Event) {
+      const tab = (e as CustomEvent).detail as StyleTab
+      if (tab === 'premium' || tab === 'basic') {
+        handleTabChange(tab)
+      }
+    }
+    window.addEventListener('editor:switch-tab', onSwitchTab)
+    return () => window.removeEventListener('editor:switch-tab', onSwitchTab)
+  }, [handleTabChange])
 
   // Active premium preset info
   const activePreset = BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === activeStylePresetId) ?? null
@@ -1150,6 +1181,138 @@ export function ClipPreview({
 
   const videoSrc = showPreview && previewPath ? `file://${previewPath}` : `file://${sourcePath}`
 
+  // ---------------------------------------------------------------------------
+  // Editor keyboard shortcuts — active only when dialog is open & not typing
+  // ---------------------------------------------------------------------------
+  const updateClipStatus = useStore((s) => s.updateClipStatus)
+  const applyEditStylePreset = useStore((s) => s.applyEditStylePreset)
+
+  useEffect(() => {
+    if (!open) return
+
+    function handleEditorKeyDown(e: KeyboardEvent) {
+      // Skip if user is typing in a text field
+      if (isTypingInField()) return
+
+      const mod = e.metaKey || e.ctrlKey
+
+      // Space: play/pause preview
+      if (e.key === ' ' && !mod) {
+        e.preventDefault()
+        handlePlayPause()
+        return
+      }
+
+      // Left/Right arrows: seek ±1s in video
+      if (e.key === 'ArrowLeft' && !mod) {
+        e.preventDefault()
+        const vid = videoRef.current
+        if (vid) {
+          const seekTo = Math.max(showPreview ? 0 : localStart, vid.currentTime - 1)
+          vid.currentTime = seekTo
+          setCurrentTime(seekTo)
+        }
+        return
+      }
+      if (e.key === 'ArrowRight' && !mod) {
+        e.preventDefault()
+        const vid = videoRef.current
+        if (vid) {
+          const stopPoint = showPreview ? clipDuration : localEnd
+          const seekTo = Math.min(stopPoint, vid.currentTime + 1)
+          vid.currentTime = seekTo
+          setCurrentTime(seekTo)
+        }
+        return
+      }
+
+      // 1-9: apply first 9 premium style presets
+      const numKey = parseInt(e.key, 10)
+      if (numKey >= 1 && numKey <= 9 && !mod) {
+        const preset = QUICK_STYLE_PRESETS[numKey - 1]
+        if (preset) {
+          e.preventDefault()
+          applyEditStylePreset(preset.id, preset.variants?.[0]?.id ?? null)
+        }
+        return
+      }
+
+      // C: switch to captions (basic) tab
+      if (e.key === 'c' && !mod && !e.shiftKey) {
+        e.preventDefault()
+        // Dispatch custom event for StylePickerTabs to pick up
+        window.dispatchEvent(new CustomEvent('editor:switch-tab', { detail: 'basic' }))
+        return
+      }
+
+      // S: switch to styles (premium) tab
+      if (e.key === 's' && !mod && !e.shiftKey) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('editor:switch-tab', { detail: 'premium' }))
+        return
+      }
+
+      // R: mark clip as ready for render (approve)
+      if (e.key === 'r' && !mod) {
+        e.preventDefault()
+        updateClipStatus(sourceId, clip.id, 'approved')
+        return
+      }
+
+      // N: next clip
+      if (e.key === 'n' && !mod) {
+        e.preventDefault()
+        // Apply pending edits first, then navigate
+        updateClipTrim(sourceId, clip.id, localStart, localEnd)
+        if (localHook !== clip.hookText) {
+          updateClipHookText(sourceId, clip.id, localHook)
+        }
+        window.dispatchEvent(new CustomEvent('editor:navigate-clip', { detail: { direction: 'next', clipId: clip.id } }))
+        return
+      }
+
+      // P: previous clip
+      if (e.key === 'p' && !mod) {
+        e.preventDefault()
+        updateClipTrim(sourceId, clip.id, localStart, localEnd)
+        if (localHook !== clip.hookText) {
+          updateClipHookText(sourceId, clip.id, localHook)
+        }
+        window.dispatchEvent(new CustomEvent('editor:navigate-clip', { detail: { direction: 'prev', clipId: clip.id } }))
+        return
+      }
+
+      // Delete: reset style to default (clear active preset)
+      if (e.key === 'Delete' && !mod) {
+        e.preventDefault()
+        const state = useStore.getState()
+        if (state.activeStylePresetId) {
+          // Clear active edit style preset
+          state.applyEditStylePreset('', null)
+        }
+        return
+      }
+    }
+
+    window.addEventListener('keydown', handleEditorKeyDown)
+    return () => window.removeEventListener('keydown', handleEditorKeyDown)
+  }, [
+    open,
+    handlePlayPause,
+    showPreview,
+    localStart,
+    localEnd,
+    localHook,
+    clipDuration,
+    clip.id,
+    clip.hookText,
+    sourceId,
+    applyEditStylePreset,
+    updateClipStatus,
+    updateClipTrim,
+    updateClipHookText,
+  ])
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
       <DialogContent className="max-w-2xl w-full p-0 overflow-hidden gap-0 max-h-[90vh] overflow-y-auto">
@@ -1726,6 +1889,15 @@ export function ClipPreview({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+          </div>
+
+          {/* Keyboard shortcut hint — subtle, always visible */}
+          <div className="flex items-center justify-center gap-3 py-1 text-[9px] text-muted-foreground/40 select-none">
+            <span><kbd className="px-1 py-0.5 rounded bg-muted/50 border border-border/30 font-mono text-[8px]">Space</kbd> play</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-muted/50 border border-border/30 font-mono text-[8px]">←→</kbd> seek</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-muted/50 border border-border/30 font-mono text-[8px]">1-9</kbd> style</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-muted/50 border border-border/30 font-mono text-[8px]">N</kbd>/<kbd className="px-1 py-0.5 rounded bg-muted/50 border border-border/30 font-mono text-[8px]">P</kbd> clips</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-muted/50 border border-border/30 font-mono text-[8px]">?</kbd> all</span>
           </div>
 
           {/* Re-score hint: boundaries changed significantly */}
