@@ -18,6 +18,7 @@ import type {
   TranscriptionData,
   ClipCandidate,
   StitchedClipCandidate,
+  StoryArcUI,
   Platform,
   EditStylePreset,
 } from './types'
@@ -1174,6 +1175,12 @@ export interface ProjectFileData {
   templateLayout: TemplateLayout
   targetPlatform: Platform
   stitchedClips?: Record<string, StitchedClipCandidate[]>
+  storyArcs?: Record<string, StoryArcUI[]>
+  clipOrder?: Record<string, string[]>
+  customOrder?: boolean
+  activeStylePresetId?: string | null
+  activeVariantId?: string | null
+  processingConfig?: ProcessingConfig
 }
 
 // ---------------------------------------------------------------------------

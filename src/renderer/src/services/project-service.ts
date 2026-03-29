@@ -6,7 +6,7 @@
  */
 
 import { useStore } from '../store'
-import { DEFAULT_SETTINGS, DEFAULT_PIPELINE, DEFAULT_TEMPLATE_LAYOUT } from '../store/helpers'
+import { DEFAULT_SETTINGS, DEFAULT_PIPELINE, DEFAULT_TEMPLATE_LAYOUT, DEFAULT_PROCESSING_CONFIG } from '../store/helpers'
 import type { ProjectFileData } from '../store/helpers'
 
 // ---------------------------------------------------------------------------
@@ -23,7 +23,13 @@ function getProjectJson(pretty = false): string {
     settings: state.settings,
     stitchedClips: state.stitchedClips,
     templateLayout: state.templateLayout,
-    targetPlatform: state.targetPlatform
+    targetPlatform: state.targetPlatform,
+    storyArcs: state.storyArcs,
+    clipOrder: state.clipOrder,
+    customOrder: state.customOrder,
+    activeStylePresetId: (state as any).activeStylePresetId ?? null,
+    activeVariantId: (state as any).activeVariantId ?? null,
+    processingConfig: state.processingConfig
   }
   return JSON.stringify(project, null, pretty ? 2 : undefined)
 }
@@ -52,8 +58,18 @@ function applyProject(data: string): boolean {
     activeSourceId: null,
     isDirty: false,
     templateLayout: project.templateLayout ?? DEFAULT_TEMPLATE_LAYOUT,
-    targetPlatform: project.targetPlatform ?? 'universal'
-  })
+    targetPlatform: project.targetPlatform ?? 'universal',
+    stitchedClips: project.stitchedClips ?? {},
+    storyArcs: project.storyArcs ?? {},
+    clipOrder: project.clipOrder ?? {},
+    customOrder: project.customOrder ?? false,
+    activeStylePresetId: project.activeStylePresetId ?? null,
+    activeVariantId: project.activeVariantId ?? null,
+    processingConfig: {
+      ...DEFAULT_PROCESSING_CONFIG,
+      ...(project.processingConfig ?? {})
+    }
+  } as any)
   return true
 }
 
@@ -143,7 +159,9 @@ useStore.subscribe((state, prevState) => {
     (
       !prevState.isDirty ||
       state.clips !== prevState.clips ||
-      state.stitchedClips !== prevState.stitchedClips
+      state.stitchedClips !== prevState.stitchedClips ||
+      state.storyArcs !== prevState.storyArcs ||
+      state.clipOrder !== prevState.clipOrder
     )
 
   // Clear pending auto-save when store is reset (isDirty goes false)

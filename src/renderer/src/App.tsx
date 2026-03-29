@@ -225,8 +225,14 @@ function App() {
       stitchedClips: (project.stitchedClips ?? {}) as ReturnType<typeof useStore.getState>['stitchedClips'],
       templateLayout: (project.templateLayout ?? useStore.getState().templateLayout) as ReturnType<typeof useStore.getState>['templateLayout'],
       targetPlatform: (project.targetPlatform ?? 'universal') as ReturnType<typeof useStore.getState>['targetPlatform'],
+      storyArcs: (project.storyArcs ?? {}) as ReturnType<typeof useStore.getState>['storyArcs'],
+      clipOrder: (project.clipOrder ?? {}) as ReturnType<typeof useStore.getState>['clipOrder'],
+      customOrder: (project.customOrder ?? false) as boolean,
+      activeStylePresetId: project.activeStylePresetId ?? null,
+      activeVariantId: project.activeVariantId ?? null,
+      processingConfig: { ...useStore.getState().processingConfig, ...((project.processingConfig ?? {}) as object) },
       isDirty: true
-    })
+    } as any)
     clearRecovery()
     setRecoveryData(null)
   }
