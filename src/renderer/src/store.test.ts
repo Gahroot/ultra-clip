@@ -609,6 +609,11 @@ describe('useStore', () => {
     it('includes reels-clean preset', () => {
       expect(CAPTION_PRESETS['reels-clean']).toBeDefined()
     })
+
+    it('includes captions-ai preset', () => {
+      expect(CAPTION_PRESETS['captions-ai']).toBeDefined()
+      expect(CAPTION_PRESETS['captions-ai'].animation).toBe('captions-ai')
+    })
   })
 
   // -------------------------------------------------------------------------

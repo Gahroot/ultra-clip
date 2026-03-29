@@ -48,6 +48,24 @@ export function updateItemById<T extends { id: string }>(
 // ---------------------------------------------------------------------------
 
 export const CAPTION_PRESETS: Record<string, CaptionStyle> = {
+  'captions-ai': {
+    id: 'captions-ai',
+    label: 'Captions.AI',
+    fontName: 'Montserrat',
+    fontFile: 'Montserrat-Bold.ttf',
+    fontSize: 0.07,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#00FF00',
+    outlineColor: '#000000',
+    backColor: '#80000000',
+    outline: 4,
+    shadow: 2,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'captions-ai',
+    emphasisColor: '#00FF00',
+    supersizeColor: '#FFD700'
+  },
   'hormozi-bold': {
     id: 'hormozi-bold',
     label: 'Hormozi Bold',
@@ -258,7 +276,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   geminiApiKey: localStorage.getItem('batchcontent-gemini-key') || '',
   outputDirectory: null,
   minScore: DEFAULT_MIN_SCORE,
-  captionStyle: CAPTION_PRESETS['reels-clean'],
+  captionStyle: CAPTION_PRESETS['captions-ai'],
   captionsEnabled: true,
   soundDesign: DEFAULT_SOUND_DESIGN,
   autoZoom: DEFAULT_AUTO_ZOOM,
@@ -343,7 +361,7 @@ export function loadPersistedSettings(): AppSettings {
         },
         fillerRemoval: { ...DEFAULT_FILLER_REMOVAL, ...(saved.fillerRemoval ?? {}) },
         renderQuality: { ...DEFAULT_RENDER_QUALITY, ...(saved.renderQuality ?? {}) },
-        captionStyle: { ...CAPTION_PRESETS['reels-clean'], ...(saved.captionStyle ?? {}) }
+        captionStyle: { ...CAPTION_PRESETS['captions-ai'], ...(saved.captionStyle ?? {}) }
       }
     }
   } catch {
@@ -460,7 +478,7 @@ export const BUILT_IN_PROFILES: Record<string, SettingsProfile> = {
     enableNotifications: true
   },
   'Reels Clean': {
-    captionStyle: CAPTION_PRESETS['reels-clean'],
+    captionStyle: CAPTION_PRESETS['captions-ai'],
     captionsEnabled: true,
     soundDesign: DEFAULT_SOUND_DESIGN,
     autoZoom: { enabled: true, intensity: 'subtle', intervalSeconds: 4 },
@@ -478,7 +496,7 @@ export const BUILT_IN_PROFILES: Record<string, SettingsProfile> = {
     enableNotifications: true
   },
   'Minimal': {
-    captionStyle: CAPTION_PRESETS['reels-clean'],
+    captionStyle: CAPTION_PRESETS['captions-ai'],
     captionsEnabled: false,
     soundDesign: { ...DEFAULT_SOUND_DESIGN, enabled: false },
     autoZoom: { enabled: false, intensity: 'subtle', intervalSeconds: 4 },
