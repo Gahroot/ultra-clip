@@ -600,6 +600,22 @@ export function ClipGrid() {
             emphasis: e.level as 'emphasis' | 'supersize'
           }))
         : undefined,
+      // AI Edit Plan B-Roll suggestions — seeds Pexels keyword search and placement
+      brollSuggestions: clip.aiEditPlan?.brollSuggestions?.length
+        ? clip.aiEditPlan.brollSuggestions.map((b) => ({
+            timestamp: b.timestamp,
+            duration: b.duration,
+            keyword: b.keyword,
+            displayMode: b.displayMode,
+            transition: b.transition
+          }))
+        : undefined,
+      // Pre-computed emphasis keyframes for reactive zoom (derived from AI word emphasis)
+      emphasisKeyframesInput: clip.aiEditPlan?.wordEmphasis?.length
+        ? clip.aiEditPlan.wordEmphasis
+            .filter((e) => e.level === 'emphasis' || e.level === 'supersize')
+            .map((e) => ({ time: e.start, end: e.end, level: e.level as 'emphasis' | 'supersize' }))
+        : undefined,
       // Active style preset ID — informational, recorded in manifest
       stylePresetId: clip.aiEditPlan?.stylePresetId ?? activeStylePresetId ?? undefined,
       // Per-shot style assignments — when present, the render pipeline applies

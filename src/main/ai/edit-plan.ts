@@ -75,7 +75,7 @@ const STYLE_CATEGORY_GUIDANCE: Record<string, string> = {
 // Prompt builder
 // ---------------------------------------------------------------------------
 
-function buildEditPlanPrompt(
+export function buildEditPlanPrompt(
   formattedTranscript: string,
   clipDuration: number,
   stylePresetName: string,
@@ -139,7 +139,7 @@ Return ONLY a valid JSON object matching this exact schema (no markdown fences, 
  * Format word timestamps into the indexed format the prompt expects.
  * Times are clip-relative (shifted so clipStart = 0.00).
  */
-function formatWordsForPrompt(
+export function formatWordsForPrompt(
   words: WordTimestamp[],
   clipStart: number,
   clipEnd: number
@@ -172,7 +172,7 @@ const VALID_SFX_TYPES = new Set<AIEditPlanSFXType>([
 ])
 const VALID_EMPHASIS_LEVELS = new Set(['emphasis', 'supersize'])
 
-function parseEditPlanResponse(
+export function parseEditPlanResponse(
   raw: string,
   clippedWords: Array<{ clipRelStart: number; clipRelEnd: number; text: string }>,
   clipDuration: number
