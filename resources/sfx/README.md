@@ -13,6 +13,12 @@ Place the actual `.mp3` files here. The system gracefully skips any missing file
 | `impact-high.mp3`      | Bright stab / high hit                           | 0.3 – 0.6 s         | Lighter emphasis, alternating hits |
 | `rise-tension.mp3`     | Short rising tone / build-up                     | 1.0 – 2.0 s         | Building anticipation moments      |
 | `notification-pop.mp3` | Clean UI pop / notification                      | 0.2 – 0.4 s         | Caption pop-in, text appear        |
+| `swipe-transition.mp3` | Quick filtered noise swoosh                      | 0.3 – 0.5 s         | B-Roll transition swipes           |
+| `word-pop.mp3`         | Light resonant pop                               | 0.2 – 0.3 s         | Word emphasis moments              |
+| `bass-drop.mp3`        | Deep bass hit with descending tone               | 0.4 – 0.6 s         | Supersize word effect              |
+| `camera-shutter.mp3`   | Sharp mechanical click / snap                    | 0.2 – 0.4 s         | Jump-cut zoom transitions          |
+| `rise-tension-short.mp3` | Short rising sweep                             | 0.5 – 0.7 s         | Building anticipation before reveals |
+| `typewriter-key.mp3`   | Mechanical key press click                       | 0.2 – 0.4 s         | Typewriter caption animation       |
 
 ## Licensing Requirements
 
@@ -20,6 +26,10 @@ All audio files must be:
 - **Royalty-free** with no attribution required, OR
 - Licensed under Creative Commons CC0 (public domain), OR
 - Purchased with a commercial license that permits use in video content
+
+The `swipe-transition`, `word-pop`, `bass-drop`, `camera-shutter`, `rise-tension-short`, and
+`typewriter-key` SFX were procedurally generated using FFmpeg audio synthesis (sine waves, noise
+generators, and filters). They are original works with no copyright encumbrance (CC0 equivalent).
 
 ### Recommended Free Sources
 

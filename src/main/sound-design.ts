@@ -16,6 +16,12 @@ export type SFXType =
   | 'impact-high'
   | 'rise-tension'
   | 'notification-pop'
+  | 'swipe-transition'
+  | 'word-pop'
+  | 'bass-drop'
+  | 'camera-shutter'
+  | 'rise-tension-short'
+  | 'typewriter-key'
 
 export interface SoundPlacementData {
   type: 'sfx' | 'music'
