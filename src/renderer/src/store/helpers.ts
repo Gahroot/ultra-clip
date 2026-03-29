@@ -1302,7 +1302,7 @@ export const DEFAULT_SOUND_DESIGN: SoundDesignSettings = {
 }
 
 export const DEFAULT_AUTO_ZOOM: ZoomSettings = {
-  enabled: false,
+  enabled: true,
   mode: 'ken-burns',
   intensity: 'subtle',
   intervalSeconds: 4
@@ -1340,12 +1340,12 @@ export const DEFAULT_REHOOK_OVERLAY: RehookOverlaySettings = {
 }
 
 export const DEFAULT_PROGRESS_BAR_OVERLAY: ProgressBarOverlaySettings = {
-  enabled: false,
+  enabled: true,
   position: 'bottom',
   height: 4,
   color: '#FFFFFF',
   opacity: 0.9,
-  style: 'solid'
+  style: 'glow'
 }
 
 export const DEFAULT_BROLL: BRollSettings = {
@@ -1409,7 +1409,7 @@ export const DEFAULT_PROCESSING_CONFIG: ProcessingConfig = {
   enableVariants: false,
   enableMultiPart: false,
   enableClipStitching: false,
-  enableAiEdit: false
+  enableAiEdit: true
 }
 
 export const DEFAULT_PIPELINE = {

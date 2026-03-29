@@ -12,7 +12,7 @@ import type {
 } from './types'
 import type { AIEditPlan, ShotSegment, ShotStyleAssignment } from '@shared/types'
 import { updateItemById } from './helpers'
-import { _pushUndo } from './history-slice'
+import { _pushUndo, _pushClipUndo } from './history-slice'
 
 // ---------------------------------------------------------------------------
 // Clips Slice
@@ -121,7 +121,7 @@ export const createClipsSlice: StateCreator<
     }),
 
   updateClipStatus: (sourceId, clipId, status) => {
-    _pushUndo(get(), set)
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
@@ -132,7 +132,7 @@ export const createClipsSlice: StateCreator<
   },
 
   updateClipTrim: (sourceId, clipId, startTime, endTime) => {
-    _pushUndo(get(), set)
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
@@ -166,7 +166,7 @@ export const createClipsSlice: StateCreator<
     }),
 
   updateClipHookText: (sourceId, clipId, hookText) => {
-    _pushUndo(get(), set)
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
@@ -191,7 +191,7 @@ export const createClipsSlice: StateCreator<
     }),
 
   updateVariantStatus: (sourceId, clipId, variantId, status) => {
-    _pushUndo(get(), set)
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
@@ -334,24 +334,28 @@ export const createClipsSlice: StateCreator<
       return { clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { partInfo }) } }
     }),
 
-  setClipOverride: (sourceId, clipId, key, value) =>
+  setClipOverride: (sourceId, clipId, key, value) => {
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
       return {
         clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, (c) => ({ overrides: { ...c.overrides, [key]: value } })) }
       }
-    }),
+    })
+  },
 
-  clearClipOverrides: (sourceId, clipId) =>
+  clearClipOverrides: (sourceId, clipId) => {
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
       return { clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { overrides: undefined }) } }
-    }),
+    })
+  },
 
   resetClipBoundaries: (sourceId, clipId) => {
-    _pushUndo(get(), set)
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
@@ -433,7 +437,8 @@ export const createClipsSlice: StateCreator<
       }
     }),
 
-  setShotStyle: (sourceId, clipId, shotIndex, presetId) =>
+  setShotStyle: (sourceId, clipId, shotIndex, presetId) => {
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
@@ -449,9 +454,11 @@ export const createClipsSlice: StateCreator<
           [sourceId]: updateItemById(sourceClips, clipId, { shotStyles: updated })
         }
       }
-    }),
+    })
+  },
 
-  clearShotStyle: (sourceId, clipId, shotIndex) =>
+  clearShotStyle: (sourceId, clipId, shotIndex) => {
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
@@ -466,9 +473,11 @@ export const createClipsSlice: StateCreator<
           })
         }
       }
-    }),
+    })
+  },
 
-  setClipShotStyles: (sourceId, clipId, assignments) =>
+  setClipShotStyles: (sourceId, clipId, assignments) => {
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
@@ -480,9 +489,11 @@ export const createClipsSlice: StateCreator<
           })
         }
       }
-    }),
+    })
+  },
 
-  clearAllShotStyles: (sourceId, clipId) =>
+  clearAllShotStyles: (sourceId, clipId) => {
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
@@ -492,7 +503,8 @@ export const createClipsSlice: StateCreator<
           [sourceId]: updateItemById(sourceClips, clipId, { shotStyles: undefined })
         }
       }
-    }),
+    })
+  },
 
   setClipFillers: (sourceId, clipId, segments, timeSaved) =>
     set((state) => {
@@ -503,7 +515,8 @@ export const createClipsSlice: StateCreator<
       }
     }),
 
-  toggleFillerRestore: (sourceId, clipId, segmentIndex) =>
+  toggleFillerRestore: (sourceId, clipId, segmentIndex) => {
+    _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
       if (!sourceClips) return {}
@@ -519,7 +532,8 @@ export const createClipsSlice: StateCreator<
           })
         }
       }
-    }),
+    })
+  },
 
   clearClipFillers: (sourceId, clipId) =>
     set((state) => {

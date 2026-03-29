@@ -24,6 +24,12 @@ export async function aiEditStage(
   if (!processingConfig.enableAiEdit) return
   if (clips.length === 0) return
 
+  // Skip gracefully when no Gemini API key is configured
+  if (!geminiApiKey) {
+    console.log('[AI Edit] No Gemini API key — skipping AI edit orchestration')
+    return
+  }
+
   const reporter = createStageReporter(setPipeline, 'ai-editing')
   reporter.start('Preparing AI edit plans…')
   check()

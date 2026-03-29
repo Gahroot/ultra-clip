@@ -42,7 +42,7 @@ import { wordEmphasisFeature } from './features/word-emphasis.feature'
 import { brollFeature } from './features/broll.feature'
 import { colorGradeFeature } from './features/color-grade.feature'
 import { shotTransitionFeature } from './features/shot-transition.feature'
-import { accentColorFeature } from './features/accent-color.feature'
+import { accentColorFeature, restoreBatchOptions } from './features/accent-color.feature'
 
 // ---------------------------------------------------------------------------
 // Cancellation state
@@ -413,6 +413,11 @@ export async function startBatchRender(
         }
       }
 
+      // ── Restore batch options after this clip's overlays are done ──────
+      // The accent-color feature mutates shared batchOptions during prepare().
+      // Restore now so the next clip doesn't inherit this clip's accent color.
+      restoreBatchOptions(job, options)
+
       // ── Write description file ─────────────────────────────────────────
       if (job.description) {
         try {
@@ -437,6 +442,9 @@ export async function startBatchRender(
       }
 
       if (cancelRequested) return
+
+      // Restore batch options even on failure so the next clip isn't affected
+      restoreBatchOptions(job, options)
 
       manifestResults.set(job.clipId, null)
       manifestRenderTimes.set(job.clipId, Date.now() - clipStartTime)

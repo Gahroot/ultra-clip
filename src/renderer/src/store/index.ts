@@ -43,10 +43,25 @@ export const useStore = create<AppState>()(immer((...a) => {
 
     removeSource: (id: string) =>
       set((state) => {
+        // Clean up per-clip undo stacks for clips belonging to this source
+        const clipIds = (state.clips[id] ?? []).map((c) => c.id)
+        const undoStacks = { ...state._clipUndoStacks }
+        const redoStacks = { ...state._clipRedoStacks }
+        for (const cid of clipIds) {
+          delete undoStacks[cid]
+          delete redoStacks[cid]
+        }
+        if (state._lastEditedSourceId === id) {
+          state._lastEditedClipId = null
+          state._lastEditedSourceId = null
+        }
+
         state.sources = state.sources.filter((s) => s.id !== id)
         delete state.transcriptions[id]
         delete state.clips[id]
         if (state.activeSourceId === id) state.activeSourceId = null
+        state._clipUndoStacks = undoStacks
+        state._clipRedoStacks = redoStacks
       }),
 
     setActiveSource: (id: string | null) => set({ activeSourceId: id }),

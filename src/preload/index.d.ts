@@ -1228,6 +1228,8 @@ interface Api {
       logoScale: number
       logoOpacity: number
     }
+    /** Per-clip accent color — overrides highlight/emphasis colors across all overlays */
+    accentColor?: string
   }) => Promise<{ previewPath: string }>
   cleanupPreview: (previewPath: string) => Promise<void>
   // AI Token Usage
