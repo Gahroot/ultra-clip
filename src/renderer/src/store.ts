@@ -44,6 +44,8 @@ export type {
   RenderQualitySettings,
   AppSettings,
   SettingsProfile,
+  EditStylePreset,
+  EditStyleCategory,
   ProcessingConfig,
   AutoModeConfig,
   ErrorLogEntry,
@@ -91,6 +93,7 @@ export {
   DEFAULT_TEMPLATE_LAYOUT,
   applyHookTemplate,
   extractProfileFromSettings,
+  BUILT_IN_EDIT_STYLE_PRESETS,
 } from './store/helpers'
 
 export type { ProjectFileData } from './store/helpers'

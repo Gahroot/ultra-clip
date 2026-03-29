@@ -41,6 +41,10 @@ import {
   loadHookTemplatesFromStorage,
   saveHookTemplatesToStorage,
   ACTIVE_HOOK_TEMPLATE_KEY,
+  BUILT_IN_EDIT_STYLE_PRESETS,
+  loadActiveStylePresetId,
+  persistActiveStylePresetId,
+  applyEditStylePresetToSettings,
 } from './helpers'
 import { _pushUndo } from './history-slice'
 
@@ -152,6 +156,10 @@ export interface SettingsSlice {
   loadProfile: (name: string) => void
   deleteProfile: (name: string) => void
   renameProfile: (oldName: string, newName: string) => void
+
+  // Edit Style Presets
+  activeStylePresetId: string | null
+  applyEditStylePreset: (id: string) => void
 }
 
 export const createSettingsSlice: StateCreator<
@@ -170,6 +178,7 @@ export const createSettingsSlice: StateCreator<
   activeHookTemplateId: localStorage.getItem(ACTIVE_HOOK_TEMPLATE_KEY) ?? null,
   settingsSnapshot: null,
   settingsChanged: false,
+  activeStylePresetId: loadActiveStylePresetId(),
 
   // --- Settings ---
 
@@ -710,5 +719,16 @@ export const createSettingsSlice: StateCreator<
     const newActive = activeProfileName === oldName ? newName : activeProfileName
     persistActiveProfileName(newActive)
     set({ settingsProfiles: updated, activeProfileName: newActive })
+  },
+
+  // --- Edit Style Presets ---
+
+  applyEditStylePreset: (id) => {
+    const preset = BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === id)
+    if (!preset) return
+    const { settings } = get()
+    const newSettings = applyEditStylePresetToSettings(settings, preset)
+    persistActiveStylePresetId(id)
+    set({ settings: newSettings, activeStylePresetId: id })
   },
 })
