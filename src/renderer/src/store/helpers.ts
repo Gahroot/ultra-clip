@@ -266,7 +266,11 @@ export const DEFAULT_BROLL: BRollSettings = {
   enabled: false,
   pexelsApiKey: localStorage.getItem('batchcontent-pexels-key') || '',
   intervalSeconds: 5,
-  clipDuration: 3
+  clipDuration: 3,
+  displayMode: 'split-top',
+  transition: 'crossfade',
+  pipSize: 0.25,
+  pipPosition: 'bottom-right'
 }
 
 export const DEFAULT_FILLER_REMOVAL: FillerRemovalSettings = {
@@ -486,7 +490,7 @@ export const BUILT_IN_PROFILES: Record<string, SettingsProfile> = {
     hookTitleOverlay: { ...DEFAULT_HOOK_TITLE_OVERLAY, enabled: true, style: 'centered-bold' },
     rehookOverlay: DEFAULT_REHOOK_OVERLAY,
     progressBarOverlay: { ...DEFAULT_PROGRESS_BAR_OVERLAY, enabled: true, style: 'glow', position: 'bottom' },
-    broll: { enabled: false, intervalSeconds: 5, clipDuration: 3 },
+    broll: { enabled: false, intervalSeconds: 5, clipDuration: 3, displayMode: 'split-top', transition: 'crossfade', pipSize: 0.25, pipPosition: 'bottom-right' },
     fillerRemoval: DEFAULT_FILLER_REMOVAL,
     renderQuality: DEFAULT_RENDER_QUALITY,
     outputAspectRatio: '9:16',
@@ -504,7 +508,7 @@ export const BUILT_IN_PROFILES: Record<string, SettingsProfile> = {
     hookTitleOverlay: { ...DEFAULT_HOOK_TITLE_OVERLAY, enabled: true, style: 'slide-in' },
     rehookOverlay: DEFAULT_REHOOK_OVERLAY,
     progressBarOverlay: { ...DEFAULT_PROGRESS_BAR_OVERLAY, enabled: false },
-    broll: { enabled: false, intervalSeconds: 5, clipDuration: 3 },
+    broll: { enabled: false, intervalSeconds: 5, clipDuration: 3, displayMode: 'split-top', transition: 'crossfade', pipSize: 0.25, pipPosition: 'bottom-right' },
     fillerRemoval: DEFAULT_FILLER_REMOVAL,
     renderQuality: DEFAULT_RENDER_QUALITY,
     outputAspectRatio: '9:16',
@@ -522,7 +526,7 @@ export const BUILT_IN_PROFILES: Record<string, SettingsProfile> = {
     hookTitleOverlay: { ...DEFAULT_HOOK_TITLE_OVERLAY, enabled: false },
     rehookOverlay: { ...DEFAULT_REHOOK_OVERLAY, enabled: false },
     progressBarOverlay: { ...DEFAULT_PROGRESS_BAR_OVERLAY, enabled: false },
-    broll: { enabled: false, intervalSeconds: 5, clipDuration: 3 },
+    broll: { enabled: false, intervalSeconds: 5, clipDuration: 3, displayMode: 'split-top', transition: 'crossfade', pipSize: 0.25, pipPosition: 'bottom-right' },
     fillerRemoval: { ...DEFAULT_FILLER_REMOVAL, enabled: false },
     renderQuality: DEFAULT_RENDER_QUALITY,
     outputAspectRatio: '9:16',

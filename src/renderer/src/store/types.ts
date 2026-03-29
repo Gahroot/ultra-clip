@@ -360,7 +360,18 @@ export interface BRollSettings {
    * Default: 3
    */
   clipDuration: number
+  /** Display mode for B-Roll overlays. Default: 'split-top' */
+  displayMode: BRollDisplayMode
+  /** Transition type for B-Roll entry/exit. Default: 'crossfade' */
+  transition: BRollTransition
+  /** PiP size as fraction of canvas width (0.2–0.4). Default: 0.25 */
+  pipSize: number
+  /** PiP corner position. Default: 'bottom-right' */
+  pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 }
+
+export type BRollDisplayMode = 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
+export type BRollTransition = 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
 
 export interface FillerRemovalSettings {
   /** Master toggle — enables/disables the entire filler removal feature */

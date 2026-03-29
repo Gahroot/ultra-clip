@@ -21,6 +21,8 @@ import type {
   LogoPosition,
   OutputAspectRatio,
   PythonSetupState,
+  BRollDisplayMode,
+  BRollTransition,
 } from './types'
 import {
   DEFAULT_SETTINGS,
@@ -99,6 +101,10 @@ export interface SettingsSlice {
   setBRollPexelsApiKey: (key: string) => void
   setBRollIntervalSeconds: (seconds: number) => void
   setBRollClipDuration: (seconds: number) => void
+  setBRollDisplayMode: (mode: BRollDisplayMode) => void
+  setBRollTransition: (transition: BRollTransition) => void
+  setBRollPipSize: (size: number) => void
+  setBRollPipPosition: (position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => void
   setFillerRemovalEnabled: (enabled: boolean) => void
   setFillerRemovalFillerWords: (enabled: boolean) => void
   setFillerRemovalSilences: (enabled: boolean) => void
@@ -375,6 +381,26 @@ export const createSettingsSlice: StateCreator<
   setBRollClipDuration: (clipDuration) =>
     set((state) => ({
       settings: { ...state.settings, broll: { ...state.settings.broll, clipDuration } }
+    })),
+
+  setBRollDisplayMode: (displayMode) =>
+    set((state) => ({
+      settings: { ...state.settings, broll: { ...state.settings.broll, displayMode } }
+    })),
+
+  setBRollTransition: (transition) =>
+    set((state) => ({
+      settings: { ...state.settings, broll: { ...state.settings.broll, transition } }
+    })),
+
+  setBRollPipSize: (pipSize) =>
+    set((state) => ({
+      settings: { ...state.settings, broll: { ...state.settings.broll, pipSize } }
+    })),
+
+  setBRollPipPosition: (pipPosition) =>
+    set((state) => ({
+      settings: { ...state.settings, broll: { ...state.settings.broll, pipPosition } }
     })),
 
   // --- Filler Removal ---

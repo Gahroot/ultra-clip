@@ -56,7 +56,9 @@ import {
   type OutputResolution,
   type OutputFormat,
   type EncodingPreset,
-  type OutputAspectRatio
+  type OutputAspectRatio,
+  type BRollDisplayMode,
+  type BRollTransition
 } from '@/store'
 import { cn, formatFileSize } from '@/lib/utils'
 import { DropZone } from './DropZone'
@@ -490,6 +492,10 @@ export function SettingsPanel() {
     setBRollPexelsApiKey,
     setBRollIntervalSeconds,
     setBRollClipDuration,
+    setBRollDisplayMode,
+    setBRollTransition,
+    setBRollPipSize,
+    setBRollPipPosition,
     setFillerRemovalEnabled,
     setFillerRemovalFillerWords,
     setFillerRemovalSilences,
@@ -560,6 +566,10 @@ export function SettingsPanel() {
     setBRollPexelsApiKey: s.setBRollPexelsApiKey,
     setBRollIntervalSeconds: s.setBRollIntervalSeconds,
     setBRollClipDuration: s.setBRollClipDuration,
+    setBRollDisplayMode: s.setBRollDisplayMode,
+    setBRollTransition: s.setBRollTransition,
+    setBRollPipSize: s.setBRollPipSize,
+    setBRollPipPosition: s.setBRollPipPosition,
     setFillerRemovalEnabled: s.setFillerRemovalEnabled,
     setFillerRemovalFillerWords: s.setFillerRemovalFillerWords,
     setFillerRemovalSilences: s.setFillerRemovalSilences,
@@ -2098,10 +2108,114 @@ export function SettingsPanel() {
                 />
               </FieldRow>
 
+              {/* Display Mode */}
+              <FieldRow
+                label="Display Mode"
+                hint="How B-Roll footage is composited onto your video"
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['fullscreen', 'Fullscreen', 'B-Roll covers the entire frame'],
+                    ['split-top', 'Split Top', 'B-Roll top 65%, speaker bottom 35%'],
+                    ['split-bottom', 'Split Bottom', 'Speaker top 65%, B-Roll bottom 35%'],
+                    ['pip', 'Picture-in-Picture', 'B-Roll fullscreen, speaker in corner'],
+                  ] as const).map(([value, label, desc]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setBRollDisplayMode(value)}
+                      className={cn(
+                        'px-2 py-2 rounded-md border text-left transition-colors',
+                        settings.broll.displayMode === value
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border hover:border-muted-foreground/50'
+                      )}
+                    >
+                      <div className="text-xs font-medium">{label}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">{desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </FieldRow>
+
+              {/* Transition Type */}
+              <FieldRow
+                label="Transition"
+                hint="How B-Roll enters and exits the frame"
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['hard-cut', 'Hard Cut'],
+                    ['crossfade', 'Crossfade'],
+                    ['swipe-up', 'Swipe Up'],
+                    ['swipe-down', 'Swipe Down'],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setBRollTransition(value)}
+                      className={cn(
+                        'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
+                        settings.broll.transition === value
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border hover:border-muted-foreground/50'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </FieldRow>
+
+              {/* PiP Settings (only shown when displayMode is 'pip') */}
+              {settings.broll.displayMode === 'pip' && (
+                <>
+                  <FieldRow
+                    label={`PiP Size — ${Math.round((settings.broll.pipSize ?? 0.25) * 100)}%`}
+                    hint="Size of the speaker window as a fraction of canvas width"
+                  >
+                    <Slider
+                      min={0.2}
+                      max={0.4}
+                      step={0.05}
+                      value={[settings.broll.pipSize ?? 0.25]}
+                      onValueChange={([v]) => setBRollPipSize(v)}
+                    />
+                  </FieldRow>
+                  <FieldRow
+                    label="PiP Position"
+                    hint="Corner position for the speaker window"
+                  >
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        ['top-left', 'Top Left'],
+                        ['top-right', 'Top Right'],
+                        ['bottom-left', 'Bottom Left'],
+                        ['bottom-right', 'Bottom Right'],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setBRollPipPosition(value)}
+                          className={cn(
+                            'px-2 py-1.5 rounded-md border text-xs font-medium transition-colors',
+                            (settings.broll.pipPosition ?? 'bottom-right') === value
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border hover:border-muted-foreground/50'
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </FieldRow>
+                </>
+              )}
+
               <p className="text-xs text-muted-foreground">
                 <strong>How it works:</strong> At render time, Gemini AI extracts visual keywords
                 from each clip&apos;s transcript, searches Pexels for matching stock footage, and
-                composites it onto your video with 0.3s fade transitions. The first 3 seconds
+                composites it onto your video with smooth transitions. The first 3 seconds
                 (the hook) are never covered.
               </p>
             </div>

@@ -1,6 +1,9 @@
 import type { KeywordAtTimestamp } from './broll-keywords'
 import type { BRollVideoResult } from './broll-pexels'
 
+export type BRollDisplayMode = 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
+export type BRollTransition = 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -12,6 +15,14 @@ export interface BRollPlacement {
   duration: number
   /** Absolute path to the downloaded B-Roll video file */
   videoPath: string
+  /** How the B-Roll is displayed on screen */
+  displayMode: BRollDisplayMode
+  /** Transition type for entry/exit */
+  transition: BRollTransition
+  /** PiP size as fraction of canvas width */
+  pipSize: number
+  /** PiP corner position */
+  pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   /** The keyword used to find this clip */
   keyword: string
 }
@@ -25,6 +36,14 @@ export interface BRollSettings {
   intervalSeconds: number
   /** Duration of each B-Roll clip in seconds (default: 3) */
   clipDuration: number
+  /** Display mode. Default: 'split-top' */
+  displayMode: BRollDisplayMode
+  /** Transition type. Default: 'crossfade' */
+  transition: BRollTransition
+  /** PiP size as fraction of canvas width. Default: 0.25 */
+  pipSize: number
+  /** PiP corner position. Default: 'bottom-right' */
+  pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +140,11 @@ export function buildBRollPlacements(
       startTime,
       duration: availableDur,
       videoPath: clip.filePath,
-      keyword: clip.keyword
+      keyword: clip.keyword,
+      displayMode: settings.displayMode,
+      transition: settings.transition,
+      pipSize: settings.pipSize,
+      pipPosition: settings.pipPosition
     })
 
     lastBRollEnd = startTime + availableDur
@@ -164,7 +187,11 @@ export function buildSimpleBRollPlacements(
       startTime: t,
       duration: availableDur,
       videoPath: clip.filePath,
-      keyword: clip.keyword
+      keyword: clip.keyword,
+      displayMode: settings.displayMode,
+      transition: settings.transition,
+      pipSize: settings.pipSize,
+      pipPosition: settings.pipPosition
     })
 
     lastEnd = t + availableDur
