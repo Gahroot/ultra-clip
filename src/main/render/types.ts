@@ -283,6 +283,16 @@ export interface RenderClipJob {
    * When absent, per-shot style assignments have no effect.
    */
   shots?: Array<{ startTime: number; endTime: number }>
+  /**
+   * Pre-computed filler segments (user-curated, with restored ones already excluded).
+   * When present, the filler-removal feature uses these instead of running detection.
+   */
+  precomputedFillerSegments?: Array<{
+    start: number
+    end: number
+    type: 'filler' | 'silence' | 'repeat'
+    label: string
+  }>
 }
 
 export interface RenderStitchedClipSegment {

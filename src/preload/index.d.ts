@@ -1031,6 +1031,18 @@ interface Api {
     baseName: string
   ) => Promise<VariantRenderConfig[]>
   generateVariantLabels: (variants: ClipVariant[]) => Promise<VariantLabel[]>
+  // Description Generator — single clip
+  generateClipDescription: (
+    apiKey: string,
+    transcript: string,
+    clipContext?: string,
+    hookTitle?: string
+  ) => Promise<ClipDescription>
+  // Description Generator — batch (all clips in one AI call)
+  generateBatchDescriptions: (
+    apiKey: string,
+    clips: DescriptionClipInput[]
+  ) => Promise<ClipDescription[]>
   // Word Emphasis
   analyzeWordEmphasis: (words: WordTimestamp[], apiKey?: string) => Promise<WordEmphasisResult>
   // AI Edit Plan — single-shot complete edit plan for a clip

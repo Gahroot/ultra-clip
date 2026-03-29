@@ -164,6 +164,9 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
         : undefined,
       wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
       hookTitleText: clip.hookText || undefined,
+      precomputedFillerSegments: clip.fillerSegments && clip.fillerSegments.length > 0
+        ? clip.fillerSegments.filter((_, i) => !(clip.restoredFillerIndices ?? []).includes(i))
+        : undefined,
     }
 
     setSingleRenderState({ clipId: clip.id, progress: 0, status: 'rendering', outputPath: null, error: null })
@@ -651,7 +654,7 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
                       </Badge>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="max-w-[260px]">
-                      <p className="text-xs">AI Edit Plan applied — {clip.aiEditPlan.wordEmphasis.length} emphasis tags, {clip.aiEditPlan.brollSuggestions.length} B-Roll suggestions, {clip.aiEditPlan.sfxSuggestions.length} SFX hits</p>
+                      <p className="text-xs">AI Edit Plan applied — {clip.aiEditPlan.wordEmphasis.length} emphasis tags, {clip.aiEditPlan.brollSuggestions.length} B-Roll suggestions{clip.aiEditPlan.brollSuggestions.length > 0 && ` (${clip.aiEditPlan.brollSuggestions.map((b) => ('suggestedSource' in b && b.suggestedSource === 'ai-generated') ? '🖼️' : '📹').join('')})`}, {clip.aiEditPlan.sfxSuggestions.length} SFX hits</p>
                       <p className="text-[10px] text-muted-foreground mt-1">Click to view details</p>
                     </TooltipContent>
                   </Tooltip>

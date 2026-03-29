@@ -353,6 +353,165 @@ function CaptionPhonePreview({ captionStyle }: { captionStyle: CaptionStyle }) {
   )
 }
 
+/** Thumbnail scale: 120px wide on a 1080px frame */
+const THUMB_W = 120
+const THUMB_H = 160
+const THUMB_PREVIEW_H = THUMB_H - 24
+const THUMB_SCALE = THUMB_W / 1080
+
+/**
+ * A 120×160 mini preview card showing a caption style with sample words
+ * in normal, emphasis, and supersize states against a dark background.
+ */
+function CaptionStyleThumbnail({
+  style,
+  isSelected,
+  onClick
+}: {
+  style: CaptionStyle
+  isSelected: boolean
+  onClick: () => void
+}) {
+  const scaledFontSize = Math.max(6, Math.round(style.fontSize * 1920 * THUMB_SCALE))
+  const isWordBox = style.animation === 'word-box'
+  const hasBox = style.borderStyle === 3 && !isWordBox
+  const isCaptionsAI = style.animation === 'captions-ai'
+  const outlineWidth = Math.max(1, Math.round(style.outline * THUMB_SCALE))
+
+  const words = [
+    { text: 'This', type: 'normal' as const },
+    { text: 'IS', type: 'emphasis' as const },
+    { text: 'EPIC', type: 'supersize' as const }
+  ]
+
+  const baseTextStyle: React.CSSProperties = {
+    fontFamily: `"${style.fontName}", sans-serif`,
+    fontSize: `${Math.max(6, scaledFontSize)}px`,
+    fontWeight: 700,
+    lineHeight: 1.3,
+    textAlign: 'center',
+    WebkitTextStroke: hasBox ? undefined : `${outlineWidth}px ${style.outlineColor}`,
+    textShadow: hasBox ? undefined : `1px 1px 2px ${style.outlineColor}`
+  }
+
+  const renderWord = (word: { text: string; type: 'normal' | 'emphasis' | 'supersize' }, i: number) => {
+    if (isWordBox) {
+      const boxColor =
+        word.type === 'supersize'
+          ? (style.supersizeColor ?? '#DC2626')
+          : word.type === 'emphasis'
+            ? (style.emphasisColor ?? style.highlightColor)
+            : style.outlineColor
+      const scale = word.type === 'supersize' ? 1.2 : word.type === 'emphasis' ? 1.1 : 1
+      return (
+        <span
+          key={i}
+          style={{
+            fontFamily: `"${style.fontName}", sans-serif`,
+            fontSize: `${Math.max(5, Math.round(scaledFontSize * scale))}px`,
+            fontWeight: word.type === 'supersize' ? 900 : 700,
+            color: style.primaryColor,
+            backgroundColor: boxColor,
+            borderRadius: '3px',
+            padding: '1px 3px',
+            display: 'inline-block',
+            lineHeight: 1.3
+          }}
+        >
+          {word.text}
+        </span>
+      )
+    }
+
+    if (isCaptionsAI && word.type === 'supersize') {
+      return (
+        <span
+          key={i}
+          style={{
+            ...baseTextStyle,
+            color: style.supersizeColor ?? '#FFD700',
+            fontSize: `${Math.max(8, Math.round(scaledFontSize * 2.0))}px`,
+            fontWeight: 900,
+            display: 'inline'
+          }}
+        >
+          {word.text}
+        </span>
+      )
+    }
+
+    if (isCaptionsAI && word.type === 'emphasis') {
+      return (
+        <span
+          key={i}
+          style={{
+            ...baseTextStyle,
+            color: style.emphasisColor ?? style.highlightColor,
+            fontSize: `${Math.max(7, Math.round(scaledFontSize * 1.25))}px`,
+            fontWeight: 800,
+            display: 'inline'
+          }}
+        >
+          {word.text}
+        </span>
+      )
+    }
+
+    return (
+      <span
+        key={i}
+        style={{
+          ...baseTextStyle,
+          color: word.type === 'emphasis' ? style.highlightColor : style.primaryColor
+        }}
+      >
+        {word.text}
+      </span>
+    )
+  }
+
+  const containerStyle: React.CSSProperties = hasBox
+    ? { padding: '1px 4px', backgroundColor: style.backColor, borderRadius: '2px' }
+    : {}
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex flex-col items-center rounded-lg overflow-hidden transition-all cursor-pointer',
+        'hover:ring-2 hover:ring-primary/50',
+        isSelected ? 'ring-2 ring-primary shadow-lg shadow-primary/20' : 'ring-1 ring-border'
+      )}
+      style={{ width: THUMB_W }}
+    >
+      <div
+        className="flex flex-col items-center justify-center gap-0.5 w-full"
+        style={{
+          width: THUMB_W,
+          height: THUMB_PREVIEW_H,
+          background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+        }}
+      >
+        <div
+          className={cn(
+            'flex flex-col items-center gap-0.5',
+            isWordBox && 'gap-[2px]'
+          )}
+          style={containerStyle}
+        >
+          {words.map((w, i) => renderWord(w, i))}
+        </div>
+      </div>
+      <div
+        className="w-full text-center truncate px-1 py-1 text-[9px] text-muted-foreground bg-card"
+        title={style.label}
+      >
+        {style.label}
+      </div>
+    </button>
+  )
+}
+
 /**
  * Mini 9:16 phone frame that previews hook title overlay and re-hook styling.
  */
@@ -729,6 +888,7 @@ export function SettingsPanel() {
     setBRollTransition,
     setBRollPipSize,
     setBRollPipPosition,
+    setBRollSourceMode,
     setFillerRemovalEnabled,
     setFillerRemovalFillerWords,
     setFillerRemovalSilences,
@@ -806,6 +966,7 @@ export function SettingsPanel() {
     setBRollTransition: s.setBRollTransition,
     setBRollPipSize: s.setBRollPipSize,
     setBRollPipPosition: s.setBRollPipPosition,
+    setBRollSourceMode: s.setBRollSourceMode,
     setFillerRemovalEnabled: s.setFillerRemovalEnabled,
     setFillerRemovalFillerWords: s.setFillerRemovalFillerWords,
     setFillerRemovalSilences: s.setFillerRemovalSilences,
@@ -1837,21 +1998,44 @@ export function SettingsPanel() {
                 </FieldRow>
               )}
 
-              {/* Preset selector */}
+              {/* Preset selector — visual thumbnail grid */}
               <FieldRow label="Preset">
-                <Select value={selectedPresetId} onValueChange={handlePresetChange}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.values(CAPTION_PRESETS).map((preset) => (
-                      <SelectItem key={preset.id} value={preset.id}>
-                        {preset.label}
-                      </SelectItem>
-                    ))}
-                    <SelectItem value="custom">Custom</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="grid grid-cols-4 gap-2 max-h-[400px] overflow-y-auto pr-1">
+                  {Object.values(CAPTION_PRESETS).map((preset) => (
+                    <CaptionStyleThumbnail
+                      key={preset.id}
+                      style={preset}
+                      isSelected={selectedPresetId === preset.id}
+                      onClick={() => handlePresetChange(preset.id)}
+                    />
+                  ))}
+                  {/* Custom option */}
+                  <button
+                    onClick={() => handlePresetChange('custom')}
+                    className={cn(
+                      'flex flex-col items-center rounded-lg overflow-hidden transition-all cursor-pointer',
+                      'hover:ring-2 hover:ring-primary/50',
+                      selectedPresetId === 'custom'
+                        ? 'ring-2 ring-primary shadow-lg shadow-primary/20'
+                        : 'ring-1 ring-border'
+                    )}
+                    style={{ width: THUMB_W }}
+                  >
+                    <div
+                      className="flex items-center justify-center w-full text-muted-foreground"
+                      style={{
+                        width: THUMB_W,
+                        height: THUMB_PREVIEW_H,
+                        background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
+                      }}
+                    >
+                      <span className="text-xl">✎</span>
+                    </div>
+                    <div className="w-full text-center truncate px-1 py-1 text-[9px] text-muted-foreground bg-card">
+                      Custom
+                    </div>
+                  </button>
+                </div>
               </FieldRow>
 
               {/* Animation */}
@@ -2342,10 +2526,44 @@ export function SettingsPanel() {
               )}
             >
               <p className="text-xs text-muted-foreground">
-                Automatically inserts relevant Pexels stock footage every few seconds to break up
-                talking-head monotony and boost viewer retention — the same feature as Opus Clip Pro.
-                Clips are cached locally so the same footage isn&apos;t re-downloaded.
+                Automatically inserts relevant visual overlays every few seconds to break up
+                talking-head monotony and boost viewer retention. Choose between stock footage,
+                AI-generated images, or let AI decide per-placement.
               </p>
+
+              {/* B-Roll Source Mode */}
+              <FieldRow
+                label="B-Roll Source"
+                hint="Where B-Roll visuals come from"
+              >
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    ['stock', '📹 Stock', 'Pexels footage'],
+                    ['ai-generated', '🖼️ AI Images', '~$0.04/image'],
+                    ['auto', '✨ Auto', 'AI decides'],
+                  ] as const).map(([value, label, desc]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setBRollSourceMode(value)}
+                      className={cn(
+                        'px-2 py-2 rounded-md border text-left transition-colors',
+                        (settings.broll.sourceMode ?? 'auto') === value
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/40'
+                      )}
+                    >
+                      <span className="text-xs font-medium block">{label}</span>
+                      <span className="text-[10px] text-muted-foreground block mt-0.5">{desc}</span>
+                    </button>
+                  ))}
+                </div>
+                {(settings.broll.sourceMode === 'ai-generated' || settings.broll.sourceMode === 'auto') && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Uses your Gemini API key from AI Settings (~$0.04/image)
+                  </p>
+                )}
+              </FieldRow>
 
               {/* Pexels API key */}
               <FieldRow

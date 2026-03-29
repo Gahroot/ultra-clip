@@ -71,13 +71,18 @@ export function registerRenderHandlers(): void {
         try {
           // Use AI edit plan B-Roll suggestions as keyword source when available,
           // otherwise extract keywords from the transcript using Gemini.
-          let keywords: Array<{ keyword: string; timestamp: number }>
+          const sourceMode = options.broll.sourceMode ?? 'auto'
+          const geminiApiKey = options.geminiApiKey ?? ''
+          const styleCategory = options.styleCategory ?? 'custom'
+
+          let keywords: Array<{ keyword: string; timestamp: number; suggestedSource?: 'stock' | 'ai-generated' }>
 
           if (job.brollSuggestions && job.brollSuggestions.length > 0) {
             // Convert AI edit plan B-Roll suggestions to keyword format
             keywords = job.brollSuggestions.map((s) => ({
               keyword: s.keyword,
-              timestamp: s.timestamp
+              timestamp: s.timestamp,
+              suggestedSource: s.suggestedSource
             }))
             console.log(
               `[B-Roll] Clip ${job.clipId}: using ${keywords.length} AI edit plan keywords`
@@ -95,7 +100,7 @@ export function registerRenderHandlers(): void {
               localWords,
               0,
               clipDuration,
-              options.broll.pexelsApiKey
+              options.broll.pexelsApiKey || geminiApiKey
             )
           }
 
@@ -104,13 +109,88 @@ export function registerRenderHandlers(): void {
             continue
           }
 
-          // Download Pexels footage for unique keywords
+          // ── Route each keyword to stock (Pexels) or AI-generated image ──────
           const uniqueKeywords = [...new Set(keywords.map((k) => k.keyword))]
-          const downloadedClips = await fetchBRollClips(
-            uniqueKeywords,
-            options.broll.pexelsApiKey,
-            options.broll.clipDuration
-          )
+          const downloadedClips = new Map<string, BRollVideoResult>()
+
+          // Build per-keyword source lookup from suggestions
+          const keywordSourceMap = new Map<string, 'stock' | 'ai-generated' | undefined>()
+          for (const kw of keywords) {
+            if (kw.suggestedSource && !keywordSourceMap.has(kw.keyword)) {
+              keywordSourceMap.set(kw.keyword, kw.suggestedSource)
+            }
+          }
+
+          // Partition keywords into stock vs AI-generated
+          const stockKeywords: string[] = []
+          const aiKeywords: string[] = []
+
+          for (const kw of uniqueKeywords) {
+            if (sourceMode === 'stock') {
+              stockKeywords.push(kw)
+            } else if (sourceMode === 'ai-generated') {
+              aiKeywords.push(kw)
+            } else {
+              // auto — check per-keyword suggestedSource, default to stock
+              const suggested = keywordSourceMap.get(kw)
+              if (suggested === 'ai-generated') {
+                aiKeywords.push(kw)
+              } else {
+                stockKeywords.push(kw)
+              }
+            }
+          }
+
+          // Fetch Pexels stock footage for stock keywords
+          if (stockKeywords.length > 0 && options.broll.pexelsApiKey) {
+            const pexelsClips = await fetchBRollClips(
+              stockKeywords,
+              options.broll.pexelsApiKey,
+              options.broll.clipDuration
+            )
+            for (const [kw, clip] of pexelsClips) {
+              downloadedClips.set(kw, clip)
+            }
+          }
+
+          // Generate AI images for ai-generated keywords, convert to video clips
+          if (aiKeywords.length > 0 && geminiApiKey) {
+            const transcriptText = clipWords.map((w) => w.text).join(' ')
+
+            for (const kw of aiKeywords) {
+              try {
+                // Get a few words of transcript context around the keyword's timestamp
+                const kwEntry = keywords.find((k) => k.keyword === kw)
+                const contextWords = transcriptText
+                  .split(/\s+/)
+                  .slice(
+                    Math.max(0, Math.floor((kwEntry?.timestamp ?? 0) * 3) - 10),
+                    Math.floor((kwEntry?.timestamp ?? 0) * 3) + 20
+                  )
+                  .join(' ')
+
+                const imageResult = await generateBRollImage(
+                  kw,
+                  contextWords,
+                  styleCategory,
+                  geminiApiKey
+                )
+                if (imageResult) {
+                  const videoPath = await imageToVideoClip(imageResult.filePath, options.broll.clipDuration)
+                  downloadedClips.set(kw, {
+                    filePath: videoPath,
+                    duration: options.broll.clipDuration,
+                    keyword: kw,
+                    pexelsId: 0 // Not from Pexels — AI-generated
+                  })
+                  console.log(`[B-Roll] AI image generated for "${kw}"`)
+                }
+              } catch (aiErr) {
+                const aiMsg = aiErr instanceof Error ? aiErr.message : String(aiErr)
+                console.warn(`[B-Roll] AI generation failed for "${kw}": ${aiMsg}`)
+              }
+            }
+          }
 
           if (downloadedClips.size === 0) {
             console.log(`[B-Roll] Clip ${job.clipId}: no clips downloaded — skipping`)

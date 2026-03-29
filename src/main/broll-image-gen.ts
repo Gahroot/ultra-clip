@@ -118,7 +118,7 @@ function evictOldCacheEntries(): void {
 // ---------------------------------------------------------------------------
 
 const GEMINI_IMAGE_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent'
 
 interface GeminiImageResponse {
   candidates?: Array<{
