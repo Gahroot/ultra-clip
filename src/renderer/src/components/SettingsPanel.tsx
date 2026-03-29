@@ -1932,7 +1932,7 @@ export function SettingsPanel() {
                     ? 'Smooth sinusoidal breathing — classic Ken Burns feel'
                     : settings.autoZoom.mode === 'reactive'
                     ? 'Zoom responds to word emphasis moments — content-aware energy'
-                    : 'Instant zoom changes — simulates multi-camera editing'
+                    : 'Hard zoom cuts at sentence boundaries — simulates multi-camera editing'
                 }
               >
                 <Select
