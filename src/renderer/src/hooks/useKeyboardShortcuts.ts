@@ -14,6 +14,14 @@ function isTyping(): boolean {
   return false
 }
 
+/**
+ * Returns true if a modal dialog is currently open (editor, settings, etc.).
+ * Global shortcuts should defer to the dialog's own shortcut handler.
+ */
+function isDialogOpen(): boolean {
+  return document.querySelectorAll('[role="dialog"][data-state="open"]').length > 0
+}
+
 export interface KeyboardShortcutCallbacks {
   onOpenSettings: () => void
   onSave: () => void
@@ -58,8 +66,9 @@ export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks) {
         return
       }
 
-      // --- Non-modifier shortcuts: skip if user is typing ---
+      // --- Non-modifier shortcuts: skip if user is typing or dialog is open ---
       if (isTyping()) return
+      if (isDialogOpen()) return
 
       const state = useStore.getState()
       const { activeSourceId, clips, selectedClipIndex } = state

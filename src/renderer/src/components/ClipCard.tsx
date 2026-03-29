@@ -124,6 +124,21 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
   const [showEditPlanPanel, setShowEditPlanPanel] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
+  // Listen for editor:open-preview events (N/P clip navigation)
+  useEffect(() => {
+    function onOpenPreview(e: Event) {
+      const { clipId } = (e as CustomEvent).detail
+      if (clipId === clip.id) {
+        setShowPreview(true)
+      } else if (showPreview) {
+        // Close current preview when navigating away
+        setShowPreview(false)
+      }
+    }
+    window.addEventListener('editor:open-preview', onOpenPreview)
+    return () => window.removeEventListener('editor:open-preview', onOpenPreview)
+  }, [clip.id, showPreview])
+
   // Whether the current trim differs from the AI-selected boundaries
   const boundariesModified = useMemo(() => {
     const aiStart = clip.aiStartTime

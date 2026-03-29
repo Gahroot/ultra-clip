@@ -25,8 +25,22 @@ const SHORTCUT_SECTIONS: { title: string; shortcuts: ShortcutEntry[] }[] = [
   {
     title: 'Navigation',
     shortcuts: [
-      { keys: ['←', '↑'], description: 'Select previous clip' },
-      { keys: ['→', '↓'], description: 'Select next clip' }
+      { keys: ['\u2190', '\u2191'], description: 'Select previous clip' },
+      { keys: ['\u2192', '\u2193'], description: 'Select next clip' }
+    ]
+  },
+  {
+    title: 'Per-Clip Editor',
+    shortcuts: [
+      { keys: ['Space'], description: 'Play / pause preview' },
+      { keys: ['\u2190', '\u2192'], description: 'Seek backward / forward 1s' },
+      { keys: ['1\u20139'], description: 'Apply style preset 1\u20139' },
+      { keys: ['C'], description: 'Switch to Captions tab' },
+      { keys: ['S'], description: 'Switch to Styles tab' },
+      { keys: ['R'], description: 'Mark clip ready for render' },
+      { keys: ['N'], description: 'Next clip (apply & open)' },
+      { keys: ['P'], description: 'Previous clip (apply & open)' },
+      { keys: ['Del'], description: 'Reset style to default' }
     ]
   },
   {

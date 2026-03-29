@@ -518,6 +518,30 @@ export function ClipGrid() {
     return () => window.removeEventListener('keydown', handler)
   }, [displayedClips, selectAllVisible, clearSelection, selectedClipIds])
 
+  // Handle editor:navigate-clip custom events (N/P keys in ClipPreview)
+  useEffect(() => {
+    function onNavigateClip(e: Event) {
+      const { direction, clipId } = (e as CustomEvent).detail
+      const currentIdx = displayedClips.findIndex((c) => c.id === clipId)
+      if (currentIdx === -1) return
+      const nextIdx = direction === 'next'
+        ? Math.min(displayedClips.length - 1, currentIdx + 1)
+        : Math.max(0, currentIdx - 1)
+      if (nextIdx === currentIdx) return
+      const nextClip = displayedClips[nextIdx]
+      setSelectedClipIndex(nextIdx)
+      // Scroll the next clip card into view
+      const el = document.querySelector(`[data-clip-index="${nextIdx}"]`)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      // Tell the target ClipCard to open its preview dialog
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('editor:open-preview', { detail: { clipId: nextClip.id } }))
+      }, 100)
+    }
+    window.addEventListener('editor:navigate-clip', onNavigateClip)
+    return () => window.removeEventListener('editor:navigate-clip', onNavigateClip)
+  }, [displayedClips, setSelectedClipIndex])
+
   const handleApproveAll = () => {
     if (activeSourceId) approveAll(activeSourceId)
     if (activeSourceId) {
