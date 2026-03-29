@@ -294,8 +294,8 @@ function buildWordPopLines(
     const emp = buildEmphasisTags(w, style, baseFontSize)
     const level = w.emphasis ?? 'normal'
 
-    // Emphasis/supersize words pop in bigger and use their own color instead of highlight
-    const popScaleX = level === 'supersize' ? 130 : level === 'emphasis' ? 120 : 110
+    // Emphasis/supersize/box words pop in bigger and use their own color instead of highlight
+    const popScaleX = level === 'supersize' ? 130 : (level === 'emphasis' || level === 'box') ? 120 : 110
     const popScaleY = popScaleX
     const activeColor = level !== 'normal' ? '' : `\\t(${wordStart},${wordStart + wordDur},\\1c${highlightASS})`
     const resetColor = level !== 'normal' ? '' : `\\t(${wordStart + wordDur},${wordStart + wordDur},\\1c${primaryASS})`
@@ -371,10 +371,10 @@ function buildGlowLines(
     const emp = buildEmphasisTags(w, style, baseFontSize)
     const level = w.emphasis ?? 'normal'
 
-    // Emphasis/supersize words get a thicker glow border
+    // Emphasis/supersize/box words get a thicker glow border
     const glowBord = level === 'supersize'
       ? style.outline + 5
-      : level === 'emphasis'
+      : (level === 'emphasis' || level === 'box')
         ? style.outline + 3
         : style.outline + 2
 
@@ -416,6 +416,7 @@ function buildWordBoxLines(
   const normalBoxASS = hexToASS(style.outlineColor)
   const emphasisBoxASS = hexToASS(style.emphasisColor ?? style.highlightColor)
   const supersizeBoxASS = hexToASS(style.supersizeColor ?? '#FFD700')
+  const boxEmphasisBoxASS = hexToASS(style.boxColor ?? style.highlightColor)
 
   const start = formatASSTime(group.start)
   const end = formatASSTime(group.end)
@@ -428,7 +429,7 @@ function buildWordBoxLines(
 
   interface WordMetric {
     word: WordInput
-    level: 'normal' | 'emphasis' | 'supersize'
+    level: 'normal' | 'emphasis' | 'supersize' | 'box'
     effectiveSize: number
     textWidth: number
     boxWidth: number
@@ -472,9 +473,11 @@ function buildWordBoxLines(
     const boxColor =
       m.level === 'supersize'
         ? supersizeBoxASS
-        : m.level === 'emphasis'
-          ? emphasisBoxASS
-          : normalBoxASS
+        : m.level === 'box'
+          ? boxEmphasisBoxASS
+          : m.level === 'emphasis'
+            ? emphasisBoxASS
+            : normalBoxASS
 
     // Word timing relative to group start (centiseconds)
     const wordStartCs = Math.round((w.start - group.start) * 100)
@@ -491,11 +494,19 @@ function buildWordBoxLines(
       `\\shad0`
     ]
 
-    // Font size override for emphasis/supersize
+    // Font size override for emphasis/supersize/box
     if (m.level === 'emphasis') {
       overrides.push(`\\fs${m.effectiveSize}`)
+      if (style.emphasisFontWeight && style.emphasisFontWeight > 400) overrides.push(`\\b1`)
     } else if (m.level === 'supersize') {
-      overrides.push(`\\fs${m.effectiveSize}`, `\\b1`)
+      const supWeight = style.supersizeFontWeight ?? 800
+      overrides.push(`\\fs${m.effectiveSize}`)
+      if (supWeight > 400) overrides.push(`\\b1`)
+    } else if (m.level === 'box') {
+      overrides.push(`\\fs${m.effectiveSize}`)
+      if (style.boxFontWeight && style.boxFontWeight > 400) overrides.push(`\\b1`)
+      // Override text color for box words if specified
+      if (style.boxTextColor) overrides.push(`\\1c${hexToASS(style.boxTextColor)}`)
     }
 
     // Pop-in animation: invisible → scale-up → settle
@@ -553,7 +564,7 @@ function buildElasticBounceLines(
     const params =
       level === 'supersize'
         ? { initial: 180, undershoot: 88, overshoot: 108, totalCs: 24 }
-        : level === 'emphasis'
+        : (level === 'emphasis' || level === 'box')
           ? { initial: 155, undershoot: 91, overshoot: 106, totalCs: 20 }
           : { initial: 135, undershoot: 93, overshoot: 104, totalCs: 16 }
 
@@ -674,10 +685,15 @@ function buildImpactTwoLines(
   const end = formatASSTime(group.end)
 
   // --- Pick the KEY word ---
-  // Priority: first supersize > first emphasis > last word
+  // Priority: first supersize > first box > first emphasis > last word
   let keyIdx = -1
   for (let i = 0; i < group.words.length; i++) {
     if (group.words[i].emphasis === 'supersize') { keyIdx = i; break }
+  }
+  if (keyIdx === -1) {
+    for (let i = 0; i < group.words.length; i++) {
+      if (group.words[i].emphasis === 'box') { keyIdx = i; break }
+    }
   }
   if (keyIdx === -1) {
     for (let i = 0; i < group.words.length; i++) {
@@ -720,8 +736,8 @@ function buildImpactTwoLines(
     const wordStartCs = Math.round((w.start - group.start) * 100)
     const fadeDur = Math.min(12, Math.round((w.end - w.start) * 100))
     const level = w.emphasis ?? 'normal'
-    // Context words that happen to be emphasis get a subtle color hint
-    const colorTag = level === 'emphasis' ? `\\1c${emphasisASS}` : `\\1c${primaryASS}`
+    // Context words that happen to be emphasis/box get a subtle color hint
+    const colorTag = (level === 'emphasis' || level === 'box') ? `\\1c${emphasisASS}` : `\\1c${primaryASS}`
 
     return (
       `{\\fs${contextSize}${colorTag}\\bord${Math.max(1, Math.round(style.outline * 0.5))}` +
@@ -789,7 +805,7 @@ function buildCascadeLines(
 
   interface CascadeMetric {
     word: WordInput
-    level: 'normal' | 'emphasis' | 'supersize'
+    level: 'normal' | 'emphasis' | 'supersize' | 'box'
     effectiveSize: number
     textWidth: number
   }
@@ -841,13 +857,13 @@ function buildCascadeLines(
     const riseDist =
       m.level === 'supersize'
         ? riseDistSupersize
-        : m.level === 'emphasis'
+        : (m.level === 'emphasis' || m.level === 'box')
           ? riseDistEmphasis
           : riseDistNormal
     const fadeDur =
       m.level === 'supersize'
         ? fadeDurSupersize
-        : m.level === 'emphasis'
+        : (m.level === 'emphasis' || m.level === 'box')
           ? fadeDurEmphasis
           : fadeDurNormal
 
@@ -866,17 +882,34 @@ function buildCascadeLines(
 
     // Color and size overrides per emphasis level
     if (m.level === 'supersize') {
+      const supWeight = style.supersizeFontWeight ?? 800
       overrides.push(
         `\\fs${m.effectiveSize}`,
-        `\\b1`,
         `\\1c${supersizeASS}`,
         `\\bord${Math.round(style.outline * 1.5)}`
       )
+      if (supWeight > 400) overrides.push(`\\b1`)
+    } else if (m.level === 'box') {
+      // Box word in cascade: thick outline acts as opaque rectangle
+      const boxColorASS = hexToASS(style.boxColor ?? style.highlightColor)
+      const textColorASS = hexToASS(style.boxTextColor ?? style.primaryColor)
+      const padding = style.boxPadding ?? 10
+      overrides.push(
+        `\\fs${m.effectiveSize}`,
+        `\\1c${textColorASS}`,
+        `\\3c${boxColorASS}`,
+        `\\bord${padding}`,
+        `\\xbord${padding + 4}`,
+        `\\ybord${padding}`,
+        `\\shad0`
+      )
+      if (style.boxFontWeight && style.boxFontWeight > 400) overrides.push(`\\b1`)
     } else if (m.level === 'emphasis') {
       overrides.push(
         `\\fs${m.effectiveSize}`,
         `\\1c${emphasisASS}`
       )
+      if (style.emphasisFontWeight && style.emphasisFontWeight > 400) overrides.push(`\\b1`)
     } else {
       overrides.push(`\\1c${primaryASS}`)
     }
@@ -939,14 +972,17 @@ function buildCaptionsAILines(
     if (level === 'supersize') {
       // SUPERSIZE: massive, held at 200%+, standout color.
       // Snap to 220% then ease down to 200% and HOLD there.
-      const bigSize = Math.round(baseFontSize * 2.0)
+      const supScale = resolveSupersizeScale(style)
+      const bigSize = Math.round(baseFontSize * Math.max(supScale, 1.6))
       const snapScale = 220
       const holdScale = 200
       const snapDur = Math.min(6, wordDurCs) // 60ms snap-in
       const settleDur = Math.min(10, wordDurCs) // 100ms settle
+      const supWeight = style.supersizeFontWeight ?? 800
+      const supBold = supWeight > 400 ? '\\b1' : ''
 
       return (
-        `{\\fs${bigSize}\\b1\\1c${supersizeASS}\\bord${Math.round(style.outline * 1.5)}` +
+        `{\\fs${bigSize}${supBold}\\1c${supersizeASS}\\bord${Math.round(style.outline * 1.5)}` +
         `\\alpha&HFF&\\fscx${snapScale}\\fscy${snapScale}` +
         // Snap to visible at overshoot scale
         `\\t(${wordStartCs},${wordStartCs + snapDur},\\alpha&H00&)` +

@@ -256,6 +256,7 @@ interface RenderBatchOptions {
     transition: 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
     pipSize: number
     pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+    sourceMode?: 'stock' | 'ai-generated' | 'auto'
   }
   /** Source video metadata for auto-manifest generation */
   sourceMeta?: {
@@ -1082,6 +1083,35 @@ interface Api {
     pipSize: number
     pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   }>>
+  // B-Roll AI Image Generation
+  generateBRollImage: (
+    geminiApiKey: string,
+    keyword: string,
+    transcriptContext: string,
+    styleCategory: string,
+    duration: number
+  ) => Promise<{
+    filePath: string
+    keyword: string
+    width: number
+    height: number
+    source: 'ai-generated'
+    videoPath: string
+  } | null>
+  regenerateBRollImage: (
+    geminiApiKey: string,
+    keyword: string,
+    transcriptContext: string,
+    styleCategory: string,
+    duration: number
+  ) => Promise<{
+    filePath: string
+    keyword: string
+    width: number
+    height: number
+    source: 'ai-generated'
+    videoPath: string
+  } | null>
   // Emoji Burst / Reaction Overlay
   identifyEmojiMoments: (
     apiKey: string,

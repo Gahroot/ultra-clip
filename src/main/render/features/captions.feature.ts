@@ -183,7 +183,16 @@ function buildShotCaptionOverrides(
         wordsPerLine: config.captionStyle.wordsPerLine,
         animation: config.captionStyle.animation,
         emphasisColor: config.captionStyle.emphasisColor,
-        supersizeColor: config.captionStyle.supersizeColor
+        supersizeColor: config.captionStyle.supersizeColor,
+        emphasisScale: config.captionStyle.emphasisScale,
+        emphasisFontWeight: config.captionStyle.emphasisFontWeight,
+        supersizeScale: config.captionStyle.supersizeScale,
+        supersizeFontWeight: config.captionStyle.supersizeFontWeight,
+        boxColor: config.captionStyle.boxColor,
+        boxOpacity: config.captionStyle.boxOpacity,
+        boxPadding: config.captionStyle.boxPadding,
+        boxTextColor: config.captionStyle.boxTextColor,
+        boxFontWeight: config.captionStyle.boxFontWeight
       }
     })
   }
