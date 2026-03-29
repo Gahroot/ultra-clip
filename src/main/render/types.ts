@@ -2,8 +2,8 @@
 // Shared render types — extracted from render-pipeline.ts
 // ---------------------------------------------------------------------------
 
-import type { SoundPlacementData, SoundDesignOptions } from '../sound-design'
-import type { ZoomSettings } from '../auto-zoom'
+import type { SoundPlacementData, SoundDesignOptions, EditEvent } from '../sound-design'
+import type { ZoomSettings, EmphasisKeyframe } from '../auto-zoom'
 import type { OutputAspectRatio } from '../aspect-ratios'
 import type { HookTitleConfig } from '../hook-title'
 import type { RehookConfig, OverlayVisualSettings } from '../overlays/rehook'
@@ -18,7 +18,9 @@ import type { SegmentRole } from '../ai/clip-stitcher'
 export type {
   SoundPlacementData,
   SoundDesignOptions,
+  EditEvent,
   ZoomSettings,
+  EmphasisKeyframe,
   HookTitleConfig,
   RehookConfig,
   OverlayVisualSettings,
@@ -113,6 +115,13 @@ export interface RenderClipJob {
    * Applied as a post-processing pass after the main clip is rendered.
    */
   brollPlacements?: BRollPlacement[]
+  /**
+   * Emphasis keyframes computed during the captions prepare phase (or by the
+   * auto-zoom feature as a fallback when captions are disabled). Times are
+   * clip-relative (0-based, in seconds). Consumed by reactive zoom mode to
+   * drive the keyframe-driven push-in zoom filter.
+   */
+  emphasisKeyframes?: EmphasisKeyframe[]
   /**
    * Loop optimization strategy applied to this clip. When set to 'crossfade'
    * and crossfadeDuration is provided, the render pipeline applies an audio
