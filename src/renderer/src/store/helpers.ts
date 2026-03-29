@@ -582,6 +582,210 @@ export const CAPTION_PRESETS: Record<string, CaptionStyle> = {
     animation: 'fade-in',
     emphasisColor: '#5EEAD4',
     supersizeColor: '#FFFFFF'
+  },
+
+  // ---------------------------------------------------------------------------
+  // Handwritten & Playful family — warm, human, approachable caption styles
+  // ---------------------------------------------------------------------------
+
+  /** Procyon — handwritten Caveat with gentle fade-in. Warm and personal. */
+  'procyon': {
+    id: 'procyon',
+    label: 'Procyon Whisper',
+    fontName: 'Caveat',
+    fontFile: 'Caveat.ttf',
+    fontSize: 0.075,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFFFFF',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 1,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'fade-in',
+    emphasisColor: '#FDE68A',
+    supersizeColor: '#FBBF24'
+  },
+
+  /** Altair — Permanent Marker with punchy pop animation. Bold and raw. */
+  'altair': {
+    id: 'altair',
+    label: 'Altair Marker',
+    fontName: 'Permanent Marker',
+    fontFile: 'PermanentMarker-Regular.ttf',
+    fontSize: 0.065,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FF6B6B',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 3,
+    shadow: 2,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'word-pop',
+    emphasisColor: '#FF6B6B',
+    supersizeColor: '#FF3333'
+  },
+
+  /** Castor — Dancing Script with colored emphasis. Elegant and flowing. */
+  'castor': {
+    id: 'castor',
+    label: 'Castor Script',
+    fontName: 'Dancing Script',
+    fontFile: 'DancingScript.ttf',
+    fontSize: 0.07,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#7DD3FC',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 1,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'captions-ai',
+    emphasisColor: '#7DD3FC',
+    supersizeColor: '#38BDF8'
+  },
+
+  /** Pollux — Caveat handwriting on warm rounded background boxes. Cozy. */
+  'pollux': {
+    id: 'pollux',
+    label: 'Pollux Sticky',
+    fontName: 'Caveat',
+    fontFile: 'Caveat.ttf',
+    fontSize: 0.07,
+    primaryColor: '#1C1917',
+    highlightColor: '#1C1917',
+    outlineColor: '#FDE68A',
+    backColor: '#E8FDE68A',
+    outline: 14,
+    shadow: 0,
+    borderStyle: 3,
+    wordsPerLine: 3,
+    animation: 'fade-in',
+    emphasisColor: '#B45309',
+    supersizeColor: '#92400E'
+  },
+
+  /** Canopus — Dancing Script with elastic bounce. Light and bubbly. */
+  'canopus': {
+    id: 'canopus',
+    label: 'Canopus Bounce',
+    fontName: 'Dancing Script',
+    fontFile: 'DancingScript.ttf',
+    fontSize: 0.07,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#C4B5FD',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 0,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'elastic-bounce',
+    emphasisColor: '#C4B5FD',
+    supersizeColor: '#A78BFA'
+  },
+
+  /** Bellatrix — Permanent Marker all-caps feel with hard drop shadow. Gritty. */
+  'bellatrix': {
+    id: 'bellatrix',
+    label: 'Bellatrix Shout',
+    fontName: 'Permanent Marker',
+    fontFile: 'PermanentMarker-Regular.ttf',
+    fontSize: 0.07,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#FFE600',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 0,
+    shadow: 4,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'word-pop',
+    emphasisColor: '#FFE600',
+    supersizeColor: '#FF4444'
+  },
+
+  /** Adhara — Dancing Script in soft pastels with cascade reveal. Dreamy. */
+  'adhara': {
+    id: 'adhara',
+    label: 'Adhara Pastel',
+    fontName: 'Dancing Script',
+    fontFile: 'DancingScript.ttf',
+    fontSize: 0.07,
+    primaryColor: '#FBCFE8',
+    highlightColor: '#A5F3FC',
+    outlineColor: '#831843',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 1,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'cascade',
+    emphasisColor: '#A5F3FC',
+    supersizeColor: '#67E8F9'
+  },
+
+  /** Mimosa — Bangers with oversized pop and playful energy. Fun and loud. */
+  'mimosa': {
+    id: 'mimosa',
+    label: 'Mimosa Pop',
+    fontName: 'Bangers',
+    fontFile: 'Bangers-Regular.ttf',
+    fontSize: 0.07,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#4ADE80',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 3,
+    shadow: 2,
+    borderStyle: 1,
+    wordsPerLine: 2,
+    animation: 'impact-two',
+    emphasisColor: '#4ADE80',
+    supersizeColor: '#FB923C'
+  },
+
+  /** Shaula — Caveat with karaoke fill for a hand-drawn underline feel. Organic. */
+  'shaula': {
+    id: 'shaula',
+    label: 'Shaula Trace',
+    fontName: 'Caveat',
+    fontFile: 'Caveat.ttf',
+    fontSize: 0.075,
+    primaryColor: '#FFFFFF',
+    highlightColor: '#F9A8D4',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 2,
+    shadow: 1,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'karaoke-fill',
+    emphasisColor: '#F9A8D4',
+    supersizeColor: '#EC4899'
+  },
+
+  /** Albireo — Caveat base with bold sans-serif emphasis contrast. Expressive. */
+  'albireo': {
+    id: 'albireo',
+    label: 'Albireo Duo',
+    fontName: 'Caveat',
+    fontFile: 'Caveat.ttf',
+    fontSize: 0.07,
+    primaryColor: '#F5F5F4',
+    highlightColor: '#FBBF24',
+    outlineColor: '#000000',
+    backColor: '#00000000',
+    outline: 3,
+    shadow: 1,
+    borderStyle: 1,
+    wordsPerLine: 3,
+    animation: 'captions-ai',
+    emphasisColor: '#FBBF24',
+    supersizeColor: '#F59E0B'
   }
 }
 

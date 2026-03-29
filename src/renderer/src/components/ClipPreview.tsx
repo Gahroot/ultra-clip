@@ -254,6 +254,7 @@ export function ClipPreview({
   const settings = useStore((s) => s.settings)
   const hookTemplates = useStore((s) => s.hookTemplates)
   const activeHookTemplateId = useStore((s) => s.activeHookTemplateId)
+  const toggleFillerRestore = useStore((s) => s.toggleFillerRestore)
 
   // Single-clip render derived state
   const isThisClipRendering = singleRenderClipId === clip.id && singleRenderStatus === 'rendering'
@@ -452,6 +453,20 @@ export function ClipPreview({
       setCurrentTime(wordStart)
     }
   }, [])
+
+  /** Check if a word overlaps with any filler segment. Returns the segment index or -1. */
+  const getWordFillerIndex = useCallback(
+    (word: { start: number; end: number }): number => {
+      const segs = clip?.fillerSegments
+      if (!segs || segs.length === 0) return -1
+      for (let i = 0; i < segs.length; i++) {
+        // Word overlaps segment if word.start < seg.end && word.end > seg.start
+        if (word.start < segs[i].end && word.end > segs[i].start) return i
+      }
+      return -1
+    },
+    [clip?.fillerSegments]
+  )
 
   // Capture current video frame and save as custom thumbnail
   const handleCaptureThumbnail = useCallback(() => {

@@ -116,6 +116,8 @@ export const InvokeChannels = {
 
   // B-Roll
   BROLL_GENERATE_PLACEMENTS: 'broll:generatePlacements',
+  BROLL_GENERATE_IMAGE: 'broll:generateImage',
+  BROLL_REGENERATE_IMAGE: 'broll:regenerateImage',
 
   // Export
   EXPORT_DESCRIPTIONS: 'export:descriptions',

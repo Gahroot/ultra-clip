@@ -27,6 +27,9 @@ import { buildBRollPlacements } from '../broll-placement'
 import type { BRollSettings as BRollSettingsConfig, BRollDisplayMode, BRollTransition } from '../broll-placement'
 import { checkPythonSetup, runFullSetup } from '../python-setup'
 import { detectFillers } from '../filler-detection'
+import { generateBRollImage } from '../broll-image-gen'
+import type { BRollImageResult } from '../broll-image-gen'
+import { imageToVideoClip } from '../broll-image-overlay'
 
 export function registerMediaHandlers(): void {
   // YouTube download
@@ -207,6 +210,52 @@ export function registerMediaHandlers(): void {
 
       console.log(`[B-Roll] Generated ${placements.length} placement(s) for clip at ${clipStart}–${clipEnd}s`)
       return placements
+    })
+  )
+
+  // B-Roll — generate a single AI image
+  ipcMain.handle(
+    Ch.Invoke.BROLL_GENERATE_IMAGE,
+    wrapHandler(Ch.Invoke.BROLL_GENERATE_IMAGE, async (
+      _event,
+      geminiApiKey: string,
+      keyword: string,
+      transcriptContext: string,
+      styleCategory: string,
+      duration: number
+    ) => {
+      const imageResult = await generateBRollImage(keyword, transcriptContext, styleCategory, geminiApiKey)
+      if (!imageResult) return null
+
+      // Convert static image to video clip with Ken Burns effect
+      const videoPath = await imageToVideoClip(imageResult.filePath, duration)
+      return {
+        ...imageResult,
+        videoPath
+      }
+    })
+  )
+
+  // B-Roll — regenerate an AI image with new prompt/style
+  ipcMain.handle(
+    Ch.Invoke.BROLL_REGENERATE_IMAGE,
+    wrapHandler(Ch.Invoke.BROLL_REGENERATE_IMAGE, async (
+      _event,
+      geminiApiKey: string,
+      keyword: string,
+      transcriptContext: string,
+      styleCategory: string,
+      duration: number
+    ) => {
+      // Same as generate — the cache key will differ if keyword/context/style differ
+      const imageResult = await generateBRollImage(keyword, transcriptContext, styleCategory, geminiApiKey)
+      if (!imageResult) return null
+
+      const videoPath = await imageToVideoClip(imageResult.filePath, duration)
+      return {
+        ...imageResult,
+        videoPath
+      }
     })
   )
 

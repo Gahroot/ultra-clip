@@ -139,6 +139,8 @@ const api = {
 
   // B-Roll
   generateBRollPlacements: invoke(I.BROLL_GENERATE_PLACEMENTS),
+  generateBRollImage: invoke(I.BROLL_GENERATE_IMAGE),
+  regenerateBRollImage: invoke(I.BROLL_REGENERATE_IMAGE),
 
   // Shot Segmentation
   segmentClipIntoShots: invoke(I.SHOT_SEGMENT_CLIP),
