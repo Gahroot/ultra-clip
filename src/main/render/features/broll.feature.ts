@@ -27,7 +27,8 @@ export const brollFeature: RenderFeature = {
 
   async prepare(
     job: RenderClipJob,
-    _batchOptions: RenderBatchOptions
+    _batchOptions: RenderBatchOptions,
+    _onProgress?: (message: string, percent: number) => void
   ): Promise<PrepareResult> {
     // Emit edit events from B-Roll placements so downstream features
     // (sound-design) can synchronise SFX to B-Roll transitions

@@ -12,8 +12,6 @@ import type { ClipCandidate } from '../../store'
 import { createStageReporter } from '../../lib/progress-reporter'
 import type { PipelineContext } from './types'
 import { handleStageError } from './types'
-import { BUILT_IN_EDIT_STYLE_PRESETS } from '../../store/helpers'
-
 /** Run AI edit plan generation for all scored clips. */
 export async function aiEditStage(
   ctx: PipelineContext,
@@ -34,14 +32,11 @@ export async function aiEditStage(
   reporter.start('Preparing AI edit plans…')
   check()
 
-  // Resolve style preset — fall back to 'viral' default when none is active
-  const activeStylePresetId = ctx.getState().activeStylePresetId
-  const preset = activeStylePresetId
-    ? BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === activeStylePresetId)
-    : undefined
-  const stylePresetId = preset?.id ?? 'viral'
-  const stylePresetName = preset?.name ?? 'Viral'
-  const stylePresetCategory = preset?.category ?? 'viral'
+  // Use the selected edit style ID (defaults to 'cinematic')
+  const selectedEditStyleId = ctx.getState().selectedEditStyleId
+  const stylePresetId = selectedEditStyleId ?? 'cinematic'
+  const stylePresetName = stylePresetId
+  const stylePresetCategory = 'custom'
 
   // Build clip input list — only clips that have word timestamps
   const clipInputs = clips

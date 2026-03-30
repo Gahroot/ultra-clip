@@ -44,12 +44,17 @@ export function applyFilterPass(
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const { encoder, presetFlag } = getEncoder({ crf: 15, preset: 'ultrafast' })
+    let fallbackAttempted = false
 
-    function runPass(enc: string, flags: string[]): void {
+    function runPass(enc: string, flags: string[], useHwAccel = true): void {
       const cmd = ffmpeg(toFFmpegPath(inputPath))
+      let stderrOutput = ''
 
       // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
-      cmd.inputOptions(['-hwaccel', 'auto'])
+      // Skipped on software fallback — broken GPU drivers can cause -hwaccel auto to crash
+      if (useHwAccel) {
+        cmd.inputOptions(['-hwaccel', 'auto'])
+      }
 
       cmd
         .videoFilters(videoFilter)
@@ -66,13 +71,18 @@ export function applyFilterPass(
         .on('start', (cmdLine: string) => {
           console.log(`[Overlay] FFmpeg command: ${cmdLine}`)
         })
+        .on('stderr', (line: string) => { stderrOutput += line + '\n' })
         .on('end', () => resolve())
         .on('error', (err: Error) => {
-          if (isGpuSessionError(err.message)) {
+          console.error(`[Overlay] FFmpeg stderr:\n${stderrOutput}`)
+          if (!fallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
+            fallbackAttempted = true
             const sw = getSoftwareEncoder({ crf: 15, preset: 'ultrafast' })
-            runPass(sw.encoder, sw.presetFlag)
+            runPass(sw.encoder, sw.presetFlag, false)
           } else {
-            reject(err)
+            const stderrTail = stderrOutput.split('\n').slice(-10).join('\n')
+            const enhanced = new Error(`${err.message}\n[stderr tail] ${stderrTail}`)
+            reject(enhanced)
           }
         })
         .save(toFFmpegPath(outputPath))
@@ -101,12 +111,17 @@ export function applyFilterComplexPass(
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const { encoder, presetFlag } = getEncoder({ crf: 15, preset: 'ultrafast' })
+    let fallbackAttempted = false
 
-    function runPass(enc: string, flags: string[]): void {
+    function runPass(enc: string, flags: string[], useHwAccel = true): void {
       const cmd = ffmpeg(toFFmpegPath(inputPath))
+      let stderrOutput = ''
 
       // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
-      cmd.inputOptions(['-hwaccel', 'auto'])
+      // Skipped on software fallback — broken GPU drivers can cause -hwaccel auto to crash
+      if (useHwAccel) {
+        cmd.inputOptions(['-hwaccel', 'auto'])
+      }
 
       cmd
         .outputOptions([
@@ -122,13 +137,18 @@ export function applyFilterComplexPass(
         .on('start', (cmdLine: string) => {
           console.log(`[Overlay] FFmpeg filter_complex command: ${cmdLine}`)
         })
+        .on('stderr', (line: string) => { stderrOutput += line + '\n' })
         .on('end', () => resolve())
         .on('error', (err: Error) => {
-          if (isGpuSessionError(err.message)) {
+          console.error(`[Overlay] FFmpeg filter_complex stderr:\n${stderrOutput}`)
+          if (!fallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
+            fallbackAttempted = true
             const sw = getSoftwareEncoder({ crf: 15, preset: 'ultrafast' })
-            runPass(sw.encoder, sw.presetFlag)
+            runPass(sw.encoder, sw.presetFlag, false)
           } else {
-            reject(err)
+            const stderrTail = stderrOutput.split('\n').slice(-10).join('\n')
+            const enhanced = new Error(`${err.message}\n[stderr tail] ${stderrTail}`)
+            reject(enhanced)
           }
         })
         .save(toFFmpegPath(outputPath))

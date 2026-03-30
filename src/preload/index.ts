@@ -81,6 +81,7 @@ const api = {
   startBatchRender: invoke(I.RENDER_START_BATCH),
   cancelRender: invoke(I.RENDER_CANCEL),
   onRenderClipStart: listen(S.RENDER_CLIP_START),
+  onRenderClipPrepare: listen(S.RENDER_CLIP_PREPARE),
   onRenderClipProgress: listen(S.RENDER_CLIP_PROGRESS),
   onRenderClipDone: listen(S.RENDER_CLIP_DONE),
   onRenderClipError: listen(S.RENDER_CLIP_ERROR),
@@ -141,6 +142,19 @@ const api = {
   generateBRollPlacements: invoke(I.BROLL_GENERATE_PLACEMENTS),
   generateBRollImage: invoke(I.BROLL_GENERATE_IMAGE),
   regenerateBRollImage: invoke(I.BROLL_REGENERATE_IMAGE),
+
+  // Segment Editor
+  splitSegmentsForEditor: invoke(I.SEGMENTS_SPLIT),
+  assignSegmentStyles: invoke(I.SEGMENTS_ASSIGN_STYLES),
+  generateSegmentImages: invoke(I.SEGMENTS_GENERATE_IMAGES),
+  updateSegmentCaption: invoke(I.SEGMENTS_UPDATE_CAPTION),
+  updateSegmentStyle: invoke(I.SEGMENTS_UPDATE_STYLE),
+  getSegmentStyleVariants: invoke(I.SEGMENTS_GET_STYLE_VARIANTS),
+  getVariantsForCategory: invoke(I.SEGMENTS_GET_VARIANTS_FOR_CATEGORY),
+
+  // Edit Styles
+  getEditStyles: invoke(I.EDIT_STYLES_GET_ALL),
+  getEditStyleById: invoke(I.EDIT_STYLES_GET_BY_ID),
 
   // Shot Segmentation
   segmentClipIntoShots: invoke(I.SHOT_SEGMENT_CLIP),
@@ -204,6 +218,12 @@ const api = {
 
   // Filler Detection
   detectFillers: invoke(I.FILLER_DETECT),
+
+  // Settings Window
+  openSettingsWindow: invoke(I.SETTINGS_WINDOW_OPEN),
+  closeSettingsWindow: invoke(I.SETTINGS_WINDOW_CLOSE),
+  isSettingsWindowOpen: invoke<boolean>(I.SETTINGS_WINDOW_IS_OPEN),
+  onSettingsWindowClosed: listen(S.SETTINGS_WINDOW_CLOSED),
 }
 
 // ---------------------------------------------------------------------------

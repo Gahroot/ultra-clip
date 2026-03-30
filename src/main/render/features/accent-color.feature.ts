@@ -41,7 +41,7 @@ interface BatchSnapshot {
 export const accentColorFeature: RenderFeature = {
   name: 'accent-color',
 
-  async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions): Promise<PrepareResult> {
+  async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions, _onProgress?: (message: string, percent: number) => void): Promise<PrepareResult> {
     const accent = job.clipOverrides?.accentColor
     if (!accent) {
       // No accent color for this clip — clear any snapshot from a previous clip

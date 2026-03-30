@@ -23,7 +23,6 @@ import {
   Eye,
   RotateCw,
   Palette,
-  Crown,
   Type
 } from 'lucide-react'
 import {
@@ -45,18 +44,26 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { useStore, DEFAULT_HOOK_TEMPLATES, applyHookTemplate, CAPTION_PRESETS, BUILT_IN_EDIT_STYLE_PRESETS } from '../store'
+import { useStore, DEFAULT_HOOK_TEMPLATES, applyHookTemplate, CAPTION_PRESETS } from '../store'
 import type { ClipCandidate, ClipRenderSettings, CaptionStyle } from '../store'
-import type { EditStyleCategory } from '../store/types'
+
 import { EditableTime, formatTime } from './EditableTime'
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard'
 import { WaveformDisplay } from './WaveformDisplay'
+import { SegmentTimeline } from './SegmentTimeline'
+import { SegmentStylePicker } from './SegmentStylePicker'
+import { SegmentCaptionEditor, type SidebarTab } from './SegmentCaptionEditor'
+import { EditStyleSelector } from './EditStyleSelector'
+import type { VideoSegment, EditStyle as EditStyleType } from '../store'
 
 // ---------------------------------------------------------------------------
 // Module-level waveform cache — persists across dialog open/close
 // key: `${sourcePath}:${startTime}:${endTime}`
 // ---------------------------------------------------------------------------
 const waveformCache = new Map<string, number[]>()
+
+/** Stable empty array to avoid creating new references in selectors. */
+const EMPTY_SEGMENTS: import('../store').VideoSegment[] = []
 
 // ---------------------------------------------------------------------------
 // Score badge colour
@@ -226,9 +233,6 @@ function OverrideRow({ label, overrideKey, globalValue, overrides, onChange }: O
 // Editor keyboard shortcut helpers — style presets for 1-9 quick-apply
 // ---------------------------------------------------------------------------
 
-/** First 9 premium edit style presets, keyed by number key 1-9. */
-const QUICK_STYLE_PRESETS = BUILT_IN_EDIT_STYLE_PRESETS.slice(0, 9)
-
 /** Returns true if the active element is a text input, textarea, or contenteditable. */
 function isTypingInField(): boolean {
   const el = document.activeElement
@@ -239,38 +243,6 @@ function isTypingInField(): boolean {
   return false
 }
 
-// ---------------------------------------------------------------------------
-// Style tab persistence — remembers last tab across open/close
-// ---------------------------------------------------------------------------
-
-const STYLE_TAB_KEY = 'batchcontent-clip-style-tab'
-type StyleTab = 'premium' | 'basic'
-
-function loadStyleTab(): StyleTab {
-  try {
-    const v = sessionStorage.getItem(STYLE_TAB_KEY)
-    return v === 'basic' ? 'basic' : 'premium'
-  } catch {
-    return 'premium'
-  }
-}
-
-function persistStyleTab(tab: StyleTab): void {
-  try { sessionStorage.setItem(STYLE_TAB_KEY, tab) } catch {}
-}
-
-// ---------------------------------------------------------------------------
-// CATEGORY_META — category visuals for premium style cards
-// ---------------------------------------------------------------------------
-
-const CATEGORY_META: Record<EditStyleCategory, { label: string; gradient: string; ring: string; badge: string }> = {
-  viral:       { label: 'Viral',       gradient: 'linear-gradient(135deg, #F97316 0%, #EF4444 100%)', ring: '#F97316', badge: 'bg-orange-500/20 text-orange-400' },
-  educational: { label: 'Edu',         gradient: 'linear-gradient(135deg, #3B82F6 0%, #4F46E5 100%)', ring: '#3B82F6', badge: 'bg-blue-500/20 text-blue-400' },
-  cinematic:   { label: 'Cinematic',   gradient: 'linear-gradient(135deg, #7C3AED 0%, #1E293B 100%)', ring: '#7C3AED', badge: 'bg-violet-500/20 text-violet-400' },
-  minimal:     { label: 'Minimal',     gradient: 'linear-gradient(135deg, #475569 0%, #1E293B 100%)', ring: '#64748B', badge: 'bg-slate-500/20 text-slate-400' },
-  branded:     { label: 'Branded',     gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)', ring: '#F59E0B', badge: 'bg-amber-500/20 text-amber-400' },
-  custom:      { label: 'Custom',      gradient: 'linear-gradient(135deg, #6B7280 0%, #374151 100%)', ring: '#6B7280', badge: 'bg-gray-500/20 text-gray-400' },
-}
 
 // ---------------------------------------------------------------------------
 // CaptionStyleMiniThumb — compact thumbnail for basic caption styles
@@ -362,296 +334,6 @@ function CaptionStyleMiniThumb({
 }
 
 // ---------------------------------------------------------------------------
-// StylePickerTabs — two-tab style browser in per-clip editor
-// ---------------------------------------------------------------------------
-
-function StylePickerTabs() {
-  const activeStylePresetId = useStore((s) => s.activeStylePresetId)
-  const activeVariantId = useStore((s) => s.activeVariantId)
-  const applyEditStylePreset = useStore((s) => s.applyEditStylePreset)
-  const setCaptionStyle = useStore((s) => s.setCaptionStyle)
-  const settings = useStore((s) => s.settings)
-
-  const [isExpanded, setIsExpanded] = useState(false)
-  const [activeTab, setActiveTab] = useState<StyleTab>(loadStyleTab)
-  const [hoveredPresetId, setHoveredPresetId] = useState<string | null>(null)
-
-  const handleTabChange = useCallback((tab: StyleTab) => {
-    setActiveTab(tab)
-    persistStyleTab(tab)
-    setIsExpanded(true)
-  }, [])
-
-  // Listen for keyboard shortcut tab-switch events from the editor shortcuts handler
-  useEffect(() => {
-    function onSwitchTab(e: Event) {
-      const tab = (e as CustomEvent).detail as StyleTab
-      if (tab === 'premium' || tab === 'basic') {
-        handleTabChange(tab)
-      }
-    }
-    window.addEventListener('editor:switch-tab', onSwitchTab)
-    return () => window.removeEventListener('editor:switch-tab', onSwitchTab)
-  }, [handleTabChange])
-
-  // Active premium preset info
-  const activePreset = BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === activeStylePresetId) ?? null
-  const focusedPreset = BUILT_IN_EDIT_STYLE_PRESETS.find(
-    (p) => p.id === (hoveredPresetId ?? activeStylePresetId)
-  ) ?? null
-  const variants = activePreset?.variants ?? []
-  const hasVariants = variants.length > 0
-
-  // Active caption preset id
-  const activeCaptionId = settings.captionStyle.id
-
-  // Header label
-  const styleLabel = activePreset
-    ? activePreset.name + (activeVariantId ? ` / ${variants.find((v) => v.id === activeVariantId)?.name ?? ''}` : '')
-    : activeCaptionId
-      ? (CAPTION_PRESETS[activeCaptionId]?.label ?? 'Custom')
-      : 'Custom'
-
-  return (
-    <div className="border-t border-border">
-      {/* Section header */}
-      <button
-        onClick={() => setIsExpanded((v) => !v)}
-        className={cn(
-          'flex items-center gap-2 w-full px-5 py-3 text-left hover:bg-muted/30 transition-colors',
-          isExpanded && 'bg-muted/20'
-        )}
-      >
-        <Palette className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs font-medium text-muted-foreground flex-1">
-          Styles
-        </span>
-        {/* Active badges — show at a glance what's active */}
-        <div className="flex items-center gap-1">
-          {activePreset && (
-            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 flex items-center gap-0.5">
-              <Crown className="w-2.5 h-2.5" />
-              {activePreset.name}
-            </span>
-          )}
-          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-            {CAPTION_PRESETS[activeCaptionId]?.label ?? 'Custom'}
-          </span>
-        </div>
-        {isExpanded ? (
-          <ChevronUp className="w-3 h-3 text-muted-foreground/60" />
-        ) : (
-          <ChevronDown className="w-3 h-3 text-muted-foreground/60" />
-        )}
-      </button>
-
-      {isExpanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-border/50 pt-3">
-          {/* Tab bar — visually distinct with icon + subtitle */}
-          <div className="grid grid-cols-2 gap-1.5">
-            <button
-              onClick={() => handleTabChange('premium')}
-              className={cn(
-                'flex flex-col items-center gap-0.5 py-2 px-2 rounded-lg transition-all text-center',
-                activeTab === 'premium'
-                  ? 'bg-gradient-to-b from-amber-500/15 to-amber-500/5 ring-1 ring-amber-500/30 shadow-sm'
-                  : 'bg-muted/30 hover:bg-muted/50 ring-1 ring-transparent'
-              )}
-            >
-              <div className="flex items-center gap-1.5">
-                <Crown className={cn('w-3.5 h-3.5', activeTab === 'premium' ? 'text-amber-400' : 'text-muted-foreground')} />
-                <span className={cn('text-[11px] font-semibold', activeTab === 'premium' ? 'text-foreground' : 'text-muted-foreground')}>
-                  AI Edit Styles
-                </span>
-              </div>
-              <span className="text-[8px] text-muted-foreground/60 leading-tight">
-                Captions + Zoom + B-Roll + Music
-              </span>
-            </button>
-            <button
-              onClick={() => handleTabChange('basic')}
-              className={cn(
-                'flex flex-col items-center gap-0.5 py-2 px-2 rounded-lg transition-all text-center',
-                activeTab === 'basic'
-                  ? 'bg-gradient-to-b from-primary/15 to-primary/5 ring-1 ring-primary/30 shadow-sm'
-                  : 'bg-muted/30 hover:bg-muted/50 ring-1 ring-transparent'
-              )}
-            >
-              <div className="flex items-center gap-1.5">
-                <Type className={cn('w-3.5 h-3.5', activeTab === 'basic' ? 'text-primary' : 'text-muted-foreground')} />
-                <span className={cn('text-[11px] font-semibold', activeTab === 'basic' ? 'text-foreground' : 'text-muted-foreground')}>
-                  Captions Only
-                </span>
-              </div>
-              <span className="text-[8px] text-muted-foreground/60 leading-tight">
-                60 looks · just word appearance
-              </span>
-            </button>
-          </div>
-
-          {/* ── Premium tab ── */}
-          {activeTab === 'premium' && (
-            <div className="space-y-2">
-              {/* Horizontal scroll strip */}
-              <div className="overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
-                <div className="flex gap-2 min-w-max">
-                  {BUILT_IN_EDIT_STYLE_PRESETS.map((preset) => {
-                    const meta = CATEGORY_META[preset.category]
-                    const isActive = preset.id === activeStylePresetId
-                    return (
-                      <button
-                        key={preset.id}
-                        onClick={() => applyEditStylePreset(preset.id, preset.variants?.[0]?.id ?? null)}
-                        onMouseEnter={() => setHoveredPresetId(preset.id)}
-                        onMouseLeave={() => setHoveredPresetId(null)}
-                        className={cn(
-                          'flex-none flex flex-col items-center rounded-xl overflow-hidden transition-all duration-150 cursor-pointer select-none',
-                          'hover:scale-105 active:scale-95',
-                          isActive ? 'ring-2 shadow-lg' : 'ring-1 ring-border/50 hover:ring-border'
-                        )}
-                        style={{
-                          width: 68,
-                          ringColor: isActive ? meta.ring : undefined,
-                          ...(isActive ? { boxShadow: `0 0 0 2px ${meta.ring}` } : {}),
-                        }}
-                        title={preset.name}
-                      >
-                        <div
-                          className="w-full flex items-center justify-center"
-                          style={{ background: meta.gradient, height: 40 }}
-                        >
-                          <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>{preset.thumbnail}</span>
-                        </div>
-                        <div className="w-full bg-muted/60 px-1 py-0.5 text-center">
-                          <span className="text-[8px] font-semibold text-foreground leading-none block truncate">{preset.name}</span>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Focused preset description */}
-              {focusedPreset && (
-                <div className="rounded-lg bg-muted/40 border border-border/50 px-3 py-2 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">{focusedPreset.thumbnail}</span>
-                    <span className="text-xs font-semibold text-foreground">{focusedPreset.name}</span>
-                    <span className={cn('text-[9px] font-medium px-1.5 py-0.5 rounded-full', CATEGORY_META[focusedPreset.category].badge)}>
-                      {CATEGORY_META[focusedPreset.category].label}
-                    </span>
-                    {activeStylePresetId === focusedPreset.id && !hoveredPresetId && (
-                      <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 ml-auto">Active</span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">{focusedPreset.description}</p>
-                  {/* Feature pills */}
-                  <div className="flex flex-wrap gap-1 pt-0.5">
-                    {focusedPreset.captions.enabled && (
-                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Captions</span>
-                    )}
-                    {focusedPreset.zoom.enabled && (
-                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Zoom</span>
-                    )}
-                    {focusedPreset.broll.enabled && (
-                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">B-Roll</span>
-                    )}
-                    {focusedPreset.sound.enabled && (
-                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Music</span>
-                    )}
-                    {focusedPreset.overlays.hookTitle.enabled && (
-                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Hook Title</span>
-                    )}
-                    {focusedPreset.overlays.progressBar.enabled && (
-                      <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Progress Bar</span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Variant panel */}
-              {hasVariants && activePreset && !hoveredPresetId && (
-                <div className="rounded-lg bg-muted/20 border border-border/40 px-3 py-2 space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-semibold text-foreground">{activePreset.name} Variants</span>
-                    <span className="text-[9px] text-muted-foreground">· {variants.length} looks</span>
-                  </div>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {variants.map((variant) => {
-                      const isVariantActive = variant.id === activeVariantId ||
-                        (!activeVariantId && variant.id === variants[0]?.id)
-                      const meta = CATEGORY_META[activePreset.category]
-                      return (
-                        <button
-                          key={variant.id}
-                          onClick={() => applyEditStylePreset(activePreset.id, variant.id)}
-                          className={cn(
-                            'flex flex-col items-center rounded-lg overflow-hidden transition-all duration-150 cursor-pointer select-none',
-                            'hover:scale-105 active:scale-95',
-                            isVariantActive ? 'ring-2 shadow-md' : 'ring-1 ring-border/40 hover:ring-border'
-                          )}
-                          style={{
-                            ...(isVariantActive ? { boxShadow: `0 0 0 2px ${meta.ring}` } : {}),
-                          }}
-                          title={`${activePreset.name} ${variant.name}`}
-                        >
-                          <div
-                            className="w-full flex items-center justify-center"
-                            style={{
-                              background: isVariantActive
-                                ? meta.gradient
-                                : 'linear-gradient(135deg, var(--muted) 0%, var(--muted) 100%)',
-                              height: 28,
-                            }}
-                          >
-                            <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>{variant.thumbnail}</span>
-                          </div>
-                          <div className="w-full px-0.5 py-0.5 text-center bg-muted/40">
-                            <span className="text-[7px] font-medium text-foreground leading-none block truncate">{variant.name}</span>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Basic / Captions Only tab ── */}
-          {activeTab === 'basic' && (
-            <div className="space-y-2">
-              {/* Dense 6-column thumbnail grid */}
-              <div className="grid grid-cols-5 gap-1 max-h-[320px] overflow-y-auto pr-0.5" style={{ scrollbarWidth: 'thin' }}>
-                {Object.values(CAPTION_PRESETS).map((preset) => (
-                  <CaptionStyleMiniThumb
-                    key={preset.id}
-                    style={preset}
-                    isSelected={activeCaptionId === preset.id}
-                    onClick={() => setCaptionStyle(preset)}
-                  />
-                ))}
-              </div>
-
-              {/* Mix-and-match indicator */}
-              {activePreset && (
-                <div className="flex items-center gap-1.5 px-0.5 py-1 rounded-md bg-amber-500/5 border border-amber-500/15">
-                  <Crown className="w-3 h-3 text-amber-400 shrink-0" />
-                  <span className="text-[9px] text-muted-foreground leading-snug">
-                    <span className="font-medium text-amber-400">{activePreset.name}</span> controls your edit vibe.
-                    Picking above overrides <span className="font-medium">only</span> the caption look.
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // ClipPreview dialog
 // ---------------------------------------------------------------------------
 
@@ -687,6 +369,7 @@ export function ClipPreview({
   const singleRenderOutputPath = useStore((s) => s.singleRenderOutputPath)
   const settings = useStore((s) => s.settings)
   const hookTemplates = useStore((s) => s.hookTemplates)
+
   const activeHookTemplateId = useStore((s) => s.activeHookTemplateId)
   const toggleFillerRestore = useStore((s) => s.toggleFillerRestore)
 
@@ -745,9 +428,31 @@ export function ClipPreview({
   // Source video native dimensions (set on loadedmetadata)
   const [videoDims, setVideoDims] = useState<{ w: number; h: number } | null>(null)
 
+  // ── Segment Editor state ──
+  const clipSegments = useStore((s) => s.segments[clip.id] ?? EMPTY_SEGMENTS)
+  const editStyles = useStore((s) => s.editStyles)
+  const selectedEditStyleId = useStore((s) => s.selectedEditStyleId)
+  const selectedSegmentIndex = useStore((s) => s.selectedSegmentIndex)
+  const storeSetSegments = useStore((s) => s.setSegments)
+  const storeUpdateSegment = useStore((s) => s.updateSegment)
+  const storeSetSelectedSegmentIndex = useStore((s) => s.setSelectedSegmentIndex)
+  const storeSetSelectedEditStyleId = useStore((s) => s.setSelectedEditStyleId)
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('style')
+  const [segmentLoading, setSegmentLoading] = useState(false)
+  const [showStyleModal, setShowStyleModal] = useState(false)
+  const [useOldLayout, setUseOldLayout] = useState(false)
+  const hasSegments = clipSegments.length > 0
+  const selectedSegment = hasSegments && selectedSegmentIndex < clipSegments.length
+    ? clipSegments[selectedSegmentIndex]
+    : null
+  const activeEditStyle = editStyles.find((s: EditStyleType) => s.id === selectedEditStyleId) ?? null
+
   // Waveform state — keyed on the slider window (sliderMin..sliderMax)
   const [waveformData, setWaveformData] = useState<number[]>([])
   const [waveformLoading, setWaveformLoading] = useState(false)
+
+  // Clip duration (must be defined before callbacks that reference it)
+  const clipDuration = localEnd - localStart
 
   // Slider bounds: ±10s from original, clamped to video duration
   const sliderMin = Math.max(0, origStart - 10)
@@ -794,6 +499,59 @@ export function ClipPreview({
       })
     return () => { cancelled = true }
   }, [open, sourcePath, sliderMin, sliderMax]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Auto-split into segments when dialog opens ──
+  useEffect(() => {
+    if (!open) return
+    // Already have segments → show editor immediately
+    if (clipSegments.length > 0) return
+    // Need word timestamps to split
+    const words = clip.wordTimestamps?.filter((w) => w.start >= localStart && w.end <= localEnd)
+    if (!words || words.length === 0) {
+      setUseOldLayout(true)
+      return
+    }
+    let cancelled = false
+    setSegmentLoading(true)
+    window.api.splitSegmentsForEditor(clip.id, words)
+      .then((segs: VideoSegment[]) => {
+        if (cancelled) return
+        storeSetSegments(clip.id, segs)
+        setSegmentLoading(false)
+        // If no edit styles loaded yet, or no selected style, show style picker
+        if (!selectedEditStyleId) {
+          setShowStyleModal(true)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUseOldLayout(true)
+          setSegmentLoading(false)
+        }
+      })
+    return () => { cancelled = true }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Auto-update selectedSegmentIndex when video plays through boundary ──
+  useEffect(() => {
+    if (clipSegments.length === 0) return
+    for (let i = 0; i < clipSegments.length; i++) {
+      if (currentTime >= clipSegments[i].startTime && currentTime <= clipSegments[i].endTime) {
+        if (i !== selectedSegmentIndex) {
+          storeSetSelectedSegmentIndex(i)
+        }
+        break
+      }
+    }
+  }, [currentTime, clipSegments, selectedSegmentIndex, storeSetSelectedSegmentIndex])
+
+  // ── Reset segment editor state when dialog closes ──
+  useEffect(() => {
+    if (!open) {
+      setShowStyleModal(false)
+      setSegmentLoading(false)
+    }
+  }, [open])
 
   // Waveform click-to-seek handler
   const handleWaveformSeek = useCallback((time: number) => {
@@ -887,6 +645,53 @@ export function ClipPreview({
       setCurrentTime(wordStart)
     }
   }, [])
+
+  // ── Segment editor handlers ──
+
+  const handleSelectSegment = useCallback((index: number) => {
+    storeSetSelectedSegmentIndex(index)
+    // Seek video to segment start
+    const seg = clipSegments[index]
+    if (seg && videoRef.current) {
+      const seekTo = showPreview ? Math.max(0, seg.startTime - localStart) : seg.startTime
+      videoRef.current.currentTime = seekTo
+      setCurrentTime(seg.startTime)
+    }
+  }, [clipSegments, showPreview, localStart, storeSetSelectedSegmentIndex])
+
+  const handleSegmentStyleChange = useCallback((segmentId: string, variantId: string) => {
+    window.api.updateSegmentStyle(segmentId, variantId)
+      .then((updated: VideoSegment) => {
+        storeUpdateSegment(clip.id, segmentId, updated)
+      })
+      .catch(() => {
+        // Optimistic: still update locally
+        storeUpdateSegment(clip.id, segmentId, { segmentStyleId: variantId })
+      })
+  }, [clip.id, storeUpdateSegment])
+
+  const handleSegmentCaptionUpdate = useCallback((segmentId: string, newText: string) => {
+    window.api.updateSegmentCaption(segmentId, newText)
+      .then((updated: VideoSegment) => {
+        storeUpdateSegment(clip.id, segmentId, updated)
+      })
+      .catch(() => {
+        // Optimistic update
+        storeUpdateSegment(clip.id, segmentId, { captionText: newText })
+      })
+  }, [clip.id, storeUpdateSegment])
+
+  const handleEditStyleSelect = useCallback((styleId: string) => {
+    storeSetSelectedEditStyleId(styleId)
+    if (clipSegments.length > 0) {
+      window.api.assignSegmentStyles(clipSegments, styleId, settings.geminiApiKey || undefined)
+        .then((styled: VideoSegment[]) => {
+          storeSetSegments(clip.id, styled)
+        })
+        .catch(() => {})
+    }
+    setShowStyleModal(false)
+  }, [clipSegments, clip.id, storeSetSegments, storeSetSelectedEditStyleId, settings.geminiApiKey])
 
   /** Check if a word overlaps with any filler segment. Returns the segment index or -1. */
   const getWordFillerIndex = useCallback(
@@ -1010,7 +815,7 @@ export function ClipPreview({
         outputDirectory: outputDir,
         soundDesign: settings.soundDesign.enabled ? settings.soundDesign : undefined,
         autoZoom: settings.autoZoom.enabled
-          ? { enabled: true, intensity: settings.autoZoom.intensity, intervalSeconds: settings.autoZoom.intervalSeconds }
+          ? { enabled: true, mode: settings.autoZoom.mode, intensity: settings.autoZoom.intensity, intervalSeconds: settings.autoZoom.intervalSeconds }
           : undefined,
         brandKit: settings.brandKit.enabled ? settings.brandKit : undefined,
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
@@ -1018,6 +823,8 @@ export function ClipPreview({
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
         captionsEnabled: settings.captionsEnabled,
         captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
+        broll: settings.broll.enabled ? settings.broll : undefined,
+        geminiApiKey: settings.geminiApiKey || undefined,
       })
     } catch (err) {
       setSingleRenderState({ status: 'error', error: err instanceof Error ? err.message : String(err) })
@@ -1177,7 +984,6 @@ export function ClipPreview({
   // Current time relative to clip start
   // In preview mode the video starts at 0, so currentTime IS the relative time
   const relativeTime = showPreview ? currentTime : Math.max(0, currentTime - localStart)
-  const clipDuration = localEnd - localStart
 
   const videoSrc = showPreview && previewPath ? `file://${previewPath}` : `file://${sourcePath}`
 
@@ -1185,7 +991,6 @@ export function ClipPreview({
   // Editor keyboard shortcuts — active only when dialog is open & not typing
   // ---------------------------------------------------------------------------
   const updateClipStatus = useStore((s) => s.updateClipStatus)
-  const applyEditStylePreset = useStore((s) => s.applyEditStylePreset)
 
   useEffect(() => {
     if (!open) return
@@ -1226,32 +1031,6 @@ export function ClipPreview({
         return
       }
 
-      // 1-9: apply first 9 premium style presets
-      const numKey = parseInt(e.key, 10)
-      if (numKey >= 1 && numKey <= 9 && !mod) {
-        const preset = QUICK_STYLE_PRESETS[numKey - 1]
-        if (preset) {
-          e.preventDefault()
-          applyEditStylePreset(preset.id, preset.variants?.[0]?.id ?? null)
-        }
-        return
-      }
-
-      // C: switch to captions (basic) tab
-      if (e.key === 'c' && !mod && !e.shiftKey) {
-        e.preventDefault()
-        // Dispatch custom event for StylePickerTabs to pick up
-        window.dispatchEvent(new CustomEvent('editor:switch-tab', { detail: 'basic' }))
-        return
-      }
-
-      // S: switch to styles (premium) tab
-      if (e.key === 's' && !mod && !e.shiftKey) {
-        e.preventDefault()
-        window.dispatchEvent(new CustomEvent('editor:switch-tab', { detail: 'premium' }))
-        return
-      }
-
       // R: mark clip as ready for render (approve)
       if (e.key === 'r' && !mod) {
         e.preventDefault()
@@ -1282,16 +1061,6 @@ export function ClipPreview({
         return
       }
 
-      // Delete: reset style to default (clear active preset)
-      if (e.key === 'Delete' && !mod) {
-        e.preventDefault()
-        const state = useStore.getState()
-        if (state.activeStylePresetId) {
-          // Clear active edit style preset
-          state.applyEditStylePreset('', null)
-        }
-        return
-      }
     }
 
     window.addEventListener('keydown', handleEditorKeyDown)
@@ -1307,7 +1076,6 @@ export function ClipPreview({
     clip.id,
     clip.hookText,
     sourceId,
-    applyEditStylePreset,
     updateClipStatus,
     updateClipTrim,
     updateClipHookText,
@@ -1315,7 +1083,348 @@ export function ClipPreview({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-2xl w-full p-0 overflow-hidden gap-0 max-h-[90vh] overflow-y-auto">
+      <DialogContent className={cn('w-full p-0 overflow-hidden gap-0 max-h-[90vh]', hasSegments && !useOldLayout ? 'max-w-5xl' : 'max-w-2xl overflow-y-auto')}>
+        {/* Segment loading overlay */}
+        {segmentLoading && (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            <span className="text-sm text-muted-foreground">Splitting clip into segments…</span>
+          </div>
+        )}
+        {!segmentLoading && hasSegments && !useOldLayout ? (
+          <>
+            {/* ── Compact header for segment editor ── */}
+            <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border">
+              {/* Score badge */}
+              <div className="flex flex-col items-center shrink-0">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className={cn(
+                          'inline-flex items-center justify-center w-8 h-8 rounded-full border-2 text-xs font-bold tabular-nums cursor-default',
+                          scoreBadgeClass(clip.score)
+                        )}
+                      >
+                        {clip.score}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="text-xs max-w-56">
+                      <p className="font-semibold">{getScoreDescription(clip.score).label} ({clip.score}/100)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              {/* Hook text (editable) */}
+              {editingHook ? (
+                <input
+                  autoFocus
+                  className="flex-1 text-sm font-semibold bg-transparent border-b border-primary outline-none text-foreground min-w-0"
+                  value={localHook}
+                  onChange={(e) => setLocalHook(e.target.value)}
+                  onBlur={() => setEditingHook(false)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setEditingHook(false) }}
+                />
+              ) : (
+                <DialogTitle
+                  className="flex-1 text-sm leading-snug cursor-pointer hover:text-muted-foreground group flex items-center gap-1.5 truncate min-w-0"
+                  onClick={() => setEditingHook(true)}
+                >
+                  <span className="truncate">{localHook || '—'}</span>
+                  <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity shrink-0" />
+                </DialogTitle>
+              )}
+              {/* Edit style pill */}
+              {activeEditStyle && (
+                <Badge variant="outline" className="text-[9px] px-2 py-0.5 shrink-0" style={{ borderColor: activeEditStyle.accentColor || undefined }}>
+                  {activeEditStyle.name}
+                </Badge>
+              )}
+              {/* Change style button */}
+              <Button size="sm" variant="ghost" className="text-[10px] h-6 px-2 gap-1 shrink-0" onClick={() => setShowStyleModal(true)}>
+                <Palette className="w-3 h-3" />
+                Style
+              </Button>
+            </div>
+
+            {/* ── Main content area: video + sidebar ── */}
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+              {/* Left: Video preview */}
+              <div className="flex-1 flex flex-col min-w-0">
+                {/* View mode toggle (compact) */}
+                <div className="flex items-center gap-1 px-3 py-1.5 bg-muted/30 border-b border-border">
+                  <button
+                    onClick={() => { setShowPreview(false); setViewMode('output') }}
+                    className={cn(
+                      'flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-colors',
+                      !showPreview && viewMode === 'output'
+                        ? 'bg-primary/15 border-primary/50 text-primary font-medium'
+                        : 'border-border text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <Smartphone className="w-3 h-3" /> 9:16
+                  </button>
+                  <button
+                    onClick={() => { setShowPreview(false); setViewMode('source') }}
+                    className={cn(
+                      'flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-colors',
+                      !showPreview && viewMode === 'source'
+                        ? 'bg-primary/15 border-primary/50 text-primary font-medium'
+                        : 'border-border text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <Monitor className="w-3 h-3" /> Source
+                  </button>
+                  <button
+                    onClick={() => { previewPath ? setShowPreview(true) : handlePreviewWithOverlays() }}
+                    disabled={previewLoading}
+                    className={cn(
+                      'flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-colors',
+                      showPreview
+                        ? 'bg-violet-500/15 border-violet-500/50 text-violet-400 font-medium'
+                        : 'border-border text-muted-foreground hover:text-foreground',
+                      previewLoading && 'opacity-60 cursor-wait'
+                    )}
+                  >
+                    {previewLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
+                    Preview
+                  </button>
+                </div>
+
+                {/* Video player */}
+                {(() => {
+                  const isOutputView = showPreview || viewMode === 'output'
+                  const crop = !showPreview && clip.cropRegion && videoDims && videoDims.w > 0 && videoDims.h > 0
+                    ? {
+                        xPct: (clip.cropRegion.x / videoDims.w) * 100,
+                        yPct: (clip.cropRegion.y / videoDims.h) * 100,
+                        wPct: (clip.cropRegion.width / videoDims.w) * 100,
+                        hPct: (clip.cropRegion.height / videoDims.h) * 100,
+                      }
+                    : null
+                  return (
+                    <div
+                      className="relative flex-1 bg-black flex items-center justify-center cursor-pointer min-h-0"
+                      onClick={handleVideoClick}
+                    >
+                      <div
+                        className={cn(
+                          'relative overflow-hidden',
+                          isOutputView ? 'mx-auto rounded-sm border border-border/30' : 'w-full'
+                        )}
+                        style={isOutputView
+                          ? { aspectRatio: '9/16', maxHeight: 'calc(100vh - 320px)' }
+                          : { aspectRatio: '16/9' }
+                        }
+                      >
+                        <video
+                          ref={videoRef}
+                          src={videoSrc}
+                          className={cn(
+                            showPreview ? 'w-full h-full object-contain'
+                              : isOutputView
+                                ? (crop ? 'absolute' : 'w-full h-full object-cover')
+                                : 'w-full h-full object-contain'
+                          )}
+                          style={!showPreview && isOutputView && crop ? {
+                            width: `${100 / (crop.wPct / 100)}%`,
+                            height: `${100 / (crop.hPct / 100)}%`,
+                            left: `${-(crop.xPct / crop.wPct) * 100}%`,
+                            top: `${-(crop.yPct / crop.hPct) * 100}%`,
+                          } : undefined}
+                          onTimeUpdate={handleTimeUpdate}
+                          onPlay={() => setIsPlaying(true)}
+                          onPause={() => setIsPlaying(false)}
+                          onLoadedMetadata={() => {
+                            if (videoRef.current) {
+                              const seekTo = showPreview ? 0 : localStart
+                              videoRef.current.currentTime = seekTo
+                              setCurrentTime(seekTo)
+                              if (!showPreview) {
+                                setVideoDims({ w: videoRef.current.videoWidth, h: videoRef.current.videoHeight })
+                              }
+                            }
+                          }}
+                        />
+                        {/* Play/Pause overlay */}
+                        <div className={cn(
+                          'absolute inset-0 flex items-center justify-center pointer-events-none',
+                          'bg-black/0 transition-colors duration-200',
+                          !isPlaying && 'bg-black/10'
+                        )}>
+                          <div className={cn(
+                            isOutputView ? 'w-10 h-10' : 'w-12 h-12',
+                            'rounded-full bg-black/40 backdrop-blur-sm border border-white/30 flex items-center justify-center',
+                            'transition-opacity duration-200',
+                            isPlaying ? 'opacity-0' : 'opacity-100'
+                          )}>
+                            {isPlaying ? (
+                              <Pause className={cn(isOutputView ? 'w-4 h-4' : 'w-5 h-5', 'text-white')} />
+                            ) : (
+                              <Play className={cn(isOutputView ? 'w-4 h-4' : 'w-5 h-5', 'text-white fill-white ml-0.5')} />
+                            )}
+                          </div>
+                        </div>
+                        {/* Time overlay */}
+                        <div className={cn(
+                          'absolute font-mono text-white/80 bg-black/50 px-1.5 py-0.5 rounded tabular-nums',
+                          isOutputView ? 'bottom-2 right-2 text-[10px]' : 'bottom-2 right-3 text-xs'
+                        )}>
+                          {formatTime(relativeTime)} / {formatTime(clipDuration)}
+                        </div>
+                        {/* Preview badge */}
+                        {showPreview && (
+                          <div className="absolute top-2 left-2 flex items-center gap-1 text-[9px] text-violet-300 bg-violet-900/70 px-1.5 py-0.5 rounded pointer-events-none z-10 backdrop-blur-sm">
+                            <Eye className="w-2.5 h-2.5" /> Preview
+                          </div>
+                        )}
+                        {/* Preview loading overlay */}
+                        {previewLoading && (
+                          <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 pointer-events-none z-20">
+                            <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
+                            <span className="text-[11px] text-white/80">Rendering preview…</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                {/* Playback controls (compact) */}
+                <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/50">
+                  <Button size="sm" variant="outline" onClick={handlePlayPause} className="gap-1 text-[10px] h-6 px-2">
+                    {isPlaying ? <><Pause className="w-3 h-3" /> Pause</> : <><Play className="w-3 h-3 fill-current" /> Play</>}
+                  </Button>
+                  <span className="text-[10px] text-muted-foreground tabular-nums font-mono">
+                    {formatTime(relativeTime)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Right: Style + Caption sidebar */}
+              <div className="w-72 border-l border-border flex flex-col overflow-hidden shrink-0">
+                {/* Tab bar */}
+                <div className="flex border-b border-border shrink-0">
+                  <button
+                    onClick={() => setSidebarTab('style')}
+                    className={cn(
+                      'flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-medium transition-colors',
+                      sidebarTab === 'style'
+                        ? 'text-foreground border-b-2 border-primary'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <Palette className="w-3.5 h-3.5" /> Style
+                  </button>
+                  <button
+                    onClick={() => setSidebarTab('captions')}
+                    className={cn(
+                      'flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-medium transition-colors',
+                      sidebarTab === 'captions'
+                        ? 'text-foreground border-b-2 border-primary'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <Type className="w-3.5 h-3.5" /> Captions
+                  </button>
+                </div>
+
+                {/* Sidebar content */}
+                <div className="flex-1 overflow-y-auto">
+                  {sidebarTab === 'style' && selectedSegment && (
+                    <SegmentStylePicker
+                      segment={selectedSegment}
+                      onStyleChange={handleSegmentStyleChange}
+                      accentColor={activeEditStyle?.accentColor ?? undefined}
+                    />
+                  )}
+                  {sidebarTab === 'captions' && (
+                    <SegmentCaptionEditor
+                      clipId={clip.id}
+                      segments={clipSegments}
+                      selectedIndex={selectedSegmentIndex}
+                      onSelectSegment={handleSelectSegment}
+                      onUpdateCaption={handleSegmentCaptionUpdate}
+                      accentColor={activeEditStyle?.accentColor ?? undefined}
+                    />
+                  )}
+                  {!selectedSegment && sidebarTab === 'style' && (
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground/50 text-xs">
+                      <Palette className="w-6 h-6 mb-2 opacity-50" />
+                      Select a segment to edit its style
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Segment timeline (bottom) ── */}
+            <div className="border-t border-border shrink-0">
+              <SegmentTimeline
+                clipId={clip.id}
+                sourcePath={sourcePath}
+                segments={clipSegments}
+                selectedIndex={selectedSegmentIndex}
+                onSelectSegment={handleSelectSegment}
+                accentColor={activeEditStyle?.accentColor ?? undefined}
+                currentTime={currentTime}
+              />
+            </div>
+
+            {/* ── Actions ── */}
+            <div className="flex items-center gap-2 px-4 py-2.5 border-t border-border bg-card/50 shrink-0">
+              {isThisClipRendering && (
+                <div className="flex items-center gap-2 flex-1">
+                  <Loader2 className="w-3 h-3 text-primary animate-spin" />
+                  <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${singleRenderProgress}%` }} />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground tabular-nums">{Math.round(singleRenderProgress)}%</span>
+                </div>
+              )}
+              {isThisClipDone && singleRenderOutputPath && (
+                <div className="flex items-center gap-1.5">
+                  <Check className="w-3 h-3 text-green-500" />
+                  <span className="text-[10px] text-green-500 font-medium">Rendered!</span>
+                  <button onClick={() => window.api.showItemInFolder(singleRenderOutputPath)} className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground">
+                    <FolderOpen className="w-3 h-3" /> Open
+                  </button>
+                </div>
+              )}
+              <div className="flex-1" />
+              <Button size="sm" variant="default" onClick={handleRenderThisClip} disabled={isRendering || (isSingleRenderActive && !isThisClipRendering)} className="gap-1 text-[10px] h-7">
+                {isThisClipRendering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3 fill-current" />}
+                {isThisClipRendering ? 'Rendering…' : 'Render'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={onClose} className="gap-1 text-[10px] h-7">
+                <X className="w-3 h-3" /> Cancel
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleApply} className="gap-1 text-[10px] h-7">
+                <Check className="w-3 h-3" /> Apply
+              </Button>
+            </div>
+
+            {/* ── Edit style modal overlay ── */}
+            {showStyleModal && (
+              <div className="absolute inset-0 bg-background/95 z-50 flex flex-col">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                  <h3 className="text-sm font-semibold">Choose an Edit Style</h3>
+                  <Button size="sm" variant="ghost" onClick={() => setShowStyleModal(false)} className="h-7 w-7 p-0">
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  <EditStyleSelector
+                    styles={editStyles}
+                    selectedStyleId={selectedEditStyleId}
+                    onSelectStyle={handleEditStyleSelect}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+        <>
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
           <div className="flex items-center gap-3 pr-8">
             <div className="flex flex-col items-center shrink-0">
@@ -2419,6 +2528,8 @@ export function ClipPreview({
             </Button>
           </div>
         </div>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   )

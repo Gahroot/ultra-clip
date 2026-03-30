@@ -74,7 +74,8 @@ export const brandKitFeature: RenderFeature = {
 
   async prepare(
     job: RenderClipJob,
-    batchOptions: RenderBatchOptions
+    batchOptions: RenderBatchOptions,
+    _onProgress?: (message: string, percent: number) => void
   ): Promise<PrepareResult> {
     const bk = batchOptions.brandKit
     if (!bk) {

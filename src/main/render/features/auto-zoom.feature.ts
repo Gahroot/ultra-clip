@@ -26,7 +26,8 @@ class AutoZoomFeature implements RenderFeature {
 
   async prepare(
     job: RenderClipJob,
-    batchOptions: RenderBatchOptions
+    batchOptions: RenderBatchOptions,
+    _onProgress?: (message: string, percent: number) => void
   ): Promise<PrepareResult> {
     const globalSettings = batchOptions.autoZoom
 

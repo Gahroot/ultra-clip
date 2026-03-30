@@ -20,7 +20,8 @@ export const progressBarFeature: RenderFeature = {
 
   async prepare(
     job: RenderClipJob,
-    batchOptions: RenderBatchOptions
+    batchOptions: RenderBatchOptions,
+    _onProgress?: (message: string, percent: number) => void
   ): Promise<PrepareResult> {
     const config = batchOptions.progressBarOverlay
     if (!config?.enabled) return { tempFiles: [], modified: false }

@@ -23,10 +23,14 @@ import {
   X,
   AlertCircle,
   Brain,
-  Wand2
+  Wand2,
+  Film
 } from 'lucide-react'
 import { useStore } from '../store'
-import type { PipelineStage } from '../store'
+import type { PipelineStage, ClipCandidate } from '../store'
+
+/** Stable empty array to avoid new references in selectors. */
+const EMPTY_CLIPS: ClipCandidate[] = []
 import { usePipeline } from '../hooks/usePipeline'
 import { useQueueProcessor } from '../hooks/useQueueProcessor'
 import { useETA } from '../hooks/useETA'
@@ -120,6 +124,12 @@ const STEPS: PipelineStepDef[] = [
     aiEditOnly: true
   },
   {
+    id: 'segmenting',
+    label: 'Segments',
+    description: 'Splitting clips into styled segments',
+    icon: <Film className="w-4 h-4" />
+  },
+  {
     id: 'ready',
     label: 'Ready',
     description: 'Clips ready for review',
@@ -138,6 +148,7 @@ const STAGE_ORDER: PipelineStage[] = [
   'detecting-faces',
   'detecting-arcs',
   'ai-editing',
+  'segmenting',
   'ready',
   'rendering',
   'done'
@@ -423,7 +434,7 @@ function StatsSkeleton() {
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 function Stats({ sourceId }: { sourceId: string }) {
-  const clips = useStore((s) => s.clips[sourceId] ?? [])
+  const clips = useStore((s) => s.clips[sourceId] ?? EMPTY_CLIPS)
   const minScore = useStore((s) => s.settings.minScore)
 
   if (clips.length === 0) return null
@@ -676,7 +687,8 @@ export function ProcessingPanel() {
     stage === 'stitching' ||
     stage === 'detecting-faces' ||
     stage === 'detecting-arcs' ||
-    stage === 'ai-editing'
+    stage === 'ai-editing' ||
+    stage === 'segmenting'
 
   const needsGeminiKey = !settings.geminiApiKey
   const failedStage = isError ? lastActiveStageRef.current : null
@@ -701,7 +713,8 @@ export function ProcessingPanel() {
     stitching: 'Clip Stitching',
     'detecting-faces': 'Face Detection',
     'detecting-arcs': 'Story Arcs',
-    'ai-editing': 'AI Edit'
+    'ai-editing': 'AI Edit',
+    segmenting: 'Segment Splitting'
   }
 
   const handleStart = async () => {

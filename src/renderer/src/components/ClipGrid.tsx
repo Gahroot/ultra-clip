@@ -82,7 +82,6 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { useStore } from '../store'
-import { BUILT_IN_EDIT_STYLE_PRESETS } from '../store/helpers'
 import { useShallow } from 'zustand/react/shallow'
 import type { ClipCandidate, RenderProgress } from '../store'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -242,6 +241,7 @@ export function ClipGrid() {
   const activeEncoder = useStore((s) => s.activeEncoder)
 
   const clipOrder = useStore(useShallow((s) => activeSourceId ? (s.clipOrder[activeSourceId] ?? []) : []))
+  const segments = useStore((s) => s.segments)
   const customOrder = useStore((s) => s.customOrder)
   const reorderClips = useStore((s) => s.reorderClips)
   const setCustomOrder = useStore((s) => s.setCustomOrder)
@@ -257,17 +257,7 @@ export function ClipGrid() {
   const pipeline = useStore((s) => s.pipeline)
   const setRenderError = useStore((s) => s.setRenderError)
   const transcriptions = useStore((s) => s.transcriptions)
-  const activeStylePresetId = useStore((s) => s.activeStylePresetId)
-
-  // Style presets for per-shot style resolution at render time
-  const stylePresetsForRender = useMemo(() =>
-    BUILT_IN_EDIT_STYLE_PRESETS.map((p) => ({
-      id: p.id,
-      captions: p.captions,
-      zoom: p.zoom
-    })),
-    []
-  )
+  const selectedEditStyleId = useStore((s) => s.selectedEditStyleId)
 
   // Batch multi-select
   const selectedClipIds = useStore((s) => s.selectedClipIds)
@@ -641,7 +631,7 @@ export function ClipGrid() {
             .map((e) => ({ time: e.start, end: e.end, level: e.level as 'emphasis' | 'supersize' }))
         : undefined,
       // Active style preset ID — informational, recorded in manifest
-      stylePresetId: clip.aiEditPlan?.stylePresetId ?? activeStylePresetId ?? undefined,
+      stylePresetId: clip.aiEditPlan?.stylePresetId ?? selectedEditStyleId ?? undefined,
       // Per-shot style assignments — when present, the render pipeline applies
       // different style presets to different shot segments within this clip
       shotStyles: clip.shotStyles && clip.shotStyles.length > 0 ? clip.shotStyles : undefined,
@@ -650,6 +640,24 @@ export function ClipGrid() {
       precomputedFillerSegments: clip.fillerSegments && clip.fillerSegments.length > 0
         ? clip.fillerSegments.filter((_, i) => !(clip.restoredFillerIndices ?? []).includes(i))
         : undefined,
+      // Segmented clip data — when the clip has segments from the segment editor,
+      // populate segmentedSegments so the render pipeline routes to renderSegmentedClip()
+      segmentedSegments: (() => {
+        const segs = segments[clip.id]
+        if (!segs || segs.length === 0) return undefined
+        return segs.map((seg) => ({
+          startTime: seg.startTime,
+          endTime: seg.endTime,
+          styleVariantId: seg.segmentStyleId,
+          zoomStyle: seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image' ? 'none' : 'drift' as const,
+          zoomIntensity: 1.05,
+          transitionIn: seg.transitionIn,
+          captionBgOpacity: undefined,
+          cropRect: clip.cropRegion
+            ? { x: clip.cropRegion.x, y: clip.cropRegion.y, width: clip.cropRegion.width, height: clip.cropRegion.height }
+            : undefined,
+        }))
+      })(),
     }))
 
     // Add variant render jobs
@@ -870,7 +878,9 @@ export function ClipGrid() {
           titleText: templateLayout.titleText,
           subtitles: templateLayout.subtitles,
           rehookText: templateLayout.rehookText
-        }
+        },
+        broll: settings.broll.enabled ? settings.broll : undefined,
+        geminiApiKey: settings.geminiApiKey || undefined,
       })
     } catch (err) {
       setIsRendering(false)
@@ -1110,7 +1120,9 @@ export function ClipGrid() {
           titleText: templateLayout.titleText,
           subtitles: templateLayout.subtitles,
           rehookText: templateLayout.rehookText
-        }
+        },
+        broll: settings.broll.enabled ? settings.broll : undefined,
+        geminiApiKey: settings.geminiApiKey || undefined,
       })
     } catch (err) {
       setIsRendering(false)
@@ -1119,7 +1131,7 @@ export function ClipGrid() {
     }
   }, [
     isRendering, activeSource, approvedClips, stitchedClips, sourcePath, settings, templateLayout,
-    setRenderProgress, setIsRendering, detachListeners, addError, setRenderError
+    setRenderProgress, setIsRendering, detachListeners, addError, setRenderError, segments
   ])
 
   // Auto-mode: when didRender is true, trigger handleStartRender after clips are set

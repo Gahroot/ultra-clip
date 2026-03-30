@@ -27,8 +27,7 @@ function getProjectJson(pretty = false): string {
     storyArcs: state.storyArcs,
     clipOrder: state.clipOrder,
     customOrder: state.customOrder,
-    activeStylePresetId: (state as any).activeStylePresetId ?? null,
-    activeVariantId: (state as any).activeVariantId ?? null,
+    selectedEditStyleId: (state as any).selectedEditStyleId ?? 'cinematic',
     processingConfig: state.processingConfig
   }
   return JSON.stringify(project, null, pretty ? 2 : undefined)
@@ -40,22 +39,33 @@ function getProjectJson(pretty = false): string {
 
 function applyProject(data: string): boolean {
   const project = JSON.parse(data) as Partial<ProjectFileData>
+  const sources = project.sources ?? []
+  const clips = project.clips ?? {}
+  const hasClips = Object.values(clips).some((arr) => arr.length > 0)
+
+  // If the project has clips, jump straight to the clip grid by setting
+  // pipeline to 'ready' and selecting the first source.
+  const activeSourceId = hasClips && sources.length > 0 ? sources[0].id : null
+  const pipeline = hasClips
+    ? { stage: 'ready' as const, message: '', percent: 100 }
+    : DEFAULT_PIPELINE
+
   useStore.setState({
-    sources: project.sources ?? [],
+    sources,
     transcriptions: project.transcriptions ?? {},
-    clips: project.clips ?? {},
+    clips,
     settings: {
       ...DEFAULT_SETTINGS,
       ...(project.settings ?? {})
     },
-    pipeline: DEFAULT_PIPELINE,
+    pipeline,
     renderProgress: [],
     isRendering: false,
     renderStartedAt: null,
     renderCompletedAt: null,
     clipRenderTimes: {},
     errorLog: [],
-    activeSourceId: null,
+    activeSourceId,
     isDirty: false,
     templateLayout: project.templateLayout ?? DEFAULT_TEMPLATE_LAYOUT,
     targetPlatform: project.targetPlatform ?? 'universal',
@@ -63,8 +73,7 @@ function applyProject(data: string): boolean {
     storyArcs: project.storyArcs ?? {},
     clipOrder: project.clipOrder ?? {},
     customOrder: project.customOrder ?? false,
-    activeStylePresetId: project.activeStylePresetId ?? null,
-    activeVariantId: project.activeVariantId ?? null,
+    selectedEditStyleId: project.selectedEditStyleId ?? 'cinematic',
     processingConfig: {
       ...DEFAULT_PROCESSING_CONFIG,
       ...(project.processingConfig ?? {})

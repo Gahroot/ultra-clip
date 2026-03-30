@@ -13,14 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@/components/ui/alert-dialog'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-  SheetDescription
-} from '@/components/ui/sheet'
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,7 +24,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { SourceInput } from './components/SourceInput'
 import { ProcessingPanel } from './components/ProcessingPanel'
 import { ClipGrid } from './components/ClipGrid'
-import { SettingsPanel } from './components/SettingsPanel'
+
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ErrorLog } from './components/ErrorLog'
 import { SetupWizard } from './components/SetupWizard'
@@ -89,7 +82,6 @@ function App() {
   const [onboardingOpen, setOnboardingOpen] = useState(!hasCompletedOnboarding)
   const [isSaving, setIsSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [previewClipIndex, setPreviewClipIndex] = useState<number | null>(null)
@@ -164,7 +156,7 @@ function App() {
   }, [])
 
   const shortcutCallbacks = useMemo(() => ({
-    onOpenSettings: () => setSettingsOpen(true),
+    onOpenSettings: () => window.api.openSettingsWindow(),
     onSave: () => handleSave(),
     onLoad: () => handleLoad(),
     onOpenPreview: (clipIndex: number) => setPreviewClipIndex(clipIndex),
@@ -232,10 +224,20 @@ function App() {
   function handleRestoreRecovery() {
     if (!recoveryData) return
     const { project } = recoveryData
+    const sources = (project.sources ?? []) as ReturnType<typeof useStore.getState>['sources']
+    const clips = (project.clips ?? {}) as ReturnType<typeof useStore.getState>['clips']
+    const hasClips = Object.values(clips).some((arr) => arr.length > 0)
+
+    // If the project has clips, jump straight to the clip grid
+    const activeSourceId = hasClips && sources.length > 0 ? sources[0].id : null
+    const pipeline = hasClips
+      ? { stage: 'ready' as const, message: '', percent: 100 }
+      : useStore.getState().pipeline
+
     useStore.setState({
-      sources: (project.sources ?? []) as ReturnType<typeof useStore.getState>['sources'],
+      sources,
       transcriptions: (project.transcriptions ?? {}) as ReturnType<typeof useStore.getState>['transcriptions'],
-      clips: (project.clips ?? {}) as ReturnType<typeof useStore.getState>['clips'],
+      clips,
       settings: { ...useStore.getState().settings, ...((project.settings ?? {}) as object) },
       stitchedClips: (project.stitchedClips ?? {}) as ReturnType<typeof useStore.getState>['stitchedClips'],
       templateLayout: (project.templateLayout ?? useStore.getState().templateLayout) as ReturnType<typeof useStore.getState>['templateLayout'],
@@ -243,9 +245,9 @@ function App() {
       storyArcs: (project.storyArcs ?? {}) as ReturnType<typeof useStore.getState>['storyArcs'],
       clipOrder: (project.clipOrder ?? {}) as ReturnType<typeof useStore.getState>['clipOrder'],
       customOrder: (project.customOrder ?? false) as boolean,
-      activeStylePresetId: project.activeStylePresetId ?? null,
-      activeVariantId: project.activeVariantId ?? null,
       processingConfig: { ...useStore.getState().processingConfig, ...((project.processingConfig ?? {}) as object) },
+      activeSourceId,
+      pipeline,
       isDirty: true
     } as any)
     clearRecovery()
@@ -397,22 +399,15 @@ function App() {
         >
           <Keyboard className="w-4 h-4" />
         </Button>
-        <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8" title="Settings (Ctrl+,)">
-              <Settings className="w-4 h-4" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="w-[540px] p-0 flex flex-col">
-            <SheetHeader className="px-6 py-4 border-b border-border shrink-0">
-              <SheetTitle>Settings</SheetTitle>
-              <SheetDescription className="sr-only">Configure your video processing settings</SheetDescription>
-            </SheetHeader>
-            <div className="flex-1 overflow-hidden">
-              <SettingsPanel />
-            </div>
-          </SheetContent>
-        </Sheet>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="Settings (Ctrl+,)"
+          onClick={() => window.api.openSettingsWindow()}
+        >
+          <Settings className="w-4 h-4" />
+        </Button>
         </div>
       </header>
 

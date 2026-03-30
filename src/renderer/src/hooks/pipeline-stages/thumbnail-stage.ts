@@ -12,6 +12,12 @@ export async function thumbnailStage(
 
   for (let i = 0; i < clips.length; i += THUMB_CONCURRENCY) {
     const batch = clips.slice(i, i + THUMB_CONCURRENCY)
+    const done = Math.min(i + THUMB_CONCURRENCY, clips.length)
+    ctx.setPipeline({
+      stage: 'scoring',
+      message: `Generating thumbnails (${done}/${clips.length})…`,
+      percent: Math.round((done / clips.length) * 100)
+    })
     const results = await Promise.allSettled(
       batch.map((clip) => window.api.getThumbnail(sourcePath, clip.startTime + 1))
     )

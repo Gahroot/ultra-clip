@@ -17,7 +17,8 @@ export const shotTransitionFeature: RenderFeature = {
 
   async prepare(
     job: RenderClipJob,
-    _batchOptions: RenderBatchOptions
+    _batchOptions: RenderBatchOptions,
+    _onProgress?: (message: string, percent: number) => void
   ): Promise<PrepareResult> {
     if (!job.shotStyleConfigs || job.shotStyleConfigs.length < 2) {
       return { tempFiles: [], modified: false }

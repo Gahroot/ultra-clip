@@ -67,7 +67,14 @@ export type {
   CuriosityClipCandidate,
   ShotBreakReason,
   ShotSegment,
-  ShotSegmentationResult
+  ShotSegmentationResult,
+  // Segment Editor types
+  VideoSegment,
+  EditStyle,
+  SegmentStyleCategory,
+  SegmentStyleVariant,
+  ZoomKeyframe,
+  TransitionType,
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +264,7 @@ export type PipelineStage =
   | 'detecting-faces'
   | 'detecting-arcs'
   | 'ai-editing'
+  | 'segmenting'
   | 'ready'
   | 'rendering'
   | 'done'
@@ -271,11 +279,13 @@ export interface PipelineProgress {
 export interface RenderProgress {
   clipId: string
   percent: number
-  status: 'queued' | 'rendering' | 'done' | 'error'
+  status: 'queued' | 'preparing' | 'rendering' | 'done' | 'error'
   error?: string
   outputPath?: string
   /** FFmpeg command string captured at render time (populated on error, or always in developer mode). */
   ffmpegCommand?: string
+  /** Message shown during the prepare phase (B-Roll generation, filler removal, etc.) */
+  prepareMessage?: string
 }
 
 export interface CaptionStyle {
@@ -567,272 +577,6 @@ export interface SettingsProfile {
 
 /** Names of profiles that ship with the app and cannot be deleted. */
 export const BUILT_IN_PROFILE_NAMES = ['TikTok Optimized', 'Reels Clean', 'Minimal'] as const
-
-// ---------------------------------------------------------------------------
-// Edit Style Presets
-// ---------------------------------------------------------------------------
-
-/**
- * Category grouping for the style picker UI.
- *
- *   'viral'       — Fast-paced, high-energy, engagement-maximizing
- *   'educational' — Clear typography, minimal distraction, readable captions
- *   'cinematic'   — Premium feel, subtle motion, restrained overlays
- *   'minimal'     — Clean silence, no overlays, simple captions
- *   'branded'     — Designed to slot in brand colors and logo patterns
- *   'custom'      — User-created; not shipped with the app
- */
-export type EditStyleCategory =
-  | 'viral'
-  | 'educational'
-  | 'cinematic'
-  | 'minimal'
-  | 'branded'
-  | 'custom'
-
-/** Caption typography, color palette, and word-level animation within a style preset. */
-export interface EditStyleCaptions {
-  /** Whether captions are burned in at render time. */
-  enabled: boolean
-  /**
-   * Full caption appearance: font, all colors, sizes, word-box borders,
-   * and the frame-level animation type.
-   */
-  style: CaptionStyle
-}
-
-/** Auto-zoom / Ken Burns / reactive camera movement within a style preset. */
-export interface EditStyleZoom {
-  /** Whether auto-zoom is applied at render time. */
-  enabled: boolean
-  /** Zoom algorithm: smooth pan ('ken-burns'), beat-reactive ('reactive'), or hard jump-cut ('jump-cut'). */
-  mode: ZoomMode
-  /** Scale of zoom effect — how far in the camera pushes. */
-  intensity: ZoomIntensity
-  /** Seconds between zoom keyframe triggers. Default: 4. */
-  intervalSeconds: number
-}
-
-/** B-Roll stock footage overlay layout and transitions within a style preset. */
-export interface EditStyleBRoll {
-  /** Whether B-Roll insertion is enabled at render time. */
-  enabled: boolean
-  /**
-   * How B-Roll is composited onto the frame:
-   *   'fullscreen'   — B-Roll fills the entire 1080×1920 canvas
-   *   'split-top'    — B-Roll occupies the top ~65%, speaker shrinks to bottom strip
-   *   'split-bottom' — Speaker fills top ~65%, B-Roll fills bottom strip
-   *   'pip'          — B-Roll goes fullscreen, speaker shrinks to a corner window
-   */
-  displayMode: BRollDisplayMode
-  /**
-   * How B-Roll enters and exits the frame:
-   *   'hard-cut'   — Instant cut with no animation
-   *   'crossfade'  — Alpha fade in / fade out
-   *   'swipe-up'   — B-Roll slides in from the bottom
-   *   'swipe-down' — B-Roll slides in from the top
-   */
-  transition: BRollTransition
-  /**
-   * Picture-in-picture speaker window size as a fraction of canvas width (0.2–0.4).
-   * Only relevant when displayMode === 'pip'. Default: 0.25.
-   */
-  pipSize: number
-  /**
-   * Corner to anchor the PiP speaker window.
-   * Only relevant when displayMode === 'pip'. Default: 'bottom-right'.
-   */
-  pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
-  /** Target seconds between B-Roll clip insertions. Default: 5. */
-  intervalSeconds: number
-  /** Duration of each B-Roll clip in seconds (2–6). Default: 3. */
-  clipDuration: number
-  /** B-Roll source: 'stock', 'ai-generated', or 'auto'. Default: 'auto'. */
-  sourceMode?: 'stock' | 'ai-generated' | 'auto'
-}
-
-/** Background music, SFX density, and ducking mix within a style preset. */
-export interface EditStyleSound {
-  /** Whether sound design (music + SFX) is applied at render time. */
-  enabled: boolean
-  /**
-   * SFX placement density and character:
-   *   'minimal'   — Sparse, only key moments
-   *   'standard'  — Balanced mix
-   *   'energetic' — Dense, high-energy
-   */
-  sfxStyle: SFXStyle
-  /** Background music loop to mix under the clip. */
-  backgroundMusicTrack: MusicTrack
-  /** SFX channel volume scalar (0–1). Default: 0.5. */
-  sfxVolume: number
-  /** Music channel volume scalar (0–1). Default: 0.1. */
-  musicVolume: number
-  /** When true, music ducks automatically during speech. */
-  musicDucking: boolean
-  /** Target volume level during ducking (0–1, lower = deeper duck). Default: 0.2. */
-  musicDuckLevel: number
-}
-
-/** Hook title overlay style within a style preset. */
-export interface EditStyleHookTitle {
-  /** Whether the hook title is burned in at the start of the clip. */
-  enabled: boolean
-  /** Visual treatment for the hook title card. */
-  style: HookTitleStyle
-  /** How long the hook title remains fully visible (seconds). Default: 2.5. */
-  displayDuration: number
-  /** Font size in pixels on the 1080×1920 canvas. Default: 72. */
-  fontSize: number
-  /** Text fill color in CSS hex. Default: '#FFFFFF'. */
-  textColor: string
-  /** Text stroke/outline color in CSS hex. Default: '#000000'. */
-  outlineColor: string
-  /** Stroke width in pixels. Default: 4. */
-  outlineWidth: number
-}
-
-/** Re-hook / pattern-interrupt overlay style within a style preset. */
-export interface EditStyleRehook {
-  /** Whether the mid-clip re-hook overlay is burned in. */
-  enabled: boolean
-  /** Visual treatment for the re-hook element. */
-  style: RehookStyle
-  /** How long the re-hook element stays visible (seconds). Default: 1.5. */
-  displayDuration: number
-}
-
-/** Animated progress bar overlay style within a style preset. */
-export interface EditStyleProgressBar {
-  /** Whether the progress bar is burned in. */
-  enabled: boolean
-  /** Visual treatment for the bar fill. */
-  style: ProgressBarStyle
-  /** Edge of the frame to anchor the bar ('top' or 'bottom'). */
-  position: ProgressBarPosition
-  /** Bar thickness in pixels on the 1080×1920 canvas (2–8). Default: 4. */
-  height: number
-  /** Bar fill color in CSS hex. Default: '#FFFFFF'. */
-  color: string
-  /** Bar opacity (0–1). Default: 0.9. */
-  opacity: number
-}
-
-/** All on-screen overlay elements bundled within a style preset. */
-export interface EditStyleOverlays {
-  /** Opening hook title card. */
-  hookTitle: EditStyleHookTitle
-  /** Mid-clip re-hook / pattern-interrupt element. */
-  rehook: EditStyleRehook
-  /** Animated completion progress bar. */
-  progressBar: EditStyleProgressBar
-}
-
-/**
- * EditStylePreset — a complete named creative style for one-click application.
- *
- * Bundles all aesthetic decisions (captions, zoom, B-Roll, sound, overlays)
- * into a single coherent package. Intentionally excludes machine-specific or
- * pipeline settings (output resolution, API keys, brand kit paths, filler
- * removal config, min score) because those are not part of the creative identity.
- *
- * Built-in presets ship with the app and cannot be deleted. User-created
- * presets (builtIn: false) can be saved, renamed, and removed freely.
- */
-export interface EditStylePreset {
-  /**
-   * Unique identifier.
-   * Slug-style for built-ins (e.g. 'hormozi-bold'); UUID for user-created.
-   */
-  id: string
-  /** Human-readable name shown in the style picker card. */
-  name: string
-  /** One-sentence description of the aesthetic feel. */
-  description: string
-  /**
-   * Visual preview for the picker card.
-   * Built-ins use a representative emoji (e.g. '🔥').
-   * User-created presets may store a base64 data URL or a file path.
-   */
-  thumbnail: string
-  /** Category used for grouping and filtering in the picker UI. */
-  category: EditStyleCategory
-  /**
-   * Optional freeform tags for search (e.g. ['bold', 'dark', 'motivational']).
-   * Lower-cased at creation; matched case-insensitively in search.
-   */
-  tags?: string[]
-  /** True for presets bundled with the app; false for user-created presets. */
-  builtIn: boolean
-
-  /** Caption typography, color palette, and word-level animation. */
-  captions: EditStyleCaptions
-  /** Auto-zoom / Ken Burns / reactive camera movement. */
-  zoom: EditStyleZoom
-  /** B-Roll overlay layout and transitions. */
-  broll: EditStyleBRoll
-  /** Background music, SFX density, and ducking mix. */
-  sound: EditStyleSound
-  /** On-screen overlay elements (hook title, re-hook, progress bar). */
-  overlays: EditStyleOverlays
-
-  /** Optional color grade applied when this preset is used for per-shot styling. */
-  colorGrade?: import('../../../shared/types').ColorGradeConfig
-  /** Optional transition into a shot when this preset is assigned per-shot. */
-  transitionIn?: import('../../../shared/types').ShotTransitionConfig
-  /** Optional transition out of a shot when this preset is assigned per-shot. */
-  transitionOut?: import('../../../shared/types').ShotTransitionConfig
-
-  /**
-   * Sub-variants within this style family. Each variant shares the parent's
-   * energy/mood but differs in visual execution — different caption animations,
-   * color palettes, B-Roll density, transition aggressiveness, etc.
-   *
-   * The first variant is the default and represents the "base" look for this style.
-   * When a user selects a style without picking a variant, the first variant is applied.
-   */
-  variants?: EditStyleVariant[]
-}
-
-/**
- * A visual sub-variant within a parent style family.
- *
- * Uses deep partial overrides — only the properties that differ from the parent
- * preset are specified. At application time, variant overrides are merged on top
- * of the parent preset to produce a complete EditStylePreset.
- *
- * Example: "Velocity Bold" might override captions.style.fontSize and
- * zoom.intensity but inherit everything else from the parent "Velocity" preset.
- */
-export interface EditStyleVariant {
-  /** Unique ID within the parent style (e.g. 'velocity-bold'). */
-  id: string
-  /** Short display name (e.g. 'Bold', 'Clean', 'Neon'). */
-  name: string
-  /** Brief description of how this variant differs from the base. */
-  description: string
-  /** Emoji or small visual tag for the variant thumbnail. */
-  thumbnail: string
-
-  /** Caption overrides — merged on top of the parent's captions. */
-  captions?: DeepPartial<EditStyleCaptions>
-  /** Zoom overrides — merged on top of the parent's zoom. */
-  zoom?: DeepPartial<EditStyleZoom>
-  /** B-Roll overrides — merged on top of the parent's broll. */
-  broll?: DeepPartial<EditStyleBRoll>
-  /** Sound overrides — merged on top of the parent's sound. */
-  sound?: DeepPartial<EditStyleSound>
-  /** Overlay overrides — merged on top of the parent's overlays. */
-  overlays?: DeepPartial<EditStyleOverlays>
-}
-
-/**
- * Recursive partial — allows overriding any nested property at any depth
- * without requiring every sibling to also be specified.
- */
-export type DeepPartial<T> = {
-  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P]
-}
 
 export interface ProcessingConfig {
   targetDuration: TargetDuration
@@ -1300,4 +1044,22 @@ export interface AppState {
   loadProfile: (name: string) => void
   deleteProfile: (name: string) => void
   renameProfile: (oldName: string, newName: string) => void
+
+  // Segment Editor (Captions.ai-style per-segment editing)
+  /** Video segments keyed by clipId. Each clip is split into 4–7 styled segments. */
+  segments: Record<string, VideoSegment[]>
+  /** Available edit styles (preset collections of segment styles + transitions). */
+  editStyles: EditStyle[]
+  /** Currently selected edit style ID (applied to new segment splits). */
+  selectedEditStyleId: string | null
+  /** Currently selected segment index in the segment timeline (per clip). */
+  selectedSegmentIndex: number
+  /** Set the selected segment index for the segment timeline. */
+  setSelectedSegmentIndex: (index: number) => void
+
+  // Actions — Segment Editor
+  setSegments: (clipId: string, segments: VideoSegment[]) => void
+  updateSegment: (clipId: string, segmentId: string, updates: Partial<VideoSegment>) => void
+  setEditStyles: (styles: EditStyle[]) => void
+  setSelectedEditStyleId: (styleId: string | null) => void
 }

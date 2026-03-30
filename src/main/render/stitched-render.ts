@@ -402,11 +402,15 @@ export async function renderStitchedClip(
       const videoFilter = filterChain.join(',')
 
       await new Promise<void>((resolve, reject) => {
-        function runSegmentEncode(enc: string, flags: string[]): void {
+        let fallbackAttempted = false
+        function runSegmentEncode(enc: string, flags: string[], useHwAccel = true): void {
           const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
 
           // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
-          cmd.inputOptions(['-hwaccel', 'auto'])
+          // Skipped on software fallback — broken GPU drivers can cause -hwaccel auto to crash
+          if (useHwAccel) {
+            cmd.inputOptions(['-hwaccel', 'auto'])
+          }
 
           cmd
             .seekInput(seg.startTime)
@@ -428,9 +432,10 @@ export async function renderStitchedClip(
               resolve()
             })
             .on('error', (err: Error) => {
-              if (isGpuSessionError(err.message)) {
+              if (!fallbackAttempted && isGpuSessionError(err.message)) {
+                fallbackAttempted = true
                 const sw = getSoftwareEncoder()
-                runSegmentEncode(sw.encoder, sw.presetFlag)
+                runSegmentEncode(sw.encoder, sw.presetFlag, false)
               } else {
                 reject(err)
               }

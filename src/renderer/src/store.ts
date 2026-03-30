@@ -44,10 +44,6 @@ export type {
   RenderQualitySettings,
   AppSettings,
   SettingsProfile,
-  EditStylePreset,
-  EditStyleVariant,
-  DeepPartial,
-  EditStyleCategory,
   ProcessingConfig,
   AutoModeConfig,
   ErrorLogEntry,
@@ -85,6 +81,12 @@ export type {
   CuriosityGap,
   ClipBoundary,
   CuriosityClipCandidate,
+  VideoSegment,
+  EditStyle,
+  SegmentStyleCategory,
+  SegmentStyleVariant,
+  ZoomKeyframe,
+  TransitionType,
 } from './store/types'
 
 // Constants and helpers
@@ -95,8 +97,6 @@ export {
   DEFAULT_TEMPLATE_LAYOUT,
   applyHookTemplate,
   extractProfileFromSettings,
-  BUILT_IN_EDIT_STYLE_PRESETS,
-  resolvePresetVariant,
 } from './store/helpers'
 
 export type { ProjectFileData } from './store/helpers'

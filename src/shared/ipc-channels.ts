@@ -108,8 +108,23 @@ export const InvokeChannels = {
   OVERLAY_GENERATE_FAKE_COMMENT: 'overlay:generateFakeComment',
   OVERLAY_BUILD_FAKE_COMMENT_FILTER: 'overlay:buildFakeCommentFilter',
 
+  // Segment Editor
+  SEGMENTS_SPLIT: 'segments:split',
+  SEGMENTS_ASSIGN_STYLES: 'segments:assignStyles',
+  SEGMENTS_UPDATE_CAPTION: 'segments:updateCaption',
+  SEGMENTS_UPDATE_STYLE: 'segments:updateStyle',
+  SEGMENTS_GET_STYLE_VARIANTS: 'segments:getStyleVariants',
+  SEGMENTS_GET_VARIANTS_FOR_CATEGORY: 'segments:getVariantsForCategory',
+
+  // Segment Images — generate contextual images for segments needing visuals
+  SEGMENTS_GENERATE_IMAGES: 'segments:generateImages',
+
   // Shot Segmentation
   SHOT_SEGMENT_CLIP: 'shot:segmentClip',
+
+  // Edit Styles
+  EDIT_STYLES_GET_ALL: 'editStyles:getAll',
+  EDIT_STYLES_GET_BY_ID: 'editStyles:getById',
 
   // Filler Detection
   FILLER_DETECT: 'filler:detect',
@@ -158,6 +173,11 @@ export const InvokeChannels = {
   // Shell
   SHELL_OPEN_PATH: 'shell:openPath',
   SHELL_SHOW_ITEM_IN_FOLDER: 'shell:showItemInFolder',
+
+  // Settings Window
+  SETTINGS_WINDOW_OPEN: 'settings-window:open',
+  SETTINGS_WINDOW_CLOSE: 'settings-window:close',
+  SETTINGS_WINDOW_IS_OPEN: 'settings-window:is-open',
 } as const
 
 // ---- Send channels (main → renderer, fire-and-forget) ---------------------
@@ -173,11 +193,13 @@ export const SendChannels = {
   RENDER_CLIP_ERROR: 'render:clipError',
   RENDER_BATCH_DONE: 'render:batchDone',
   RENDER_CANCELLED: 'render:cancelled',
+  RENDER_CLIP_PREPARE: 'render:clipPrepare',
   STITCH_PROGRESS: 'stitch:progress',
   PYTHON_SETUP_PROGRESS: 'python:setupProgress',
   PYTHON_SETUP_DONE: 'python:setupDone',
   AI_TOKEN_USAGE: 'ai:tokenUsage',
   AI_EDIT_PROGRESS: 'ai:editProgress',
+  SETTINGS_WINDOW_CLOSED: 'settings-window:closed',
 } as const
 
 // ---- Combined shorthand -------------------------------------------------
@@ -253,6 +275,11 @@ export interface IpcSendChannelMap {
     failed: number
     total: number
   }
+  [SendChannels.RENDER_CLIP_PREPARE]: {
+    clipId: string
+    message: string
+    percent: number
+  }
   [SendChannels.STITCH_PROGRESS]: { stage: string; message: string }
   [SendChannels.PYTHON_SETUP_PROGRESS]: {
     stage: string
@@ -278,6 +305,7 @@ export interface IpcSendChannelMap {
     stage: 'generating' | 'done' | 'error'
     message: string
   }
+  [SendChannels.SETTINGS_WINDOW_CLOSED]: Record<string, never>
 }
 
 // ---- Helper types --------------------------------------------------------

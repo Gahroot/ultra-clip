@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Eye, EyeOff, FolderOpen, ExternalLink, Music2, Zap, Scan, Film, Briefcase, Type, Clapperboard, Scissors, HardDrive, Bell, RotateCcw, CaseSensitive, CheckCircle2, XCircle, Loader2, PenSquare, Trash2, Pencil, Image, Code2, FileOutput, FileDown, Layers, Save, BookmarkCheck, AlertTriangle, Palette, ChevronDown, Video, ImagePlus, Sparkles, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight, ArrowDown, ArrowUp, Paintbrush, Wand2, Settings2, SlidersHorizontal } from 'lucide-react'
+import { Eye, EyeOff, FolderOpen, ExternalLink, Music2, Zap, Scan, Film, Briefcase, Type, Clapperboard, Scissors, HardDrive, Bell, RotateCcw, CaseSensitive, CheckCircle2, XCircle, Loader2, PenSquare, Trash2, Pencil, Image, Code2, FileOutput, FileDown, Layers, Save, BookmarkCheck, AlertTriangle, Video, ImagePlus, Sparkles, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight, ArrowDown, ArrowUp, Paintbrush, Wand2, Settings2, SlidersHorizontal } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,7 +38,6 @@ import {
   applyHookTemplate,
   DEFAULT_SETTINGS,
   BUILT_IN_PROFILE_NAMES,
-  BUILT_IN_EDIT_STYLE_PRESETS,
   extractProfileFromSettings,
   type CaptionStyle,
   type CaptionAnimation,
@@ -61,7 +60,6 @@ import {
   type BRollDisplayMode,
   type BRollTransition,
   type SFXStyle,
-  type EditStyleCategory,
 } from '@/store'
 import { cn, formatFileSize } from '@/lib/utils'
 import {
@@ -73,6 +71,8 @@ import {
   type ThumbnailStatus,
 } from '@/lib/caption-thumbnail-cache'
 import { DropZone } from './DropZone'
+import { EditStyleSelector } from './EditStyleSelector'
+import type { EditStyle } from '@/store'
 
 const ANIMATION_OPTIONS: { value: CaptionAnimation; label: string }[] = [
   { value: 'captions-ai', label: 'Captions.AI' },
@@ -639,210 +639,27 @@ function HookTitlePhonePreview({
 }
 
 // ---------------------------------------------------------------------------
-// Style Preset Picker
+// Edit Style Selector strip (compact, fetches from main process)
 // ---------------------------------------------------------------------------
 
-const CATEGORY_META: Record<EditStyleCategory, { label: string; gradient: string; ring: string; badge: string }> = {
-  viral:       { label: 'Viral',       gradient: 'linear-gradient(135deg, #F97316 0%, #EF4444 100%)', ring: '#F97316', badge: 'bg-orange-500/20 text-orange-400' },
-  educational: { label: 'Edu',         gradient: 'linear-gradient(135deg, #3B82F6 0%, #4F46E5 100%)', ring: '#3B82F6', badge: 'bg-blue-500/20 text-blue-400' },
-  cinematic:   { label: 'Cinematic',   gradient: 'linear-gradient(135deg, #7C3AED 0%, #1E293B 100%)', ring: '#7C3AED', badge: 'bg-violet-500/20 text-violet-400' },
-  minimal:     { label: 'Minimal',     gradient: 'linear-gradient(135deg, #475569 0%, #1E293B 100%)', ring: '#64748B', badge: 'bg-slate-500/20 text-slate-400' },
-  branded:     { label: 'Branded',     gradient: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)', ring: '#F59E0B', badge: 'bg-amber-500/20 text-amber-400' },
-  custom:      { label: 'Custom',      gradient: 'linear-gradient(135deg, #6B7280 0%, #374151 100%)', ring: '#6B7280', badge: 'bg-gray-500/20 text-gray-400' },
-}
+function EditStyleStrip() {
+  const selectedEditStyleId = useStore((s) => s.selectedEditStyleId)
+  const setSelectedEditStyleId = useStore((s) => s.setSelectedEditStyleId)
+  const [styles, setStyles] = useState<EditStyle[]>([])
 
-function StylePresetPicker() {
-  const activeStylePresetId = useStore((s) => s.activeStylePresetId)
-  const activeVariantId = useStore((s) => s.activeVariantId)
-  const applyEditStylePreset = useStore((s) => s.applyEditStylePreset)
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
-  const [hoveredVariantId, setHoveredVariantId] = useState<string | null>(null)
-  const [isExpanded, setIsExpanded] = useState(true)
+  useEffect(() => {
+    window.api.getEditStyles().then(setStyles).catch(() => {})
+  }, [])
 
-  const focusedPreset = BUILT_IN_EDIT_STYLE_PRESETS.find(
-    (p) => p.id === (hoveredId ?? activeStylePresetId)
-  ) ?? null
-
-  // Show variants panel for the active preset (not for hovered — that would be jarring)
-  const activePreset = BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === activeStylePresetId) ?? null
-  const variants = activePreset?.variants ?? []
-  const hasVariants = variants.length > 0
-
-  // Determine which variant is focused (hovered or active)
-  const focusedVariant = hoveredVariantId
-    ? variants.find((v) => v.id === hoveredVariantId) ?? null
-    : variants.find((v) => v.id === activeVariantId) ?? (variants[0] ?? null)
-
-  // Build the active label for the header
-  const activePresetName = activePreset?.name ?? null
-  const activeVariantName = activeVariantId
-    ? variants.find((v) => v.id === activeVariantId)?.name ?? null
-    : null
+  if (styles.length === 0) return null
 
   return (
-    <div className="shrink-0 border-b border-border">
-      {/* Header */}
-      <button
-        className="w-full flex items-center justify-between px-4 py-2 hover:bg-muted/30 transition-colors"
-        onClick={() => setIsExpanded((v) => !v)}
-      >
-        <div className="flex items-center gap-2">
-          <Palette className="w-4 h-4 text-muted-foreground" />
-          <span className="text-xs font-semibold text-foreground">Style Presets</span>
-          {activePresetName && (
-            <span className="text-[10px] text-muted-foreground">
-              · {activePresetName}{activeVariantName ? ` / ${activeVariantName}` : ''}
-            </span>
-          )}
-        </div>
-        <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform duration-200', isExpanded ? 'rotate-180' : '')} />
-      </button>
-
-      {isExpanded && (
-        <div className="px-3 pb-3 space-y-2">
-          {/* Horizontal scroll strip — style families */}
-          <div className="overflow-x-auto pb-1" style={{ scrollbarWidth: 'thin' }}>
-            <div className="flex gap-2 min-w-max">
-              {BUILT_IN_EDIT_STYLE_PRESETS.map((preset) => {
-                const meta = CATEGORY_META[preset.category]
-                const isActive = preset.id === activeStylePresetId
-                return (
-                  <button
-                    key={preset.id}
-                    onClick={() => applyEditStylePreset(preset.id, preset.variants?.[0]?.id ?? null)}
-                    onMouseEnter={() => setHoveredId(preset.id)}
-                    onMouseLeave={() => setHoveredId(null)}
-                    className={cn(
-                      'flex-none flex flex-col items-center rounded-xl overflow-hidden transition-all duration-150 cursor-pointer select-none',
-                      'hover:scale-105 active:scale-95',
-                      isActive ? 'ring-2 shadow-lg' : 'ring-1 ring-border/50 hover:ring-border'
-                    )}
-                    style={{
-                      width: 72,
-                      ringColor: isActive ? meta.ring : undefined,
-                      ...(isActive ? { boxShadow: `0 0 0 2px ${meta.ring}` } : {}),
-                    }}
-                    title={preset.name}
-                  >
-                    {/* Gradient top with emoji */}
-                    <div
-                      className="w-full flex items-center justify-center"
-                      style={{ background: meta.gradient, height: 44 }}
-                    >
-                      <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>{preset.thumbnail}</span>
-                    </div>
-                    {/* Name strip */}
-                    <div className="w-full bg-muted/60 px-1 py-1 text-center">
-                      <span className="text-[9px] font-semibold text-foreground leading-none block truncate">{preset.name}</span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Description callout — shows for hovered or active preset */}
-          {focusedPreset && (
-            <div className="rounded-lg bg-muted/40 border border-border/50 px-3 py-2 space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">{focusedPreset.thumbnail}</span>
-                <span className="text-xs font-semibold text-foreground">{focusedPreset.name}</span>
-                <span className={cn('text-[9px] font-medium px-1.5 py-0.5 rounded-full', CATEGORY_META[focusedPreset.category].badge)}>
-                  {CATEGORY_META[focusedPreset.category].label}
-                </span>
-                {activeStylePresetId === focusedPreset.id && !hoveredId && (
-                  <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 ml-auto">Active</span>
-                )}
-              </div>
-              <p className="text-[10px] text-muted-foreground leading-relaxed">{focusedPreset.description}</p>
-              {/* Feature pills */}
-              <div className="flex flex-wrap gap-1 pt-0.5">
-                {focusedPreset.captions.enabled && (
-                  <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Captions</span>
-                )}
-                {focusedPreset.zoom.enabled && (
-                  <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Zoom</span>
-                )}
-                {focusedPreset.broll.enabled && (
-                  <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">B-Roll</span>
-                )}
-                {focusedPreset.sound.enabled && (
-                  <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Music</span>
-                )}
-                {focusedPreset.overlays.hookTitle.enabled && (
-                  <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Hook Title</span>
-                )}
-                {focusedPreset.overlays.progressBar.enabled && (
-                  <span className="text-[9px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Progress Bar</span>
-                )}
-              </div>
-            </div>
-          )}
-          {!focusedPreset && (
-            <p className="text-[10px] text-muted-foreground text-center py-0.5">Hover a preset to preview · click to apply</p>
-          )}
-
-          {/* Variant panel — only shown when a style with variants is active */}
-          {hasVariants && activePreset && !hoveredId && (
-            <div className="rounded-lg bg-muted/20 border border-border/40 px-3 py-2 space-y-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-semibold text-foreground">{activePreset.name} Variants</span>
-                <span className="text-[9px] text-muted-foreground">· {variants.length} looks</span>
-              </div>
-
-              {/* Variant grid */}
-              <div className="grid grid-cols-5 gap-1.5">
-                {variants.map((variant) => {
-                  const isVariantActive = variant.id === activeVariantId ||
-                    (!activeVariantId && variant.id === variants[0]?.id)
-                  const meta = CATEGORY_META[activePreset.category]
-                  return (
-                    <button
-                      key={variant.id}
-                      onClick={() => applyEditStylePreset(activePreset.id, variant.id)}
-                      onMouseEnter={() => setHoveredVariantId(variant.id)}
-                      onMouseLeave={() => setHoveredVariantId(null)}
-                      className={cn(
-                        'flex flex-col items-center rounded-lg overflow-hidden transition-all duration-150 cursor-pointer select-none',
-                        'hover:scale-105 active:scale-95',
-                        isVariantActive ? 'ring-2 shadow-md' : 'ring-1 ring-border/40 hover:ring-border'
-                      )}
-                      style={{
-                        ...(isVariantActive ? { boxShadow: `0 0 0 2px ${meta.ring}` } : {}),
-                      }}
-                      title={`${activePreset.name} ${variant.name}`}
-                    >
-                      {/* Variant thumbnail — small gradient card with emoji */}
-                      <div
-                        className="w-full flex items-center justify-center"
-                        style={{
-                          background: isVariantActive
-                            ? meta.gradient
-                            : 'linear-gradient(135deg, var(--muted) 0%, var(--muted) 100%)',
-                          height: 32,
-                        }}
-                      >
-                        <span style={{ fontSize: '1rem', lineHeight: 1 }}>{variant.thumbnail}</span>
-                      </div>
-                      <div className="w-full px-0.5 py-0.5 text-center bg-muted/40">
-                        <span className="text-[8px] font-medium text-foreground leading-none block truncate">{variant.name}</span>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* Variant description */}
-              {focusedVariant && (
-                <p className="text-[9px] text-muted-foreground leading-relaxed">
-                  <span className="font-medium text-foreground">{activePreset.name} {focusedVariant.name}</span>
-                  {' — '}{focusedVariant.description}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+    <div className="shrink-0 border-b border-border px-3 py-3">
+      <EditStyleSelector
+        styles={styles}
+        selectedStyleId={selectedEditStyleId}
+        onSelectStyle={setSelectedEditStyleId}
+      />
     </div>
   )
 }
@@ -1287,8 +1104,8 @@ export function SettingsPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* ── Style Preset Picker ── */}
-      <StylePresetPicker />
+      {/* ── Edit Style Selector ── */}
+      <EditStyleStrip />
 
       {/* ── Settings Changed Warning Banner ── */}
       {settingsSnapshot && settingsChanged && changedSettingNames.length > 0 && (

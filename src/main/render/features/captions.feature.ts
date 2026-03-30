@@ -50,7 +50,7 @@ export function createCaptionsFeature(): RenderFeature {
   return {
     name: 'captions',
 
-    async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions): Promise<PrepareResult> {
+    async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions, _onProgress?: (message: string, percent: number) => void): Promise<PrepareResult> {
       // Check global captions toggle
       if (!batchOptions.captionsEnabled || !batchOptions.captionStyle) {
         return { tempFiles: [], modified: false }

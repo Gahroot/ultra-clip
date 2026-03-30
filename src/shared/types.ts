@@ -710,3 +710,89 @@ export interface ShotStyleConfig {
   /** Background music track for this shot. `null` = use global. */
   musicTrack?: MusicTrack | null
 }
+
+// ---------------------------------------------------------------------------
+// Segment Editor types (Captions.ai-style per-segment editing)
+// ---------------------------------------------------------------------------
+
+/** Category of visual treatment for a segment within a clip. */
+export type SegmentStyleCategory =
+  | 'main-video'
+  | 'main-video-text'
+  | 'main-video-images'
+  | 'fullscreen-image'
+  | 'fullscreen-text'
+
+/** A named style variant that can be applied to a segment. */
+export interface SegmentStyleVariant {
+  id: string
+  category: SegmentStyleCategory
+  name: string
+  description: string
+  zoomStyle: 'none' | 'drift' | 'snap' | 'word-pulse' | 'zoom-out'
+  zoomIntensity: number
+  captionPosition: 'lower-third' | 'center' | 'top'
+  imageLayout?: 'pip' | 'side-by-side' | 'behind-speaker' | 'fullscreen'
+  imagePlacement?: 'left' | 'right' | 'top' | 'bottom'
+}
+
+/** A single zoom/pan keyframe within a segment. */
+export interface ZoomKeyframe {
+  /** Time in seconds relative to segment start. */
+  time: number
+  /** Scale factor: 1.0 = normal, 1.15 = zoomed in. */
+  scale: number
+  /** Normalized horizontal pan position (0–1). */
+  x: number
+  /** Normalized vertical pan position (0–1). */
+  y: number
+  easing: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'snap'
+}
+
+/** How a segment transitions in or out. */
+export type TransitionType = 'none' | 'hard-cut' | 'crossfade' | 'flash-cut' | 'color-wash'
+
+/** A single segment within a clip, with its own style, captions, and zoom. */
+export interface VideoSegment {
+  id: string
+  clipId: string
+  /** Order within the clip (0-based). */
+  index: number
+  startTime: number
+  endTime: number
+  /** Editable burned-in caption text for this segment. */
+  captionText: string
+  /** Word-level timestamps scoped to this segment. */
+  words: WordTimestamp[]
+  /** ID of the SegmentStyleVariant to apply. */
+  segmentStyleId: string
+  segmentStyleCategory: SegmentStyleCategory
+  /** Per-segment zoom keyframes. */
+  zoomKeyframes: ZoomKeyframe[]
+  /** How this segment starts. */
+  transitionIn: TransitionType
+  /** How this segment ends. */
+  transitionOut: TransitionType
+}
+
+/** A complete edit style preset controlling the overall clip look & feel. */
+export interface EditStyle {
+  id: string
+  name: string
+  energy: 'low' | 'medium' | 'high'
+  /** Accent color in CSS hex (e.g. '#FF6B35'). */
+  accentColor: string
+  /** Caption background opacity (0.0–1.0). */
+  captionBgOpacity: number
+  letterbox: 'none' | 'bottom' | 'both'
+  defaultZoomStyle: 'none' | 'drift' | 'snap' | 'word-pulse' | 'zoom-out'
+  defaultZoomIntensity: number
+  defaultTransition: TransitionType
+  /** Color for flash-cut and color-wash transitions (CSS hex). */
+  flashColor: string
+  /** Target visual edits per second (controls segment pacing). */
+  targetEditsPerSecond: number
+  captionStyle: 'white-clean' | 'colored-vibrant' | 'minimal-dark' | 'colored-wash'
+  /** IDs of SegmentStyleVariants available in this edit style. */
+  availableSegmentStyles: string[]
+}

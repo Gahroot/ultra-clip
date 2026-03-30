@@ -102,42 +102,52 @@ export async function transcribeVideo(
   let scriptError: string | null = null
 
   try {
-    await runPythonScript(
-      'transcribe.py',
-      ['--input', wavPath, '--output', jsonPath, '--model', model],
-      {
-        timeoutMs: TRANSCRIPTION_TIMEOUT_MS,
-        onStdout: (line) => {
-          let parsed: PythonLine
-          try {
-            parsed = JSON.parse(line) as PythonLine
-          } catch {
-            // Not a JSON line — ignore (e.g. Python warnings)
-            return
-          }
+    try {
+      await runPythonScript(
+        'transcribe.py',
+        ['--input', wavPath, '--output', jsonPath, '--model', model],
+        {
+          timeoutMs: TRANSCRIPTION_TIMEOUT_MS,
+          onStdout: (line) => {
+            let parsed: PythonLine
+            try {
+              parsed = JSON.parse(line) as PythonLine
+            } catch {
+              // Not a JSON line — ignore (e.g. Python warnings)
+              return
+            }
 
-          if (parsed.type === 'progress') {
-            const stage = parsed.stage as TranscriptionProgress['stage']
-            if (stage === 'downloading-model' || stage === 'loading-model' || stage === 'transcribing') {
-              const progress: TranscriptionProgress = { stage, message: parsed.message }
-              // Pass percent for downloading-model if present
-              if ('percent' in parsed && typeof (parsed as { percent?: number }).percent === 'number') {
-                progress.percent = (parsed as { percent: number }).percent
+            if (parsed.type === 'progress') {
+              const stage = parsed.stage as TranscriptionProgress['stage']
+              if (stage === 'downloading-model' || stage === 'loading-model' || stage === 'transcribing') {
+                const progress: TranscriptionProgress = { stage, message: parsed.message }
+                // Pass percent for downloading-model if present
+                if ('percent' in parsed && typeof (parsed as { percent?: number }).percent === 'number') {
+                  progress.percent = (parsed as { percent: number }).percent
+                }
+                onProgress(progress)
               }
-              onProgress(progress)
+            } else if (parsed.type === 'done') {
+              result = {
+                text: parsed.text,
+                words: parsed.words,
+                segments: parsed.segments,
+              }
+            } else if (parsed.type === 'error') {
+              scriptError = parsed.message
             }
-          } else if (parsed.type === 'done') {
-            result = {
-              text: parsed.text,
-              words: parsed.words,
-              segments: parsed.segments,
-            }
-          } else if (parsed.type === 'error') {
-            scriptError = parsed.message
           }
         }
+      )
+    } catch (runErr) {
+      // runPythonScript rejects on non-zero exit code with a generic stderr-only
+      // message.  If the script emitted a JSON error on stdout (captured via
+      // onStdout → scriptError), that message is far more useful — prefer it.
+      if (scriptError) {
+        throw new Error(`Transcription script error: ${scriptError}`)
       }
-    )
+      throw runErr
+    }
   } finally {
     // Clean up WAV temp file regardless of success/failure
     unlink(wavPath).catch(() => {/* ignore */})

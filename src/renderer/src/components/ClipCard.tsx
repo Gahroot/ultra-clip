@@ -96,7 +96,7 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
   const rescoreClip = useStore((s) => s.rescoreClip)
   const setClipAIEditPlan = useStore((s) => s.setClipAIEditPlan)
   const clearClipAIEditPlan = useStore((s) => s.clearClipAIEditPlan)
-  const activeStylePresetId = useStore((s) => s.activeStylePresetId)
+  const selectedEditStyleId = useStore((s) => s.selectedEditStyleId)
   const setSingleRenderState = useStore((s) => s.setSingleRenderState)
   const addError = useStore((s) => s.addError)
   const isRendering = useStore((s) => s.isRendering)
@@ -107,6 +107,7 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
   const singleRenderError = useStore((s) => s.singleRenderError)
   const settings = useStore((s) => s.settings)
   const searchQuery = useStore((s) => s.searchQuery)
+
   const selectedClipIds = useStore((s) => s.selectedClipIds)
   const toggleClipSelection = useStore((s) => s.toggleClipSelection)
   const isMultiSelectActive = selectedClipIds.size > 0
@@ -213,7 +214,7 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
         outputDirectory: outputDir,
         soundDesign: settings.soundDesign.enabled ? settings.soundDesign : undefined,
         autoZoom: settings.autoZoom.enabled
-          ? { enabled: true, intensity: settings.autoZoom.intensity, intervalSeconds: settings.autoZoom.intervalSeconds }
+          ? { enabled: true, mode: settings.autoZoom.mode, intensity: settings.autoZoom.intensity, intervalSeconds: settings.autoZoom.intervalSeconds }
           : undefined,
         brandKit: settings.brandKit.enabled ? settings.brandKit : undefined,
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
@@ -221,6 +222,8 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
         captionsEnabled: settings.captionsEnabled,
         captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
+        broll: settings.broll.enabled ? settings.broll : undefined,
+        geminiApiKey: settings.geminiApiKey || undefined,
       })
     } catch (err) {
       setSingleRenderState({ status: 'error', error: err instanceof Error ? err.message : String(err) })
@@ -260,13 +263,9 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
     }
 
     // Resolve the active style preset for prompt calibration
-    const { BUILT_IN_EDIT_STYLE_PRESETS } = await import('../store/helpers')
-    const activePreset = activeStylePresetId
-      ? BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === activeStylePresetId)
-      : null
-    const stylePresetId = activePreset?.id ?? 'custom'
-    const stylePresetName = activePreset?.name ?? 'Custom'
-    const stylePresetCategory = activePreset?.category ?? 'custom'
+    const stylePresetId = selectedEditStyleId ?? 'custom'
+    const stylePresetName = selectedEditStyleId ?? 'Custom'
+    const stylePresetCategory = 'custom'
 
     const transcriptText = words
       .filter((w) => w.start >= clip.startTime && w.end <= clip.endTime)
@@ -293,7 +292,7 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
     } finally {
       setIsGeneratingEditPlan(false)
     }
-  }, [settings.geminiApiKey, isGeneratingEditPlan, clip, sourceId, activeStylePresetId, setClipAIEditPlan, addError])
+  }, [settings.geminiApiKey, isGeneratingEditPlan, clip, sourceId, selectedEditStyleId, setClipAIEditPlan, addError])
 
   const handleClearEditPlan = useCallback(() => {
     clearClipAIEditPlan(sourceId, clip.id)
@@ -1041,17 +1040,15 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
         </ContextMenuContent>
       </ContextMenu>
 
-      {/* Full preview dialog */}
-      {showPreview && (
-        <ClipPreview
-          clip={clip}
-          sourceId={sourceId}
-          sourcePath={sourcePath}
-          sourceDuration={sourceDuration}
-          open={showPreview}
-          onClose={() => setShowPreview(false)}
-        />
-      )}
+      {/* Full preview dialog — always mounted to avoid Radix Dialog infinite loop on mount-with-open */}
+      <ClipPreview
+        clip={clip}
+        sourceId={sourceId}
+        sourcePath={sourcePath}
+        sourceDuration={sourceDuration}
+        open={showPreview}
+        onClose={() => setShowPreview(false)}
+      />
     </>
   )
 }

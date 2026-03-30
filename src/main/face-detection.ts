@@ -4,6 +4,7 @@ import { tmpdir } from 'os'
 import { runPythonScript } from './python'
 import type { OutputAspectRatio } from './aspect-ratios'
 import { computeCenterCropForRatio } from './aspect-ratios'
+import { FACE_DETECTION_TIMEOUT_MS } from '@shared/constants'
 
 // ---------------------------------------------------------------------------
 // Types (canonical definitions live in @shared/types)

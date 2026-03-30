@@ -196,6 +196,24 @@ interface RenderClipJob {
   }>
   /** ID of the active edit style preset (informational, not consumed by render features). */
   stylePresetId?: string
+  /**
+   * When present, the pipeline routes this job through renderSegmentedClip()
+   * which renders each segment independently with its own layout, zoom, and caption
+   * settings, then concatenates with transitions.
+   */
+  segmentedSegments?: Array<{
+    startTime: number
+    endTime: number
+    styleVariantId?: string
+    zoomStyle: 'none' | 'drift' | 'snap' | 'word-pulse' | 'zoom-out'
+    zoomIntensity: number
+    transitionIn: string
+    overlayText?: string
+    accentColor?: string
+    captionBgOpacity?: number
+    imagePath?: string
+    cropRect?: { x: number; y: number; width: number; height: number }
+  }>
 }
 
 interface RenderBatchOptions {
@@ -258,6 +276,42 @@ interface RenderBatchOptions {
     pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
     sourceMode?: 'stock' | 'ai-generated' | 'auto'
   }
+  /** Gemini API key — used for AI-generated B-Roll images and other AI features */
+  geminiApiKey?: string
+  /** Style category hint for AI image generation (e.g. 'custom', 'cinematic', 'anime') */
+  styleCategory?: string
+  /** Style presets for per-shot style resolution at render time */
+  stylePresets?: Array<{
+    id: string
+    captions: {
+      enabled: boolean
+      style: {
+        animation: string
+        primaryColor: string
+        highlightColor: string
+        outlineColor: string
+        emphasisColor?: string
+        supersizeColor?: string
+        fontSize: number
+        outline: number
+        shadow: number
+        borderStyle: number
+        wordsPerLine: number
+        fontName: string
+        backColor: string
+      }
+    }
+    zoom: {
+      enabled: boolean
+      mode: string
+      intensity: string
+      intervalSeconds: number
+    }
+    colorGrade?: unknown
+    transitionIn?: unknown
+    transitionOut?: unknown
+    brollMode?: 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
+  }>
   /** Source video metadata for auto-manifest generation */
   sourceMeta?: {
     name: string
@@ -823,6 +877,70 @@ interface StitchingProgress {
 }
 
 // ---------------------------------------------------------------------------
+// Segment Editor types (Captions.ai-style per-segment editing)
+// ---------------------------------------------------------------------------
+
+type SegmentStyleCategory =
+  | 'main-video'
+  | 'main-video-text'
+  | 'main-video-images'
+  | 'fullscreen-image'
+  | 'fullscreen-text'
+
+interface SegmentStyleVariant {
+  id: string
+  category: SegmentStyleCategory
+  name: string
+  description: string
+  zoomStyle: 'none' | 'drift' | 'snap' | 'word-pulse' | 'zoom-out'
+  zoomIntensity: number
+  captionPosition: 'lower-third' | 'center' | 'top'
+  imageLayout?: 'pip' | 'side-by-side' | 'behind-speaker' | 'fullscreen'
+  imagePlacement?: 'left' | 'right' | 'top' | 'bottom'
+}
+
+interface ZoomKeyframe {
+  time: number
+  scale: number
+  x: number
+  y: number
+  easing: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'snap'
+}
+
+type TransitionType = 'none' | 'hard-cut' | 'crossfade' | 'flash-cut' | 'color-wash'
+
+interface VideoSegment {
+  id: string
+  clipId: string
+  index: number
+  startTime: number
+  endTime: number
+  captionText: string
+  words: WordTimestamp[]
+  segmentStyleId: string
+  segmentStyleCategory: SegmentStyleCategory
+  zoomKeyframes: ZoomKeyframe[]
+  transitionIn: TransitionType
+  transitionOut: TransitionType
+}
+
+interface EditStyle {
+  id: string
+  name: string
+  energy: 'low' | 'medium' | 'high'
+  accentColor: string
+  captionBgOpacity: number
+  letterbox: 'none' | 'bottom' | 'both'
+  defaultZoomStyle: 'none' | 'drift' | 'snap' | 'word-pulse' | 'zoom-out'
+  defaultZoomIntensity: number
+  defaultTransition: TransitionType
+  flashColor: string
+  targetEditsPerSecond: number
+  captionStyle: 'white-clean' | 'colored-vibrant' | 'minimal-dark' | 'colored-wash'
+  availableSegmentStyles: string[]
+}
+
+// ---------------------------------------------------------------------------
 // Shot Segmentation types
 // ---------------------------------------------------------------------------
 
@@ -925,6 +1043,7 @@ interface Api {
   startBatchRender: (options: RenderBatchOptions) => Promise<{ started: boolean }>
   cancelRender: () => Promise<void>
   onRenderClipStart: (callback: (data: RenderClipStartEvent) => void) => () => void
+  onRenderClipPrepare: (callback: (data: { clipId: string; message: string; percent: number }) => void) => () => void
   onRenderClipProgress: (callback: (data: RenderClipProgressEvent) => void) => () => void
   onRenderClipDone: (callback: (data: RenderClipDoneEvent) => void) => () => void
   onRenderClipError: (callback: (data: RenderClipErrorEvent) => void) => () => void
@@ -1246,6 +1365,45 @@ interface Api {
     words: WordTimestamp[],
     settings: FillerDetectionSettings
   ) => Promise<FillerDetectionResult>
+
+  // Settings Window
+  openSettingsWindow: () => Promise<void>
+  closeSettingsWindow: () => Promise<void>
+  isSettingsWindowOpen: () => Promise<boolean>
+  onSettingsWindowClosed: (callback: (data: Record<string, never>) => void) => () => void
+
+  // Segment Editor — split clip into styled segments for Captions.ai-style editing
+  splitSegmentsForEditor: (
+    clipId: string,
+    words: WordTimestamp[],
+    targetSegmentDuration?: number
+  ) => Promise<VideoSegment[]>
+  assignSegmentStyles: (
+    segments: VideoSegment[],
+    styleId: string,
+    apiKey?: string
+  ) => Promise<VideoSegment[]>
+  generateSegmentImages: (
+    segments: VideoSegment[],
+    geminiApiKey: string,
+    pexelsApiKey: string,
+    outputDir?: string,
+    styleCategory?: string
+  ) => Promise<Record<string, string>>
+  updateSegmentCaption: (
+    segmentId: string,
+    newText: string
+  ) => Promise<VideoSegment>
+  updateSegmentStyle: (
+    segmentId: string,
+    styleId: string
+  ) => Promise<VideoSegment>
+  getSegmentStyleVariants: () => Promise<SegmentStyleVariant[]>
+  getVariantsForCategory: (category: SegmentStyleCategory) => Promise<SegmentStyleVariant[]>
+
+  // Edit Styles — Captions.ai-style edit style presets
+  getEditStyles: () => Promise<EditStyle[]>
+  getEditStyleById: (id: string) => Promise<EditStyle | null>
 
   // Shot Segmentation — segment a clip's transcript into natural 4-6 second "shots"
   segmentClipIntoShots: (

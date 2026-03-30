@@ -100,7 +100,7 @@ export function createHookTitleFeature(): RenderFeature {
   return {
     name: 'hook-title',
 
-    async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions): Promise<PrepareResult> {
+    async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions, _onProgress?: (message: string, percent: number) => void): Promise<PrepareResult> {
       // Resolve per-clip override vs global setting
       const ov = job.clipOverrides?.enableHookTitle
       const hookEnabled = ov === undefined

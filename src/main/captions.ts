@@ -1051,12 +1051,41 @@ function buildASSDocument(
   frameWidth: number = DEFAULT_FRAME_WIDTH,
   frameHeight: number = DEFAULT_FRAME_HEIGHT,
   marginVOverride?: number,
-  shotOverrides?: ShotCaptionOverride[]
+  shotOverrides?: ShotCaptionOverride[],
+  backgroundOpacity?: number
 ): string {
   const fontSize = Math.round(style.fontSize * frameHeight)
   const primaryASS = hexToASS(style.primaryColor)
   const outlineASS = hexToASS(style.outlineColor)
-  const backASS = hexToASS(style.backColor)
+
+  // When backgroundOpacity > 0, switch to BorderStyle=3 (opaque box) and
+  // compute BackColour with the appropriate alpha. ASS alpha is inverted:
+  // 0x00 = fully opaque, 0xFF = fully transparent.
+  const useBgBox = backgroundOpacity !== undefined && backgroundOpacity > 0.01
+  const effectiveBorderStyle = useBgBox ? 3 : style.borderStyle
+  const effectiveShadow = useBgBox ? 0 : style.shadow
+
+  let backASS: string
+  if (useBgBox) {
+    // Parse the base back color for its RGB, then apply backgroundOpacity as alpha
+    const baseHex = style.backColor.replace('#', '')
+    let br = 0, bg = 0, bb = 0
+    if (baseHex.length === 8) {
+      br = parseInt(baseHex.slice(2, 4), 16)
+      bg = parseInt(baseHex.slice(4, 6), 16)
+      bb = parseInt(baseHex.slice(6, 8), 16)
+    } else if (baseHex.length === 6) {
+      br = parseInt(baseHex.slice(0, 2), 16)
+      bg = parseInt(baseHex.slice(2, 4), 16)
+      bb = parseInt(baseHex.slice(4, 6), 16)
+    }
+    // ASS alpha: 0x00 = fully opaque, 0xFF = fully transparent
+    const alpha = Math.round((1 - Math.max(0, Math.min(1, backgroundOpacity!))) * 255)
+    const pad = (n: number): string => n.toString(16).toUpperCase().padStart(2, '0')
+    backASS = `&H${pad(alpha)}${pad(bb)}${pad(bg)}${pad(br)}`
+  } else {
+    backASS = hexToASS(style.backColor)
+  }
 
   // Vertical alignment: bottom-center (AN2) with a comfortable margin
   const marginV = marginVOverride ?? Math.round(frameHeight * 0.12) // ~12% from bottom
@@ -1114,7 +1143,7 @@ function buildASSDocument(
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: Default,${style.fontName},${fontSize},${primaryASS},${primaryASS},${outlineASS},${backASS},-1,0,0,0,100,100,0,0,${style.borderStyle},${style.outline},${style.shadow},2,40,40,${marginV},1`,
+    `Style: Default,${style.fontName},${fontSize},${primaryASS},${primaryASS},${outlineASS},${backASS},-1,0,0,0,100,100,0,0,${effectiveBorderStyle},${style.outline},${effectiveShadow},2,40,40,${marginV},1`,
     // WordBox style: BorderStyle=3 for per-word opaque boxes; padding via Outline field
     ...(wordBoxNeeded
       ? [
@@ -1274,6 +1303,12 @@ function buildDialogueLinesForGroup(
  * @param outputPath  Where to write the .ass file. If omitted, writes to a temp file.
  * @param frameWidth  Canvas width in pixels (default: 1080). Must match the output video width.
  * @param frameHeight Canvas height in pixels (default: 1920). Must match the output video height.
+ * @param marginVOverride  Optional override for vertical margin in pixels.
+ * @param shotOverrides    Optional per-shot caption style overrides.
+ * @param backgroundOpacity  Optional 0–1 opacity for an opaque box behind each subtitle line.
+ *                           When > 0, the Default ASS style switches to BorderStyle=3 (opaque box)
+ *                           and sets BackColour alpha accordingly. This provides word-level
+ *                           background boxes as an alternative to the full-width FFmpeg drawbox.
  * @returns The absolute path to the written .ass file.
  */
 export async function generateCaptions(
@@ -1283,13 +1318,14 @@ export async function generateCaptions(
   frameWidth: number = DEFAULT_FRAME_WIDTH,
   frameHeight: number = DEFAULT_FRAME_HEIGHT,
   marginVOverride?: number,
-  shotOverrides?: ShotCaptionOverride[]
+  shotOverrides?: ShotCaptionOverride[],
+  backgroundOpacity?: number
 ): Promise<string> {
   if (words.length === 0) {
     throw new Error('No words provided for caption generation')
   }
 
-  const assContent = buildASSDocument(words, style, frameWidth, frameHeight, marginVOverride, shotOverrides)
+  const assContent = buildASSDocument(words, style, frameWidth, frameHeight, marginVOverride, shotOverrides, backgroundOpacity)
 
   const filePath =
     outputPath ?? join(tmpdir(), `batchcontent-captions-${Date.now()}.ass`)
