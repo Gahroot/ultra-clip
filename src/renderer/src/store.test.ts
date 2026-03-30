@@ -6,7 +6,8 @@ import {
   type SourceVideo,
   type ClipCandidate,
   type CropRegion,
-  type TranscriptionData
+  type TranscriptionData,
+  type VideoSegment
 } from './store'
 
 // Mock uuid
@@ -646,6 +647,139 @@ describe('useStore', () => {
     it('has null outputDirectory by default on fresh state', () => {
       // The output directory starts null; verify the settings object structure
       expect(useStore.getState().settings).toHaveProperty('outputDirectory')
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Segment Editor
+  // -------------------------------------------------------------------------
+  describe('setSegments', () => {
+    it('stores segments keyed by clipId', () => {
+      const segs: VideoSegment[] = [
+        {
+          id: 'seg-1',
+          clipId: 'clip-1',
+          index: 0,
+          startTime: 0,
+          endTime: 8,
+          captionText: 'Hello world',
+          words: [{ text: 'Hello', start: 0, end: 0.5 }, { text: 'world', start: 0.6, end: 1.0 }],
+          segmentStyleId: '',
+          segmentStyleCategory: 'main-video',
+          zoomKeyframes: [],
+          transitionIn: 'hard-cut',
+          transitionOut: 'hard-cut'
+        }
+      ]
+      useStore.getState().setSegments('clip-1', segs)
+
+      expect(useStore.getState().segments['clip-1']).toHaveLength(1)
+      expect(useStore.getState().segments['clip-1'][0].id).toBe('seg-1')
+    })
+
+    it('overwrites segments for the same clipId', () => {
+      const v1: VideoSegment[] = [
+        { id: 's1', clipId: 'c1', index: 0, startTime: 0, endTime: 5, captionText: 'A', words: [], segmentStyleId: '', segmentStyleCategory: 'main-video', zoomKeyframes: [], transitionIn: 'hard-cut', transitionOut: 'hard-cut' }
+      ]
+      const v2: VideoSegment[] = [
+        { id: 's2', clipId: 'c1', index: 0, startTime: 0, endTime: 3, captionText: 'B', words: [], segmentStyleId: '', segmentStyleCategory: 'main-video', zoomKeyframes: [], transitionIn: 'hard-cut', transitionOut: 'hard-cut' },
+        { id: 's3', clipId: 'c1', index: 1, startTime: 3, endTime: 6, captionText: 'C', words: [], segmentStyleId: '', segmentStyleCategory: 'main-video', zoomKeyframes: [], transitionIn: 'hard-cut', transitionOut: 'hard-cut' }
+      ]
+      useStore.getState().setSegments('c1', v1)
+      useStore.getState().setSegments('c1', v2)
+
+      expect(useStore.getState().segments['c1']).toHaveLength(2)
+      expect(useStore.getState().segments['c1'][0].id).toBe('s2')
+    })
+
+    it('stores segments for multiple clips independently', () => {
+      const segsA: VideoSegment[] = [
+        { id: 'sa', clipId: 'ca', index: 0, startTime: 0, endTime: 5, captionText: 'A', words: [], segmentStyleId: '', segmentStyleCategory: 'main-video', zoomKeyframes: [], transitionIn: 'hard-cut', transitionOut: 'hard-cut' }
+      ]
+      const segsB: VideoSegment[] = [
+        { id: 'sb', clipId: 'cb', index: 0, startTime: 0, endTime: 8, captionText: 'B', words: [], segmentStyleId: '', segmentStyleCategory: 'main-video', zoomKeyframes: [], transitionIn: 'hard-cut', transitionOut: 'hard-cut' }
+      ]
+      useStore.getState().setSegments('ca', segsA)
+      useStore.getState().setSegments('cb', segsB)
+
+      expect(useStore.getState().segments['ca']).toHaveLength(1)
+      expect(useStore.getState().segments['cb']).toHaveLength(1)
+      expect(useStore.getState().segments['ca'][0].id).toBe('sa')
+      expect(useStore.getState().segments['cb'][0].id).toBe('sb')
+    })
+  })
+
+  describe('updateSegment', () => {
+    it('modifies a specific segment by id', () => {
+      const segs: VideoSegment[] = [
+        { id: 's1', clipId: 'c1', index: 0, startTime: 0, endTime: 5, captionText: 'Old', words: [], segmentStyleId: '', segmentStyleCategory: 'main-video', zoomKeyframes: [], transitionIn: 'hard-cut', transitionOut: 'hard-cut' },
+        { id: 's2', clipId: 'c1', index: 1, startTime: 5, endTime: 10, captionText: 'Keep', words: [], segmentStyleId: '', segmentStyleCategory: 'main-video', zoomKeyframes: [], transitionIn: 'hard-cut', transitionOut: 'hard-cut' }
+      ]
+      useStore.getState().setSegments('c1', segs)
+      useStore.getState().updateSegment('c1', 's1', { captionText: 'New', transitionIn: 'crossfade' })
+
+      const updated = useStore.getState().segments['c1']
+      expect(updated[0].captionText).toBe('New')
+      expect(updated[0].transitionIn).toBe('crossfade')
+      // Second segment unchanged
+      expect(updated[1].captionText).toBe('Keep')
+    })
+
+    it('does nothing for unknown clipId', () => {
+      useStore.getState().updateSegment('unknown', 's1', { captionText: 'X' })
+      // No error thrown, state unchanged
+      expect(useStore.getState().segments['unknown']).toBeUndefined()
+    })
+
+    it('does nothing for unknown segmentId', () => {
+      const segs: VideoSegment[] = [
+        { id: 's1', clipId: 'c1', index: 0, startTime: 0, endTime: 5, captionText: 'Keep', words: [], segmentStyleId: '', segmentStyleCategory: 'main-video', zoomKeyframes: [], transitionIn: 'hard-cut', transitionOut: 'hard-cut' }
+      ]
+      useStore.getState().setSegments('c1', segs)
+      useStore.getState().updateSegment('c1', 'nonexistent', { captionText: 'X' })
+
+      expect(useStore.getState().segments['c1'][0].captionText).toBe('Keep')
+    })
+  })
+
+  describe('setSelectedEditStyleId', () => {
+    it('updates selectedEditStyleId', () => {
+      useStore.getState().setSelectedEditStyleId('cinematic')
+      expect(useStore.getState().selectedEditStyleId).toBe('cinematic')
+    })
+
+    it('can be set to null', () => {
+      useStore.getState().setSelectedEditStyleId('cinematic')
+      useStore.getState().setSelectedEditStyleId(null)
+      expect(useStore.getState().selectedEditStyleId).toBeNull()
+    })
+  })
+
+  describe('selectedSegmentIndex', () => {
+    it('starts at 0', () => {
+      expect(useStore.getState().selectedSegmentIndex).toBe(0)
+    })
+
+    it('updates via setSelectedSegmentIndex', () => {
+      useStore.getState().setSelectedSegmentIndex(3)
+      expect(useStore.getState().selectedSegmentIndex).toBe(3)
+    })
+  })
+
+  describe('segment editor reset', () => {
+    it('segments and selectedEditStyleId survive reset (reset clears operational state only)', () => {
+      const segs: VideoSegment[] = [
+        { id: 's1', clipId: 'c1', index: 0, startTime: 0, endTime: 5, captionText: 'Test', words: [], segmentStyleId: '', segmentStyleCategory: 'main-video', zoomKeyframes: [], transitionIn: 'hard-cut', transitionOut: 'hard-cut' }
+      ]
+      useStore.getState().setSegments('c1', segs)
+      useStore.getState().setSelectedEditStyleId('cinematic')
+
+      useStore.getState().reset()
+
+      // Segments and edit style are NOT cleared by reset (they are clip-level data)
+      // This matches the existing pattern where clips and settings survive reset
+      expect(useStore.getState().segments['c1']).toHaveLength(1)
+      expect(useStore.getState().selectedEditStyleId).toBe('cinematic')
     })
   })
 })
