@@ -16,7 +16,8 @@ export const colorGradeFeature: RenderFeature = {
 
   async prepare(
     job: RenderClipJob,
-    _batchOptions: RenderBatchOptions
+    _batchOptions: RenderBatchOptions,
+    _onProgress?: (message: string, percent: number) => void
   ): Promise<PrepareResult> {
     if (!job.shotStyleConfigs || job.shotStyleConfigs.length === 0) {
       return { tempFiles: [], modified: false }

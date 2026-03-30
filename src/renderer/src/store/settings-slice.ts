@@ -41,12 +41,6 @@ import {
   loadHookTemplatesFromStorage,
   saveHookTemplatesToStorage,
   ACTIVE_HOOK_TEMPLATE_KEY,
-  BUILT_IN_EDIT_STYLE_PRESETS,
-  loadActiveStylePresetId,
-  persistActiveStylePresetId,
-  loadActiveVariantId,
-  persistActiveVariantId,
-  applyEditStylePresetToSettings,
 } from './helpers'
 import { _pushUndo } from './history-slice'
 
@@ -159,12 +153,6 @@ export interface SettingsSlice {
   loadProfile: (name: string) => void
   deleteProfile: (name: string) => void
   renameProfile: (oldName: string, newName: string) => void
-
-  // Edit Style Presets
-  activeStylePresetId: string | null
-  /** Active variant within the selected style preset (null = first/default variant). */
-  activeVariantId: string | null
-  applyEditStylePreset: (id: string, variantId?: string | null) => void
 }
 
 export const createSettingsSlice: StateCreator<
@@ -183,417 +171,294 @@ export const createSettingsSlice: StateCreator<
   activeHookTemplateId: localStorage.getItem(ACTIVE_HOOK_TEMPLATE_KEY) ?? null,
   settingsSnapshot: null,
   settingsChanged: false,
-  activeStylePresetId: loadActiveStylePresetId(),
-  activeVariantId: loadActiveVariantId(),
 
   // --- Settings ---
 
   setGeminiApiKey: (key) => {
     localStorage.setItem('batchcontent-gemini-key', key)
-    set((state) => ({ settings: { ...state.settings, geminiApiKey: key } }))
+    set((state) => { state.settings.geminiApiKey = key })
   },
 
   setOutputDirectory: (dir) =>
-    set((state) => ({ settings: { ...state.settings, outputDirectory: dir } })),
+    set((state) => { state.settings.outputDirectory = dir }),
 
   setMinScore: (score) => {
     _pushUndo(get(), set)
-    set((state) => ({ settings: { ...state.settings, minScore: score } }))
+    set((state) => { state.settings.minScore = score })
   },
 
   setCaptionStyle: (style) =>
-    set((state) => ({ settings: { ...state.settings, captionStyle: style } })),
+    set((state) => { state.settings.captionStyle = style }),
 
   setCaptionsEnabled: (enabled) =>
-    set((state) => ({ settings: { ...state.settings, captionsEnabled: enabled } })),
+    set((state) => { state.settings.captionsEnabled = enabled }),
 
   setSoundDesignEnabled: (enabled) =>
-    set((state) => ({
-      settings: { ...state.settings, soundDesign: { ...state.settings.soundDesign, enabled } }
-    })),
+    set((state) => { state.settings.soundDesign.enabled = enabled }),
 
   setSoundDesignTrack: (track) =>
-    set((state) => ({
-      settings: { ...state.settings, soundDesign: { ...state.settings.soundDesign, backgroundMusicTrack: track } }
-    })),
+    set((state) => { state.settings.soundDesign.backgroundMusicTrack = track }),
 
   setSoundDesignSfxVolume: (volume) =>
-    set((state) => ({
-      settings: { ...state.settings, soundDesign: { ...state.settings.soundDesign, sfxVolume: volume } }
-    })),
+    set((state) => { state.settings.soundDesign.sfxVolume = volume }),
 
   setSoundDesignMusicVolume: (volume) =>
-    set((state) => ({
-      settings: { ...state.settings, soundDesign: { ...state.settings.soundDesign, musicVolume: volume } }
-    })),
+    set((state) => { state.settings.soundDesign.musicVolume = volume }),
 
   setSoundDesignMusicDucking: (musicDucking) =>
-    set((state) => ({
-      settings: { ...state.settings, soundDesign: { ...state.settings.soundDesign, musicDucking } }
-    })),
+    set((state) => { state.settings.soundDesign.musicDucking = musicDucking }),
 
   setSoundDesignMusicDuckLevel: (musicDuckLevel) =>
-    set((state) => ({
-      settings: { ...state.settings, soundDesign: { ...state.settings.soundDesign, musicDuckLevel } }
-    })),
+    set((state) => { state.settings.soundDesign.musicDuckLevel = musicDuckLevel }),
 
   setSoundDesignSfxStyle: (sfxStyle) =>
-    set((state) => ({
-      settings: { ...state.settings, soundDesign: { ...state.settings.soundDesign, sfxStyle } }
-    })),
+    set((state) => { state.settings.soundDesign.sfxStyle = sfxStyle }),
 
   setAutoZoomEnabled: (enabled) =>
-    set((state) => ({
-      settings: { ...state.settings, autoZoom: { ...state.settings.autoZoom, enabled } }
-    })),
+    set((state) => { state.settings.autoZoom.enabled = enabled }),
 
   setAutoZoomMode: (mode) =>
-    set((state) => ({
-      settings: { ...state.settings, autoZoom: { ...state.settings.autoZoom, mode } }
-    })),
+    set((state) => { state.settings.autoZoom.mode = mode }),
 
   setAutoZoomIntensity: (intensity) =>
-    set((state) => ({
-      settings: { ...state.settings, autoZoom: { ...state.settings.autoZoom, intensity } }
-    })),
+    set((state) => { state.settings.autoZoom.intensity = intensity }),
 
   setAutoZoomInterval: (intervalSeconds) =>
-    set((state) => ({
-      settings: { ...state.settings, autoZoom: { ...state.settings.autoZoom, intervalSeconds } }
-    })),
+    set((state) => { state.settings.autoZoom.intervalSeconds = intervalSeconds }),
 
   // --- Hook Title Overlay ---
 
   setHookTitleEnabled: (enabled) =>
-    set((state) => ({
-      settings: { ...state.settings, hookTitleOverlay: { ...state.settings.hookTitleOverlay, enabled } }
-    })),
+    set((state) => { state.settings.hookTitleOverlay.enabled = enabled }),
 
   setHookTitleStyle: (style) =>
-    set((state) => ({
-      settings: { ...state.settings, hookTitleOverlay: { ...state.settings.hookTitleOverlay, style } }
-    })),
+    set((state) => { state.settings.hookTitleOverlay.style = style }),
 
   setHookTitleDisplayDuration: (displayDuration) =>
-    set((state) => ({
-      settings: { ...state.settings, hookTitleOverlay: { ...state.settings.hookTitleOverlay, displayDuration } }
-    })),
+    set((state) => { state.settings.hookTitleOverlay.displayDuration = displayDuration }),
 
   setHookTitleFontSize: (fontSize) =>
-    set((state) => ({
-      settings: { ...state.settings, hookTitleOverlay: { ...state.settings.hookTitleOverlay, fontSize } }
-    })),
+    set((state) => { state.settings.hookTitleOverlay.fontSize = fontSize }),
 
   setHookTitleTextColor: (textColor) =>
-    set((state) => ({
-      settings: { ...state.settings, hookTitleOverlay: { ...state.settings.hookTitleOverlay, textColor } }
-    })),
+    set((state) => { state.settings.hookTitleOverlay.textColor = textColor }),
 
   setHookTitleOutlineColor: (outlineColor) =>
-    set((state) => ({
-      settings: { ...state.settings, hookTitleOverlay: { ...state.settings.hookTitleOverlay, outlineColor } }
-    })),
+    set((state) => { state.settings.hookTitleOverlay.outlineColor = outlineColor }),
 
   setHookTitleOutlineWidth: (outlineWidth) =>
-    set((state) => ({
-      settings: { ...state.settings, hookTitleOverlay: { ...state.settings.hookTitleOverlay, outlineWidth } }
-    })),
+    set((state) => { state.settings.hookTitleOverlay.outlineWidth = outlineWidth }),
 
   setHookTitleFadeIn: (fadeIn) =>
-    set((state) => ({
-      settings: { ...state.settings, hookTitleOverlay: { ...state.settings.hookTitleOverlay, fadeIn } }
-    })),
+    set((state) => { state.settings.hookTitleOverlay.fadeIn = fadeIn }),
 
   setHookTitleFadeOut: (fadeOut) =>
-    set((state) => ({
-      settings: { ...state.settings, hookTitleOverlay: { ...state.settings.hookTitleOverlay, fadeOut } }
-    })),
+    set((state) => { state.settings.hookTitleOverlay.fadeOut = fadeOut }),
 
   // --- Re-hook Overlay ---
 
   setRehookEnabled: (enabled) =>
-    set((state) => ({
-      settings: { ...state.settings, rehookOverlay: { ...state.settings.rehookOverlay, enabled } }
-    })),
+    set((state) => { state.settings.rehookOverlay.enabled = enabled }),
 
   setRehookStyle: (style) =>
-    set((state) => ({
-      settings: { ...state.settings, rehookOverlay: { ...state.settings.rehookOverlay, style } }
-    })),
+    set((state) => { state.settings.rehookOverlay.style = style }),
 
   setRehookDisplayDuration: (displayDuration) =>
-    set((state) => ({
-      settings: { ...state.settings, rehookOverlay: { ...state.settings.rehookOverlay, displayDuration } }
-    })),
+    set((state) => { state.settings.rehookOverlay.displayDuration = displayDuration }),
 
   setRehookPositionFraction: (positionFraction) =>
-    set((state) => ({
-      settings: { ...state.settings, rehookOverlay: { ...state.settings.rehookOverlay, positionFraction } }
-    })),
+    set((state) => { state.settings.rehookOverlay.positionFraction = positionFraction }),
 
   // --- Progress Bar Overlay ---
 
   setProgressBarEnabled: (enabled) =>
-    set((state) => ({
-      settings: { ...state.settings, progressBarOverlay: { ...state.settings.progressBarOverlay, enabled } }
-    })),
+    set((state) => { state.settings.progressBarOverlay.enabled = enabled }),
 
   setProgressBarPosition: (position) =>
-    set((state) => ({
-      settings: { ...state.settings, progressBarOverlay: { ...state.settings.progressBarOverlay, position } }
-    })),
+    set((state) => { state.settings.progressBarOverlay.position = position }),
 
   setProgressBarHeight: (height) =>
-    set((state) => ({
-      settings: { ...state.settings, progressBarOverlay: { ...state.settings.progressBarOverlay, height } }
-    })),
+    set((state) => { state.settings.progressBarOverlay.height = height }),
 
   setProgressBarColor: (color) =>
-    set((state) => ({
-      settings: { ...state.settings, progressBarOverlay: { ...state.settings.progressBarOverlay, color } }
-    })),
+    set((state) => { state.settings.progressBarOverlay.color = color }),
 
   setProgressBarOpacity: (opacity) =>
-    set((state) => ({
-      settings: { ...state.settings, progressBarOverlay: { ...state.settings.progressBarOverlay, opacity } }
-    })),
+    set((state) => { state.settings.progressBarOverlay.opacity = opacity }),
 
   setProgressBarStyle: (style) =>
-    set((state) => ({
-      settings: { ...state.settings, progressBarOverlay: { ...state.settings.progressBarOverlay, style } }
-    })),
+    set((state) => { state.settings.progressBarOverlay.style = style }),
 
   // --- Brand Kit ---
 
   setBrandKitEnabled: (enabled) =>
-    set((state) => ({
-      settings: { ...state.settings, brandKit: { ...state.settings.brandKit, enabled } }
-    })),
+    set((state) => { state.settings.brandKit.enabled = enabled }),
 
   setBrandKitLogoPath: (path) =>
-    set((state) => ({
-      settings: { ...state.settings, brandKit: { ...state.settings.brandKit, logoPath: path } }
-    })),
+    set((state) => { state.settings.brandKit.logoPath = path }),
 
   setBrandKitLogoPosition: (position) =>
-    set((state) => ({
-      settings: { ...state.settings, brandKit: { ...state.settings.brandKit, logoPosition: position } }
-    })),
+    set((state) => { state.settings.brandKit.logoPosition = position }),
 
   setBrandKitLogoScale: (scale) =>
-    set((state) => ({
-      settings: { ...state.settings, brandKit: { ...state.settings.brandKit, logoScale: scale } }
-    })),
+    set((state) => { state.settings.brandKit.logoScale = scale }),
 
   setBrandKitLogoOpacity: (opacity) =>
-    set((state) => ({
-      settings: { ...state.settings, brandKit: { ...state.settings.brandKit, logoOpacity: opacity } }
-    })),
+    set((state) => { state.settings.brandKit.logoOpacity = opacity }),
 
   setBrandKitIntroBumperPath: (path) =>
-    set((state) => ({
-      settings: { ...state.settings, brandKit: { ...state.settings.brandKit, introBumperPath: path } }
-    })),
+    set((state) => { state.settings.brandKit.introBumperPath = path }),
 
   setBrandKitOutroBumperPath: (path) =>
-    set((state) => ({
-      settings: { ...state.settings, brandKit: { ...state.settings.brandKit, outroBumperPath: path } }
-    })),
+    set((state) => { state.settings.brandKit.outroBumperPath = path }),
 
   // --- B-Roll ---
 
   setBRollEnabled: (enabled) =>
-    set((state) => ({
-      settings: { ...state.settings, broll: { ...state.settings.broll, enabled } }
-    })),
+    set((state) => { state.settings.broll.enabled = enabled }),
 
   setBRollPexelsApiKey: (key) => {
     localStorage.setItem('batchcontent-pexels-key', key)
-    set((state) => ({
-      settings: { ...state.settings, broll: { ...state.settings.broll, pexelsApiKey: key } }
-    }))
+    set((state) => { state.settings.broll.pexelsApiKey = key })
   },
 
   setBRollIntervalSeconds: (intervalSeconds) =>
-    set((state) => ({
-      settings: { ...state.settings, broll: { ...state.settings.broll, intervalSeconds } }
-    })),
+    set((state) => { state.settings.broll.intervalSeconds = intervalSeconds }),
 
   setBRollClipDuration: (clipDuration) =>
-    set((state) => ({
-      settings: { ...state.settings, broll: { ...state.settings.broll, clipDuration } }
-    })),
+    set((state) => { state.settings.broll.clipDuration = clipDuration }),
 
   setBRollDisplayMode: (displayMode) =>
-    set((state) => ({
-      settings: { ...state.settings, broll: { ...state.settings.broll, displayMode } }
-    })),
+    set((state) => { state.settings.broll.displayMode = displayMode }),
 
   setBRollTransition: (transition) =>
-    set((state) => ({
-      settings: { ...state.settings, broll: { ...state.settings.broll, transition } }
-    })),
+    set((state) => { state.settings.broll.transition = transition }),
 
   setBRollPipSize: (pipSize) =>
-    set((state) => ({
-      settings: { ...state.settings, broll: { ...state.settings.broll, pipSize } }
-    })),
+    set((state) => { state.settings.broll.pipSize = pipSize }),
 
   setBRollPipPosition: (pipPosition) =>
-    set((state) => ({
-      settings: { ...state.settings, broll: { ...state.settings.broll, pipPosition } }
-    })),
+    set((state) => { state.settings.broll.pipPosition = pipPosition }),
 
   setBRollSourceMode: (sourceMode) =>
-    set((state) => ({
-      settings: { ...state.settings, broll: { ...state.settings.broll, sourceMode } }
-    })),
+    set((state) => { state.settings.broll.sourceMode = sourceMode }),
 
   // --- Filler Removal ---
 
   setFillerRemovalEnabled: (enabled) =>
-    set((state) => ({
-      settings: { ...state.settings, fillerRemoval: { ...state.settings.fillerRemoval, enabled } }
-    })),
+    set((state) => { state.settings.fillerRemoval.enabled = enabled }),
 
   setFillerRemovalFillerWords: (removeFillerWords) =>
-    set((state) => ({
-      settings: { ...state.settings, fillerRemoval: { ...state.settings.fillerRemoval, removeFillerWords } }
-    })),
+    set((state) => { state.settings.fillerRemoval.removeFillerWords = removeFillerWords }),
 
   setFillerRemovalSilences: (trimSilences) =>
-    set((state) => ({
-      settings: { ...state.settings, fillerRemoval: { ...state.settings.fillerRemoval, trimSilences } }
-    })),
+    set((state) => { state.settings.fillerRemoval.trimSilences = trimSilences }),
 
   setFillerRemovalRepeats: (removeRepeats) =>
-    set((state) => ({
-      settings: { ...state.settings, fillerRemoval: { ...state.settings.fillerRemoval, removeRepeats } }
-    })),
+    set((state) => { state.settings.fillerRemoval.removeRepeats = removeRepeats }),
 
   setFillerRemovalSilenceThreshold: (silenceThreshold) =>
-    set((state) => ({
-      settings: { ...state.settings, fillerRemoval: { ...state.settings.fillerRemoval, silenceThreshold } }
-    })),
+    set((state) => { state.settings.fillerRemoval.silenceThreshold = silenceThreshold }),
 
   setFillerRemovalWordList: (fillerWords) =>
-    set((state) => ({
-      settings: { ...state.settings, fillerRemoval: { ...state.settings.fillerRemoval, fillerWords } }
-    })),
+    set((state) => { state.settings.fillerRemoval.fillerWords = fillerWords }),
 
   // --- Notifications ---
 
   setEnableNotifications: (enabled) =>
-    set((state) => ({
-      settings: { ...state.settings, enableNotifications: enabled }
-    })),
+    set((state) => { state.settings.enableNotifications = enabled }),
 
   // --- Developer Mode ---
 
   setDeveloperMode: (enabled) =>
-    set((state) => ({
-      settings: { ...state.settings, developerMode: enabled }
-    })),
+    set((state) => { state.settings.developerMode = enabled }),
 
   // --- Render Quality ---
 
   setRenderQuality: (quality) =>
-    set((state) => ({
-      settings: { ...state.settings, renderQuality: { ...state.settings.renderQuality, ...quality } }
-    })),
+    set((state) => { Object.assign(state.settings.renderQuality, quality) }),
 
   // --- Output Aspect Ratio ---
 
   setOutputAspectRatio: (ratio) =>
-    set((state) => ({
-      settings: { ...state.settings, outputAspectRatio: ratio }
-    })),
+    set((state) => { state.settings.outputAspectRatio = ratio }),
 
   // --- Filename Template ---
 
   setFilenameTemplate: (template) =>
-    set((state) => ({
-      settings: { ...state.settings, filenameTemplate: template }
-    })),
+    set((state) => { state.settings.filenameTemplate = template }),
 
   // --- Render Concurrency ---
 
   setRenderConcurrency: (concurrency) =>
-    set((state) => ({
-      settings: { ...state.settings, renderConcurrency: Math.max(1, Math.min(4, concurrency)) }
-    })),
+    set((state) => { state.settings.renderConcurrency = Math.max(1, Math.min(4, concurrency)) }),
 
   // --- Reset Settings ---
 
   resetSettings: () =>
-    set((state) => ({
-      settings: {
-        ...DEFAULT_SETTINGS,
-        geminiApiKey: state.settings.geminiApiKey,
-        outputDirectory: state.settings.outputDirectory,
-        broll: {
-          ...DEFAULT_SETTINGS.broll,
-          pexelsApiKey: state.settings.broll.pexelsApiKey
-        }
-      }
-    })),
+    set((state) => {
+      const apiKey = state.settings.geminiApiKey
+      const outputDir = state.settings.outputDirectory
+      const pexelsKey = state.settings.broll.pexelsApiKey
+      Object.assign(state.settings, DEFAULT_SETTINGS)
+      state.settings.geminiApiKey = apiKey
+      state.settings.outputDirectory = outputDir
+      state.settings.broll.pexelsApiKey = pexelsKey
+    }),
 
   resetSection: (section) =>
     set((state) => {
       switch (section) {
         case 'aiSettings':
-          return { settings: { ...state.settings, minScore: DEFAULT_SETTINGS.minScore } }
+          state.settings.minScore = DEFAULT_SETTINGS.minScore
+          break
         case 'captions':
-          return {
-            settings: {
-              ...state.settings,
-              captionsEnabled: DEFAULT_SETTINGS.captionsEnabled,
-              captionStyle: DEFAULT_SETTINGS.captionStyle
-            }
-          }
+          state.settings.captionsEnabled = DEFAULT_SETTINGS.captionsEnabled
+          state.settings.captionStyle = DEFAULT_SETTINGS.captionStyle
+          break
         case 'soundDesign':
-          return { settings: { ...state.settings, soundDesign: DEFAULT_SETTINGS.soundDesign } }
+          state.settings.soundDesign = DEFAULT_SETTINGS.soundDesign
+          break
         case 'autoZoom':
-          return { settings: { ...state.settings, autoZoom: DEFAULT_SETTINGS.autoZoom } }
+          state.settings.autoZoom = DEFAULT_SETTINGS.autoZoom
+          break
         case 'brandKit':
-          return { settings: { ...state.settings, brandKit: DEFAULT_SETTINGS.brandKit } }
+          state.settings.brandKit = DEFAULT_SETTINGS.brandKit
+          break
         case 'hookTitle':
-          return { settings: { ...state.settings, hookTitleOverlay: DEFAULT_SETTINGS.hookTitleOverlay } }
+          state.settings.hookTitleOverlay = DEFAULT_SETTINGS.hookTitleOverlay
+          break
         case 'rehook':
-          return { settings: { ...state.settings, rehookOverlay: DEFAULT_SETTINGS.rehookOverlay } }
+          state.settings.rehookOverlay = DEFAULT_SETTINGS.rehookOverlay
+          break
         case 'progressBar':
-          return { settings: { ...state.settings, progressBarOverlay: DEFAULT_SETTINGS.progressBarOverlay } }
+          state.settings.progressBarOverlay = DEFAULT_SETTINGS.progressBarOverlay
+          break
         case 'fillerRemoval':
-          return { settings: { ...state.settings, fillerRemoval: DEFAULT_SETTINGS.fillerRemoval } }
-        case 'broll':
-          return {
-            settings: {
-              ...state.settings,
-              broll: { ...DEFAULT_SETTINGS.broll, pexelsApiKey: state.settings.broll.pexelsApiKey }
-            }
-          }
+          state.settings.fillerRemoval = DEFAULT_SETTINGS.fillerRemoval
+          break
+        case 'broll': {
+          const pexelsKey = state.settings.broll.pexelsApiKey
+          state.settings.broll = { ...DEFAULT_SETTINGS.broll, pexelsApiKey: pexelsKey }
+          break
+        }
         case 'renderQuality':
-          return { settings: { ...state.settings, renderQuality: DEFAULT_SETTINGS.renderQuality } }
-        default:
-          return {}
+          state.settings.renderQuality = DEFAULT_SETTINGS.renderQuality
+          break
       }
     }),
 
   // --- Processing Config ---
 
   setProcessingConfig: (config) =>
-    set((state) => ({
-      processingConfig: { ...state.processingConfig, ...config }
-    })),
+    set((state) => { Object.assign(state.processingConfig, config) }),
 
   resetProcessingConfig: () => set({ processingConfig: DEFAULT_PROCESSING_CONFIG }),
 
   // --- Auto Mode ---
 
   setAutoMode: (config) =>
-    set((state) => ({
-      autoMode: { ...state.autoMode, ...config }
-    })),
+    set((state) => { Object.assign(state.autoMode, config) }),
 
   setAutoModeResult: (result) => set({ autoModeResult: result }),
 
@@ -730,18 +595,5 @@ export const createSettingsSlice: StateCreator<
     const newActive = activeProfileName === oldName ? newName : activeProfileName
     persistActiveProfileName(newActive)
     set({ settingsProfiles: updated, activeProfileName: newActive })
-  },
-
-  // --- Edit Style Presets ---
-
-  applyEditStylePreset: (id, variantId) => {
-    const preset = BUILT_IN_EDIT_STYLE_PRESETS.find((p) => p.id === id)
-    if (!preset) return
-    const resolvedVariantId = variantId ?? null
-    const { settings } = get()
-    const newSettings = applyEditStylePresetToSettings(settings, preset, resolvedVariantId)
-    persistActiveStylePresetId(id)
-    persistActiveVariantId(resolvedVariantId)
-    set({ settings: newSettings, activeStylePresetId: id, activeVariantId: resolvedVariantId })
   },
 })

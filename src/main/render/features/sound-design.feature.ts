@@ -112,7 +112,8 @@ export const soundDesignFeature: RenderFeature = {
 
   async prepare(
     job: RenderClipJob,
-    _batchOptions: RenderBatchOptions
+    _batchOptions: RenderBatchOptions,
+    _onProgress?: (message: string, percent: number) => void
   ): Promise<PrepareResult> {
     // Per-clip override can disable sound design
     const perClipOverride = job.clipOverrides?.enableSoundDesign

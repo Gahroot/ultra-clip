@@ -13,6 +13,7 @@ import {
   faceDetectionStage,
   storyArcStage,
   aiEditStage,
+  segmentSplittingStage,
   notificationStage
 } from './pipeline-stages'
 
@@ -26,7 +27,8 @@ const PIPELINE_STAGE_ORDER: PipelineStage[] = [
   'stitching',
   'detecting-faces',
   'detecting-arcs',
-  'ai-editing'
+  'ai-editing',
+  'segmenting'
 ]
 
 export function usePipeline() {
@@ -44,6 +46,7 @@ export function usePipeline() {
   const setClipPartInfo = useStore((s) => s.setClipPartInfo)
   const setClipAIEditPlan = useStore((s) => s.setClipAIEditPlan)
   const setClipFillers = useStore((s) => s.setClipFillers)
+  const setSegments = useStore((s) => s.setSegments)
   const markStageCompleted = useStore((s) => s.markStageCompleted)
   const setFailedPipelineStage = useStore((s) => s.setFailedPipelineStage)
   const setCachedSourcePath = useStore((s) => s.setCachedSourcePath)
@@ -122,7 +125,8 @@ export function usePipeline() {
           setClipPartInfo,
           setCachedSourcePath,
           setClipAIEditPlan,
-          setClipFillers
+          setClipFillers,
+          setSegments
         },
         geminiApiKey: currentState.settings.geminiApiKey,
         processingConfig: {
@@ -153,12 +157,22 @@ export function usePipeline() {
         // ── Step 3.2: Filler detection ────────────────────────────────
         if (currentState.settings.fillerRemoval.enabled) {
           const fr = currentState.settings.fillerRemoval
-          for (const clip of clips) {
+          const fillerClipList = clips.filter(c => (c.wordTimestamps ?? []).length > 0)
+          let totalFillersFound = 0
+          let totalSilencesFound = 0
+          let totalRepeatsFound = 0
+          for (let fi = 0; fi < fillerClipList.length; fi++) {
+            const clip = fillerClipList[fi]
             check()
             const clipWords = (clip.wordTimestamps ?? []).filter(
               (w) => w.start >= clip.startTime && w.end <= clip.endTime
             )
             if (clipWords.length === 0) continue
+            setPipeline({
+              stage: 'scoring',
+              message: `Detecting fillers (${fi + 1}/${fillerClipList.length})…`,
+              percent: Math.round(((fi + 1) / fillerClipList.length) * 100)
+            })
             try {
               const result = await window.api.detectFillers(clipWords, {
                 removeFillerWords: fr.removeFillerWords,
@@ -168,12 +182,27 @@ export function usePipeline() {
                 silenceTargetGap: 0.15,
                 fillerWords: fr.fillerWords
               })
+              totalFillersFound += result.counts?.filler ?? 0
+              totalSilencesFound += result.counts?.silence ?? 0
+              totalRepeatsFound += result.counts?.repeat ?? 0
               if (result.segments.length > 0) {
                 setClipFillers(source.id, clip.id, result.segments, result.timeSaved)
               }
             } catch {
               // Non-critical — skip filler detection for this clip
             }
+          }
+          // Summary feedback
+          const parts: string[] = []
+          if (totalFillersFound > 0) parts.push(`${totalFillersFound} filler words`)
+          if (totalSilencesFound > 0) parts.push(`${totalSilencesFound} silences`)
+          if (totalRepeatsFound > 0) parts.push(`${totalRepeatsFound} repeats`)
+          if (parts.length > 0) {
+            setPipeline({
+              stage: 'scoring',
+              message: `Fillers detected: ${parts.join(', ')}`,
+              percent: 100
+            })
           }
         }
 
@@ -201,6 +230,10 @@ export function usePipeline() {
         currentStage = 'ai-editing'
         await aiEditStage(ctx, clips)
 
+        // ── Step 7: Segment splitting (optional) ────────────────────
+        currentStage = 'segmenting'
+        await segmentSplittingStage(ctx, clips)
+
         // ── Done ─────────────────────────────────────────────────────
         notificationStage(ctx, clips, autoModeRanRef)
 
@@ -225,7 +258,7 @@ export function usePipeline() {
       updateClipTrim, updateClipThumbnail, addError, setClipVariants,
       setStitchedClips, setStoryArcs, setClipPartInfo, markStageCompleted,
       setFailedPipelineStage, setCachedSourcePath, clearPipelineCache,
-      snapshotSettings, setClipAIEditPlan, setClipFillers
+      snapshotSettings, setClipAIEditPlan, setClipFillers, setSegments
     ]
   )
 
@@ -240,7 +273,8 @@ export function usePipeline() {
       stage === 'stitching' ||
       stage === 'detecting-faces' ||
       stage === 'detecting-arcs' ||
-      stage === 'ai-editing'
+      stage === 'ai-editing' ||
+      stage === 'segmenting'
     )
   }, [])
 

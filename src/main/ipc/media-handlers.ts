@@ -27,6 +27,12 @@ import { buildBRollPlacements } from '../broll-placement'
 import type { BRollSettings as BRollSettingsConfig, BRollDisplayMode, BRollTransition } from '../broll-placement'
 import { checkPythonSetup, runFullSetup } from '../python-setup'
 import { detectFillers } from '../filler-detection'
+import { splitIntoSegments } from '../segments'
+import { SEGMENT_STYLE_VARIANTS, getVariantsForCategory } from '../segment-styles'
+import { EDIT_STYLES, getEditStyleById } from '../edit-styles'
+import { assignSegmentStyles } from '../ai/segment-styler'
+import { generateSegmentImages } from '../ai/segment-images'
+import type { WordTimestamp, VideoSegment, SegmentStyleCategory } from '@shared/types'
 import { generateBRollImage } from '../broll-image-gen'
 import type { BRollImageResult } from '../broll-image-gen'
 import { imageToVideoClip } from '../broll-image-overlay'
@@ -275,6 +281,94 @@ export function registerMediaHandlers(): void {
     Ch.Invoke.FILLER_DETECT,
     wrapHandler(Ch.Invoke.FILLER_DETECT, (_event, words: Array<{ text: string; start: number; end: number; confidence?: number }>, settings: Parameters<typeof detectFillers>[1]) => {
       return detectFillers(words, settings)
+    })
+  )
+
+  // Segment Editor — split clip words into styled segments for Captions.ai-style editing
+  ipcMain.handle(
+    Ch.Invoke.SEGMENTS_SPLIT,
+    wrapHandler(Ch.Invoke.SEGMENTS_SPLIT, (
+      _event,
+      clipId: string,
+      words: WordTimestamp[],
+      targetSegmentDuration?: number
+    ) => {
+      return splitIntoSegments(clipId, words, targetSegmentDuration)
+    })
+  )
+
+  // Segment Editor — AI-assign visual style categories to segments
+  ipcMain.handle(
+    Ch.Invoke.SEGMENTS_ASSIGN_STYLES,
+    wrapHandler(Ch.Invoke.SEGMENTS_ASSIGN_STYLES, async (
+      _event,
+      segments: VideoSegment[],
+      styleId: string,
+      apiKey?: string
+    ) => {
+      const editStyle = getEditStyleById(styleId)
+      if (!editStyle) {
+        throw new Error(`Unknown edit style: ${styleId}`)
+      }
+      return assignSegmentStyles(segments, editStyle, apiKey ?? '')
+    })
+  )
+
+  // Segment Style Variants — return all defined layout variants
+  ipcMain.handle(
+    Ch.Invoke.SEGMENTS_GET_STYLE_VARIANTS,
+    wrapHandler(Ch.Invoke.SEGMENTS_GET_STYLE_VARIANTS, () => {
+      return SEGMENT_STYLE_VARIANTS
+    })
+  )
+
+  // Segment Style Variants — return variants filtered by category
+  ipcMain.handle(
+    Ch.Invoke.SEGMENTS_GET_VARIANTS_FOR_CATEGORY,
+    wrapHandler(Ch.Invoke.SEGMENTS_GET_VARIANTS_FOR_CATEGORY, (
+      _event,
+      category: SegmentStyleCategory
+    ) => {
+      return getVariantsForCategory(category)
+    })
+  )
+
+  // Edit Styles — return all 15 Captions.ai-style edit style presets
+  ipcMain.handle(
+    Ch.Invoke.EDIT_STYLES_GET_ALL,
+    wrapHandler(Ch.Invoke.EDIT_STYLES_GET_ALL, () => {
+      return EDIT_STYLES
+    })
+  )
+
+  // Edit Styles — return a single style by ID
+  ipcMain.handle(
+    Ch.Invoke.EDIT_STYLES_GET_BY_ID,
+    wrapHandler(Ch.Invoke.EDIT_STYLES_GET_BY_ID, (_event, id: string) => {
+      return getEditStyleById(id) ?? null
+    })
+  )
+
+  // Segment Images — generate contextual images for segments needing visuals
+  ipcMain.handle(
+    Ch.Invoke.SEGMENTS_GENERATE_IMAGES,
+    wrapHandler(Ch.Invoke.SEGMENTS_GENERATE_IMAGES, async (
+      _event,
+      segments: VideoSegment[],
+      geminiApiKey: string,
+      pexelsApiKey: string,
+      outputDir?: string,
+      styleCategory?: string
+    ) => {
+      // Convert Map to plain object for IPC serialization
+      const imageMap = await generateSegmentImages(
+        segments,
+        geminiApiKey,
+        pexelsApiKey,
+        outputDir,
+        styleCategory
+      )
+      return Object.fromEntries(imageMap)
     })
   )
 }

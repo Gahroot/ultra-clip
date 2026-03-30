@@ -38,7 +38,7 @@ async function extractKeywordsWithGemini(
   geminiApiKey: string
 ): Promise<KeywordAtTimestamp[]> {
   const genAI = new GoogleGenerativeAI(geminiApiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
 
   // Build a compact transcript with timestamps for Gemini
   const timestampedText = words

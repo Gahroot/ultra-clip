@@ -136,6 +136,7 @@ export async function concatWithBumpers(
   const filterComplex = filterParts.join(';')
 
   return new Promise<void>((resolve, reject) => {
+    let fallbackAttempted = false
     function runConcatWithEncoder(enc: string, flags: string[]): void {
       const cmd = ffmpeg()
 
@@ -159,7 +160,8 @@ export async function concatWithBumpers(
         ])
         .on('end', () => resolve())
         .on('error', (err: Error) => {
-          if (isGpuSessionError(err.message)) {
+          if (!fallbackAttempted && isGpuSessionError(err.message)) {
+            fallbackAttempted = true
             const sw = getSoftwareEncoder()
             runConcatWithEncoder(sw.encoder, sw.presetFlag)
           } else {

@@ -11,6 +11,7 @@ import type {
   CropRegion,
   TargetDuration,
   ClipEndMode,
+  VideoSegment,
 } from '../../store'
 import type { useStore } from '../../store'
 
@@ -45,6 +46,7 @@ export interface PipelineContext {
     setClipPartInfo: (sourceId: string, clipId: string, info: PartInfoUI) => void
     setCachedSourcePath: (path: string) => void
     setClipAIEditPlan: (sourceId: string, clipId: string, plan: import('@shared/types').AIEditPlan) => void
+    setSegments: (clipId: string, segments: VideoSegment[]) => void
   }
   /** Settings snapshot — read once at pipeline start. */
   geminiApiKey: string

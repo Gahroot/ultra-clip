@@ -75,6 +75,26 @@ interface IntensityConfig {
   panFrac: number
 }
 
+// ---------------------------------------------------------------------------
+// NAN-safe wrapper for crop expressions
+// ---------------------------------------------------------------------------
+
+/**
+ * FFmpeg's crop filter evaluates w/h/x/y during filter graph initialisation
+ * when `t` is NAN (no frame has been decoded yet).  Any expression that uses
+ * `t` directly (e.g. `cos(2*PI*t/T)`) will evaluate to NAN, causing
+ * "Error when evaluating the expression" and aborting the render.
+ *
+ * This helper wraps an expression so that when `t` is NAN (init time) it
+ * returns a safe constant, and when `t` is valid (per-frame) it evaluates
+ * the real expression.
+ *
+ *   isnan(t) → 1 at init, 0 at runtime
+ */
+function nanSafe(expr: string, fallback: string): string {
+  return `if(isnan(t),${fallback},${expr})`
+}
+
 const INTENSITY_CONFIG: Record<ZoomIntensity, IntensityConfig> = {
   subtle:  { amplitude: 0.05, panFrac: 0.00 },
   medium:  { amplitude: 0.09, panFrac: 0.03 },
@@ -239,14 +259,16 @@ export function generateZoomFilter(
   //
   // crop width/height expressions: iw and ih refer to the input (1080×1920).
   // We divide by the zoom factor to get the visible sub-region.
-  const cropW = `iw/(${zExpr})`
-  const cropH = `ih/(${zExpr})`
+  // Each expression is wrapped with nanSafe() so FFmpeg gets a valid constant
+  // during filter graph init (when t=NAN) and the real expression per-frame.
+  const cropW = nanSafe(`iw/(${zExpr})`, 'iw')
+  const cropH = nanSafe(`ih/(${zExpr})`, 'ih')
   // crop x/y use the same expressions adapted for crop semantics
   // (crop x/y = top-left corner of the visible region)
-  const cropX = xExpr
-  const cropY = yExpr
+  const cropX = nanSafe(xExpr, '0')
+  const cropY = nanSafe(yExpr, '0')
 
-  return `crop=w=${cropW}:h=${cropH}:x=${cropX}:y=${cropY},scale=${outW}:${outH}`
+  return `crop=w='${cropW}':h='${cropH}':x='${cropX}':y='${cropY}',scale=${outW}:${outH}`
 }
 
 // ---------------------------------------------------------------------------
@@ -375,19 +397,20 @@ function generateReactiveZoomFilter(
   const FY = Math.max(0, Math.min(1, faceYNorm)).toFixed(3)
 
   // Crop width/height: iw/z and ih/z
-  const cropW = buildReactivePiecewiseExpr(segs, (z) => `iw/(${z})`)
-  const cropH = buildReactivePiecewiseExpr(segs, (z) => `ih/(${z})`)
+  // Wrapped with nanSafe() so t=NAN at init returns a valid constant.
+  const cropW = nanSafe(buildReactivePiecewiseExpr(segs, (z) => `iw/(${z})`), 'iw')
+  const cropH = nanSafe(buildReactivePiecewiseExpr(segs, (z) => `ih/(${z})`), 'ih')
 
   // Crop X: horizontally centred (no horizontal drift in reactive mode)
-  const cropX = buildReactivePiecewiseExpr(segs, (z) => `iw/2-(iw/(${z})/2)`)
+  const cropX = nanSafe(buildReactivePiecewiseExpr(segs, (z) => `iw/2-(iw/(${z})/2)`), '0')
 
   // Crop Y: face-tracking, clamped with abs()-based min/max (Windows-safe)
-  const cropY = buildReactivePiecewiseExpr(segs, (z) => {
+  const cropY = nanSafe(buildReactivePiecewiseExpr(segs, (z) => {
     const ideal  = `ih*${FY}-ih/(${z})/2`
     const hi     = `ih-ih/(${z})`
     const minVal = `((${ideal})+(${hi})-abs((${ideal})-(${hi})))/2`
     return `((${minVal})+abs(${minVal}))/2`
-  })
+  }), '0')
 
   return `crop=w='${cropW}':h='${cropH}':x='${cropX}':y='${cropY}',scale=${outW}:${outH}`
 }
@@ -623,14 +646,17 @@ function generateJumpCutZoomFilter(
   )
 
   // Crop dimensions also need the step function zoom
-  const cropW = buildStepExpr(segments, (seg) => `iw/${seg.zoom.toFixed(4)}`)
-  const cropH = buildStepExpr(segments, (seg) => `ih/${seg.zoom.toFixed(4)}`)
+  // All expressions wrapped with nanSafe() for t=NAN safety at init time.
+  const cropW = nanSafe(buildStepExpr(segments, (seg) => `iw/${seg.zoom.toFixed(4)}`), 'iw')
+  const cropH = nanSafe(buildStepExpr(segments, (seg) => `ih/${seg.zoom.toFixed(4)}`), 'ih')
+  const safeX = nanSafe(xExpr, '0')
+  const safeY = nanSafe(yExpr, '0')
 
   // Wrap each expression in single quotes so FFmpeg's option parser doesn't
   // interpret commas inside between()/if() as filter chain separators.
   // The expression evaluator receives the unquoted string and handles commas
   // as function argument delimiters correctly.
-  return `crop=w='${cropW}':h='${cropH}':x='${xExpr}':y='${yExpr}',scale=${outW}:${outH}`
+  return `crop=w='${cropW}':h='${cropH}':x='${safeX}':y='${safeY}',scale=${outW}:${outH}`
 }
 
 /**
@@ -890,5 +916,5 @@ export function generatePiecewiseZoomFilter(
     cropY = `if(between(t\\,${sStart}\\,${sEnd})\\,${s.exprs.cropY}\\,${cropY})`
   }
 
-  return `crop=w='${cropW}':h='${cropH}':x='${cropX}':y='${cropY}',scale=${outW}:${outH}`
+  return `crop=w='${nanSafe(cropW, 'iw')}':h='${nanSafe(cropH, 'ih')}':x='${nanSafe(cropX, '0')}':y='${nanSafe(cropY, '0')}',scale=${outW}:${outH}`
 }

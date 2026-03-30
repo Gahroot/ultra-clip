@@ -225,13 +225,34 @@ export function getSoftwareEncoder(quality?: QualityParams): EncoderConfig {
 
 /** Check if an FFmpeg error is a GPU/NVENC/CUDA failure that should trigger software fallback */
 export function isGpuSessionError(errorMessage: string): boolean {
+  const msg = errorMessage.toLowerCase()
   return (
     errorMessage.includes('OpenEncodeSessionEx failed') ||
     errorMessage.includes('No capable devices found') ||
     errorMessage.includes('Cannot load nvcuda.dll') ||
     errorMessage.includes('out of memory') ||
     errorMessage.includes('hwupload_cuda failed') ||
-    errorMessage.includes('CUDA')
+    errorMessage.includes('CUDA') ||
+    msg.includes('cuda') ||
+    msg.includes('nvenc') ||
+    msg.includes('h264_nvenc') ||
+    msg.includes('h264_qsv') ||
+    msg.includes('hwupload') ||
+    msg.includes('hwdownload') ||
+    msg.includes('scale_cuda')
+  )
+}
+
+/**
+ * Replace CUDA scale filters with CPU equivalents in a video filter string.
+ * Transforms `hwupload_cuda,scale_cuda=W:H:interp_algo=lanczos,hwdownload,format=nv12`
+ * into `scale=W:H` so the filter works without GPU.
+ */
+export function stripCudaScaleFilter(videoFilter: string): string {
+  // Match the full CUDA scale pipeline and extract the dimensions
+  return videoFilter.replace(
+    /hwupload_cuda,scale_cuda=(\d+):(\d+)(?::interp_algo=\w+)?,hwdownload,format=nv12/g,
+    'scale=$1:$2'
   )
 }
 

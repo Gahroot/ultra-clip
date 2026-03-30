@@ -14,6 +14,7 @@ import { registerProjectHandlers } from './ipc/project-handlers'
 import { registerSystemHandlers, getAutoCleanupOnExit, setAutoCleanupOnExit, deleteBatchContentTempFiles } from './ipc/system-handlers'
 import { registerMediaHandlers } from './ipc/media-handlers'
 import { registerExportHandlers } from './ipc/export-handlers'
+import { registerSettingsWindowHandlers, closeSettingsWindow } from './settings-window'
 
 process.on('uncaughtException', (error) => {
   const detail = `${error.message}\n\n${error.stack || ''}`
@@ -35,7 +36,7 @@ process.on('unhandledRejection', (reason) => {
   console.error('[Main] Unhandled rejection:', reason)
 })
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -53,6 +54,23 @@ function createWindow(): void {
     mainWindow.show()
   })
 
+  // Allow F12 / Ctrl+Shift+I to open DevTools in production
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (
+      input.key === 'F12' ||
+      (input.control && input.shift && input.key.toLowerCase() === 'i')
+    ) {
+      mainWindow.webContents.toggleDevTools()
+    }
+  })
+
+  // Forward renderer console messages to main process log
+  mainWindow.webContents.on('console-message', (_event, level, message) => {
+    if (level >= 2) { // warnings and errors only
+      console.warn(`[Renderer] ${message}`)
+    }
+  })
+
   // Register webContents for AI token usage reporting
   setUsageWebContents(mainWindow.webContents)
 
@@ -66,6 +84,10 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  registerSettingsWindowHandlers(mainWindow)
+
+  return mainWindow
 }
 
 app.whenReady().then(() => {
@@ -104,6 +126,7 @@ app.whenReady().then(() => {
 
 // Auto-cleanup on quit: if the user enabled the preference, delete temp files
 app.on('before-quit', async (event) => {
+  closeSettingsWindow()
   if (!getAutoCleanupOnExit()) return
   event.preventDefault()
   try {

@@ -1,13 +1,20 @@
 import { create } from 'zustand'
+import { enableMapSet } from 'immer'
 import { immer } from 'zustand/middleware/immer'
-import type { AppState, QueueResult, SourceVideo, TranscriptionData, RenderProgress, TemplateLayout, PipelineStage } from './types'
+
+// Enable Immer's MapSet plugin so Set/Map values work in the store
+enableMapSet()
+import type { AppState, QueueResult, SourceVideo, TranscriptionData, RenderProgress, TemplateLayout, PipelineStage, VideoSegment, EditStyle } from './types'
 import {
   persistSettings,
   persistProcessingConfig,
   extractProfileFromSettings,
+  loadPersistedSettings,
+  loadPersistedProcessingConfig,
   DEFAULT_PIPELINE,
   DEFAULT_TEMPLATE_LAYOUT,
 } from './helpers'
+import { broadcastSettingsChange, listenForSettingsChanges } from './settings-sync'
 import { createClipsSlice } from './clips-slice'
 import { createSettingsSlice } from './settings-slice'
 import { createPipelineSlice } from './pipeline-slice'
@@ -144,6 +151,30 @@ export const useStore = create<AppState>()(immer((...a) => {
       set({ lastSeenVersion: version })
     },
 
+    // --- Segment Editor ---
+    segments: {},
+    editStyles: [],
+    selectedEditStyleId: 'cinematic',
+    selectedSegmentIndex: 0,
+
+    setSegments: (clipId: string, segs: VideoSegment[]) =>
+      set((state) => { state.segments[clipId] = segs }),
+
+    updateSegment: (clipId: string, segmentId: string, updates: Partial<VideoSegment>) =>
+      set((state) => {
+        const segs = state.segments[clipId]
+        if (!segs) return
+        const idx = segs.findIndex((s) => s.id === segmentId)
+        if (idx === -1) return
+        Object.assign(segs[idx], updates)
+      }),
+
+    setEditStyles: (styles: EditStyle[]) => set({ editStyles: styles }),
+
+    setSelectedEditStyleId: (styleId: string | null) => set({ selectedEditStyleId: styleId }),
+
+    setSelectedSegmentIndex: (index: number) => set({ selectedSegmentIndex: index }),
+
     // --- Clip Comparison ---
     comparisonClipIds: null,
     setComparisonClips: (idA: string, idB: string) => set({ comparisonClipIds: [idA, idB] }),
@@ -258,9 +289,11 @@ export const useStore = create<AppState>()(immer((...a) => {
 useStore.subscribe((state, prevState) => {
   if (state.settings !== prevState.settings) {
     persistSettings(state.settings)
+    broadcastSettingsChange()
   }
   if (state.processingConfig !== prevState.processingConfig) {
     persistProcessingConfig(state.processingConfig)
+    broadcastSettingsChange()
   }
 })
 
@@ -288,11 +321,22 @@ useStore.subscribe((state, prevState) => {
     state.clips !== prevState.clips ||
     state.stitchedClips !== prevState.stitchedClips ||
     state.storyArcs !== prevState.storyArcs ||
+    state.segments !== prevState.segments ||
     state.clipOrder !== prevState.clipOrder ||
     state.settings.minScore !== prevState.settings.minScore
   ) {
     queueMicrotask(() => useStore.setState({ isDirty: true }))
   }
+})
+
+// ---------------------------------------------------------------------------
+// Cross-window settings sync (BroadcastChannel)
+// ---------------------------------------------------------------------------
+
+listenForSettingsChanges(() => {
+  const freshSettings = loadPersistedSettings()
+  const freshConfig = loadPersistedProcessingConfig()
+  useStore.setState({ settings: freshSettings, processingConfig: freshConfig })
 })
 
 // ---------------------------------------------------------------------------

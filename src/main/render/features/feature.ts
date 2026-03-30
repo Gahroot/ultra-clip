@@ -23,7 +23,11 @@ export interface RenderFeature {
    * Can modify the job (e.g. generate ASS files, set paths).
    * Return temp files to clean up after render completes.
    */
-  prepare?(job: RenderClipJob, batchOptions: RenderBatchOptions): Promise<PrepareResult>
+  prepare?(
+    job: RenderClipJob,
+    batchOptions: RenderBatchOptions,
+    onProgress?: (message: string, percent: number) => void
+  ): Promise<PrepareResult>
 
   /**
    * Phase 2: Contribute to the base video filter chain.

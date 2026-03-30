@@ -26,8 +26,12 @@ import type { RenderClipJob, RenderBatchOptions, RenderStitchedClipJob } from '.
 import type { RenderFeature, FilterContext, OverlayContext, PostProcessContext, OverlayPassResult } from './features/feature'
 import { buildVideoFilter, renderClip, activeCommands } from './base-render'
 import { renderStitchedClip } from './stitched-render'
+import { renderSegmentedClip } from './segment-render'
+import type { SegmentRenderConfig, ResolvedSegment } from './segment-render'
 import { resolveQualityParams, parseResolution } from './quality'
 import { buildOutputPath } from './filename'
+import { getVariantById } from '../segment-styles'
+import { getEditStyleById } from '../edit-styles'
 
 // Feature imports
 import { createFillerRemovalFeature } from './features/filler-removal.feature'
@@ -276,6 +280,89 @@ export async function startBatchRender(
         }
 
         await renderStitchedClip(stitchedJob, outputPath, (percent) => {
+          if (!cancelRequested) {
+            window.webContents.send(Ch.Send.RENDER_CLIP_PROGRESS, { clipId: job.clipId, percent })
+          }
+        })
+
+        manifestResults.set(job.clipId, outputPath)
+        manifestRenderTimes.set(job.clipId, Date.now() - clipStartTime)
+        completed++
+        window.webContents.send(Ch.Send.RENDER_CLIP_DONE, { clipId: job.clipId, outputPath })
+        return
+      }
+
+      // ── Segmented clip shortcut ───────────────────────────────────────────
+      // When segmentedSegments are present, delegate to the segment-based render
+      // path which encodes each segment with its own layout, zoom, and caption
+      // treatment, then concatenates with configurable transitions.
+      if (job.segmentedSegments && job.segmentedSegments.length > 0) {
+        // Resolve source metadata for the segmented clip
+        let segMeta: { width: number; height: number; fps: number }
+        const segCached = metadataCache.get(job.sourceVideoPath)
+        if (segCached) {
+          segMeta = segCached
+        } else {
+          try {
+            const fullMeta = await getVideoMetadata(job.sourceVideoPath)
+            metadataCache.set(job.sourceVideoPath, fullMeta)
+            segMeta = fullMeta
+          } catch (metaErr) {
+            const msg = metaErr instanceof Error ? metaErr.message : String(metaErr)
+            throw new Error(`Failed to read source video metadata for segmented clip ${job.clipId}: ${msg}`)
+          }
+        }
+
+        // Resolve edit style (defaults to 'cinematic' if not set)
+        const editStyle = getEditStyleById(job.stylePresetId ?? 'cinematic') ?? getEditStyleById('cinematic')!
+
+        // Resolve each segmented segment into a ResolvedSegment
+        const resolvedSegments: ResolvedSegment[] = job.segmentedSegments.map((raw) => {
+          const variant = getVariantById(raw.styleVariantId) ?? getVariantById('main-video-normal')!
+          return {
+            startTime: raw.startTime,
+            endTime: raw.endTime,
+            styleVariant: variant,
+            zoom: {
+              style: raw.zoomStyle ?? variant.zoomStyle,
+              intensity: raw.zoomIntensity ?? variant.zoomIntensity
+            },
+            transitionIn: raw.transitionIn,
+            overlayText: raw.overlayText,
+            accentColor: raw.accentColor,
+            captionBgOpacity: raw.captionBgOpacity,
+            imagePath: raw.imagePath,
+            cropRect: raw.cropRect
+          }
+        })
+
+        const segConfig: SegmentRenderConfig = {
+          sourceVideoPath: job.sourceVideoPath,
+          segments: resolvedSegments,
+          editStyle,
+          width: effectiveResolution.width,
+          height: effectiveResolution.height,
+          fps: segMeta.fps ?? 30,
+          sourceWidth: segMeta.width,
+          sourceHeight: segMeta.height,
+          defaultCropRect: job.cropRegion,
+          wordTimestamps: job.wordTimestamps,
+          wordEmphasis: job.wordEmphasis,
+          captionStyle: options.captionStyle,
+          captionsEnabled: options.captionsEnabled,
+          brandKit: options.brandKit?.enabled ? {
+            logoPath: options.brandKit.logoPath,
+            logoPosition: options.brandKit.logoPosition,
+            logoScale: options.brandKit.logoScale,
+            logoOpacity: options.brandKit.logoOpacity,
+            introBumperPath: options.brandKit.introBumperPath,
+            outroBumperPath: options.brandKit.outroBumperPath
+          } : undefined,
+          progressBarConfig: options.progressBarOverlay?.enabled ? options.progressBarOverlay : undefined,
+          templateLayout: options.templateLayout
+        }
+
+        await renderSegmentedClip(segConfig, outputPath, (percent) => {
           if (!cancelRequested) {
             window.webContents.send(Ch.Send.RENDER_CLIP_PROGRESS, { clipId: job.clipId, percent })
           }

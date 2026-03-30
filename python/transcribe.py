@@ -75,8 +75,8 @@ def get_audio_duration_seconds(audio_path: str) -> float:
 # Chunked transcription for audio > 24 minutes
 # ---------------------------------------------------------------------------
 
-MAX_FULL_ATTENTION_SECONDS = 24 * 60  # 1440 s
-CHUNK_SECONDS = 20 * 60              # 20 min per chunk
+MAX_FULL_ATTENTION_SECONDS = 5 * 60   # 300 s — conservative to avoid CUDA OOM on 11 GB GPUs
+CHUNK_SECONDS = 5 * 60               # 5 min per chunk (safe for ≤11 GB VRAM)
 OVERLAP_SECONDS = 10                 # 10 s overlap between chunks
 
 
@@ -96,9 +96,70 @@ def _chunk_audio_ffmpeg(audio_path: str, start: float, duration: float, out_path
     return result.returncode == 0
 
 
-def transcribe_chunked(model, audio_path: str, duration_sec: float) -> dict:
-    """Split audio into overlapping chunks, transcribe each, merge results."""
-    emit_progress("transcribing", f"Audio is {duration_sec/60:.1f} min — using chunked transcription")
+def _transcribe_chunk_subprocess(
+    chunk_path: str, model_name: str, output_json: str
+) -> dict | None:
+    """Transcribe a single chunk in an isolated subprocess to avoid CUDA OOM accumulation.
+
+    NeMo's Parakeet model leaks GPU memory across successive transcribe() calls in the
+    same process, eventually causing an unrecoverable CUDA abort.  Running each chunk in
+    its own subprocess guarantees the GPU is fully released between chunks.
+    """
+    import subprocess
+
+    # Resolve the Python binary (same one running this script)
+    python_bin = sys.executable
+
+    # Mini-script that loads the model, transcribes one file, writes JSON result
+    worker_code = f"""
+import os, sys, json
+os.environ['NEMO_LOGGING_LEVEL'] = 'ERROR'
+import logging
+logging.getLogger('nemo_logger').setLevel(logging.ERROR)
+logging.getLogger('nemo').setLevel(logging.ERROR)
+
+import nemo.collections.asr as nemo_asr
+model = nemo_asr.models.ASRModel.from_pretrained(model_name={model_name!r})
+model.eval()
+try:
+    import torch
+    if torch.cuda.is_available():
+        model = model.cuda()
+except Exception:
+    pass
+
+output = model.transcribe([{chunk_path!r}], timestamps=True, batch_size=1, num_workers=0)
+result = output[0]
+words = [dict(text=w.get('word',''), start=float(w.get('start',0)), end=float(w.get('end',0)))
+         for w in (result.timestamp.get('word', []) if hasattr(result, 'timestamp') else [])]
+segments = [dict(text=s.get('segment',''), start=float(s.get('start',0)), end=float(s.get('end',0)))
+            for s in (result.timestamp.get('segment', []) if hasattr(result, 'timestamp') else [])]
+payload = dict(text=result.text.strip(), words=words, segments=segments)
+with open({output_json!r}, 'w') as f:
+    json.dump(payload, f)
+"""
+    proc = subprocess.run(
+        [python_bin, "-c", worker_code],
+        capture_output=True, timeout=600
+    )
+    if proc.returncode != 0:
+        stderr_tail = proc.stderr.decode(errors="replace")[-500:]
+        return None, f"exit {proc.returncode}: {stderr_tail}"
+
+    try:
+        with open(output_json, "r") as f:
+            return json.load(f), None
+    except Exception as e:
+        return None, f"could not read output: {e}"
+
+
+def transcribe_chunked(model_name: str, audio_path: str, duration_sec: float) -> dict:
+    """Split audio into overlapping chunks, transcribe each in a subprocess, merge results.
+
+    Each chunk runs in its own process to avoid NeMo/CUDA memory accumulation that causes
+    unrecoverable GPU aborts on cards with ≤12 GB VRAM.
+    """
+    emit_progress("transcribing", f"Audio is {duration_sec/60:.1f} min — using chunked transcription (subprocess per chunk)")
 
     chunks = []
     start = 0.0
@@ -122,50 +183,53 @@ def transcribe_chunked(model, audio_path: str, duration_sec: float) -> dict:
             f"({chunk_start/60:.1f}–{(chunk_start + chunk_dur)/60:.1f} min)..."
         )
         chunk_path = os.path.join(tmp_dir, f"chunk_{i}.wav")
+        chunk_json = os.path.join(tmp_dir, f"chunk_{i}.json")
+
         if not _chunk_audio_ffmpeg(audio_path, chunk_start, chunk_dur, chunk_path):
+            emit_progress("transcribing", f"Warning: failed to extract chunk {i + 1} audio")
             continue
 
-        try:
-            output = model.transcribe([chunk_path], timestamps=True, batch_size=1, num_workers=0)
-            result = output[0]
-        except Exception as e:
-            emit_progress("transcribing", f"Warning: chunk {i + 1} failed: {e}")
-            continue
-        finally:
+        result, err = _transcribe_chunk_subprocess(chunk_path, model_name, chunk_json)
+
+        # Cleanup temp files
+        for f in (chunk_path, chunk_json):
             try:
-                os.remove(chunk_path)
+                os.remove(f)
             except Exception:
                 pass
 
-        raw_words = result.timestamp.get("word", []) if hasattr(result, "timestamp") else []
-        for w in raw_words:
+        if result is None:
+            emit_progress("transcribing", f"Warning: chunk {i + 1} failed: {err}")
+            continue
+
+        for w in result.get("words", []):
             word_start = float(w.get("start", 0.0)) + chunk_start
             word_end = float(w.get("end", 0.0)) + chunk_start
             # Skip words already covered by previous chunk (overlap zone)
             if i > 0 and word_start < (chunk_start + OVERLAP_SECONDS):
                 continue
             all_words.append({
-                "text": w.get("word", ""),
+                "text": w.get("text", ""),
                 "start": round(word_start, 3),
                 "end": round(word_end, 3),
             })
 
-        raw_segs = result.timestamp.get("segment", []) if hasattr(result, "timestamp") else []
-        for s in raw_segs:
+        for s in result.get("segments", []):
             seg_start = float(s.get("start", 0.0)) + chunk_start
             seg_end = float(s.get("end", 0.0)) + chunk_start
             if i > 0 and seg_start < (chunk_start + OVERLAP_SECONDS):
                 continue
             all_segments.append({
-                "text": s.get("segment", ""),
+                "text": s.get("text", ""),
                 "start": round(seg_start, 3),
                 "end": round(seg_end, 3),
             })
 
-        full_text_parts.append(result.text.strip())
+        full_text_parts.append(result.get("text", ""))
 
     try:
-        os.rmdir(tmp_dir)
+        import shutil
+        shutil.rmtree(tmp_dir, ignore_errors=True)
     except Exception:
         pass
 
@@ -280,35 +344,46 @@ def main() -> None:
 
     try:
         if duration_sec > MAX_FULL_ATTENTION_SECONDS:
-            payload = transcribe_chunked(asr_model, args.input, duration_sec)
+            payload = transcribe_chunked(args.model, args.input, duration_sec)
         else:
-            output = asr_model.transcribe([args.input], timestamps=True, batch_size=1, num_workers=0)
-            result = output[0]
-            full_text: str = result.text
+            try:
+                output = asr_model.transcribe([args.input], timestamps=True, batch_size=1, num_workers=0)
+            except RuntimeError as oom_err:
+                if "out of memory" in str(oom_err).lower():
+                    # CUDA OOM — clear cache and fall back to chunked transcription
+                    emit_progress("transcribing", "GPU out of memory — falling back to chunked transcription...")
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    payload = transcribe_chunked(args.model, args.input, duration_sec)
+                else:
+                    raise
+            else:
+                result = output[0]
+                full_text: str = result.text
 
-            raw_words = result.timestamp.get("word", []) if hasattr(result, "timestamp") else []
-            words = []
-            for w in raw_words:
-                words.append({
-                    "text": w.get("word", ""),
-                    "start": round(float(w.get("start", 0.0)), 3),
-                    "end": round(float(w.get("end", 0.0)), 3),
-                })
+                raw_words = result.timestamp.get("word", []) if hasattr(result, "timestamp") else []
+                words = []
+                for w in raw_words:
+                    words.append({
+                        "text": w.get("word", ""),
+                        "start": round(float(w.get("start", 0.0)), 3),
+                        "end": round(float(w.get("end", 0.0)), 3),
+                    })
 
-            raw_segments = result.timestamp.get("segment", []) if hasattr(result, "timestamp") else []
-            segments = []
-            for s in raw_segments:
-                segments.append({
-                    "text": s.get("segment", ""),
-                    "start": round(float(s.get("start", 0.0)), 3),
-                    "end": round(float(s.get("end", 0.0)), 3),
-                })
+                raw_segments = result.timestamp.get("segment", []) if hasattr(result, "timestamp") else []
+                segments = []
+                for s in raw_segments:
+                    segments.append({
+                        "text": s.get("segment", ""),
+                        "start": round(float(s.get("start", 0.0)), 3),
+                        "end": round(float(s.get("end", 0.0)), 3),
+                    })
 
-            payload = {
-                "text": full_text,
-                "words": words,
-                "segments": segments,
-            }
+                payload = {
+                    "text": full_text,
+                    "words": words,
+                    "segments": segments,
+                }
     except Exception as e:
         emit_error(f"Transcription failed: {e}")
         write_output(args.output, {"error": f"Transcription failed: {e}"})

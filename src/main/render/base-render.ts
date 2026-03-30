@@ -19,6 +19,7 @@ import {
   getEncoder,
   getSoftwareEncoder,
   isGpuSessionError,
+  stripCudaScaleFilter,
   hasScaleCuda,
   type QualityParams
 } from '../ffmpeg'
@@ -185,11 +186,17 @@ export function renderClip(
         const logoOverlay: { bk: BrandKitRenderOptions; inputIndex: number } | undefined =
           hasLogo ? { bk: bk!, inputIndex: placements.length + 1 } : undefined
 
-        function runWithSoundEncoder(enc: string, flags: string[]): FfmpegCommand {
+        let soundFallbackAttempted = false
+
+        function runWithSoundEncoder(enc: string, flags: string[], useHwAccel = true): FfmpegCommand {
           const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
+          let stderrOutput = ''
 
           // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
-          cmd.inputOptions(['-hwaccel', 'auto'])
+          // Skipped on software fallback — broken GPU drivers can cause -hwaccel auto to crash
+          if (useHwAccel) {
+            cmd.inputOptions(['-hwaccel', 'auto'])
+          }
 
           cmd
             .seekInput(job.startTime)
@@ -211,6 +218,7 @@ export function renderClip(
             clipDuration,
             logoOverlay
           )
+          console.log(`[Render] Sound filter_complex for clip ${job.clipId}: ${filterComplex}`)
 
           // When sound design IS present, [outa] is always produced by amix.
           const audioMap = hasSoundDesign ? '[outa]' : '0:a'
@@ -228,6 +236,7 @@ export function renderClip(
               ...containerFlags
             ])
             .on('start', (cmdLine: string) => { onCommand?.(cmdLine) })
+            .on('stderr', (line: string) => { stderrOutput += line + '\n' })
             .on('progress', (progress) => {
               onProgress(Math.min(hasBumpers ? 85 : (hasOverlays ? 65 : 99), progress.percent ?? 0))
             })
@@ -240,13 +249,19 @@ export function renderClip(
             .on('error', (err: Error) => {
               activeCommands.delete(cmd)
               activeCommand = null
-              if (isGpuSessionError(err.message)) {
+              console.error(`[Render] FFmpeg stderr for clip ${job.clipId}:\n${stderrOutput}`)
+              if (!soundFallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
+                soundFallbackAttempted = true
+                console.warn(`[Render] GPU error in sound-design path, falling back to software encoder + CPU scale: ${err.message}`)
+                videoFilter = stripCudaScaleFilter(videoFilter)
                 const { encoder: swEnc, flags: swFlags } = getSoftwareCodecFlags()
-                const swCmd = runWithSoundEncoder(swEnc, swFlags)
+                const swCmd = runWithSoundEncoder(swEnc, swFlags, false)
                 activeCommand = swCmd
                 activeCommands.add(swCmd)
               } else {
-                reject(err)
+                const stderrTail = stderrOutput.split('\n').slice(-10).join('\n')
+                const enhanced = new Error(`${err.message}\n[stderr tail] ${stderrTail}`)
+                reject(enhanced)
               }
             })
             .save(toFFmpegPath(mainOutputPath))
@@ -260,13 +275,17 @@ export function renderClip(
 
       } else if (hasLogo) {
         // ── Logo-only path (no sound design) ────────────────────────────────
-        const filterComplex = buildLogoOnlyFilterComplex(videoFilter, bk!)
-
-        function runWithLogoEncoder(enc: string, flags: string[]): FfmpegCommand {
+        let logoFallbackAttempted = false
+        function runWithLogoEncoder(enc: string, flags: string[], useHwAccel = true): FfmpegCommand {
+          const filterComplex = buildLogoOnlyFilterComplex(videoFilter, bk!)
           const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
+          let stderrOutput = ''
 
           // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
-          cmd.inputOptions(['-hwaccel', 'auto'])
+          // Skipped on software fallback — broken GPU drivers can cause -hwaccel auto to crash
+          if (useHwAccel) {
+            cmd.inputOptions(['-hwaccel', 'auto'])
+          }
 
           cmd
             .seekInput(job.startTime)
@@ -288,6 +307,7 @@ export function renderClip(
               ...containerFlags
             ])
             .on('start', (cmdLine: string) => { onCommand?.(cmdLine) })
+            .on('stderr', (line: string) => { stderrOutput += line + '\n' })
             .on('progress', (progress) => {
               onProgress(Math.min(hasBumpers ? 85 : (hasOverlays ? 65 : 99), progress.percent ?? 0))
             })
@@ -300,13 +320,19 @@ export function renderClip(
             .on('error', (err: Error) => {
               activeCommands.delete(cmd)
               activeCommand = null
-              if (isGpuSessionError(err.message)) {
+              console.error(`[Render] FFmpeg stderr for clip ${job.clipId}:\n${stderrOutput}`)
+              if (!logoFallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
+                logoFallbackAttempted = true
+                console.warn('[Render] GPU error in logo-only path, falling back to software encoder + CPU scale')
+                videoFilter = stripCudaScaleFilter(videoFilter)
                 const { encoder: swEnc, flags: swFlags } = getSoftwareCodecFlags()
-                const swCmd = runWithLogoEncoder(swEnc, swFlags)
+                const swCmd = runWithLogoEncoder(swEnc, swFlags, false)
                 activeCommand = swCmd
                 activeCommands.add(swCmd)
               } else {
-                reject(err)
+                const stderrTail = stderrOutput.split('\n').slice(-10).join('\n')
+                const enhanced = new Error(`${err.message}\n[stderr tail] ${stderrTail}`)
+                reject(enhanced)
               }
             })
             .save(toFFmpegPath(mainOutputPath))
@@ -320,11 +346,16 @@ export function renderClip(
 
       } else {
         // ── Simple path: no sound mixing, no logo (existing behavior) ────────
-        function runWithEncoder(enc: string, flags: string[]): FfmpegCommand {
+        let simpleFallbackAttempted = false
+        function runWithEncoder(enc: string, flags: string[], useHwAccel = true): FfmpegCommand {
           const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
+          let stderrOutput = ''
 
           // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
-          cmd.inputOptions(['-hwaccel', 'auto'])
+          // Skipped on software fallback — broken GPU drivers can cause -hwaccel auto to crash
+          if (useHwAccel) {
+            cmd.inputOptions(['-hwaccel', 'auto'])
+          }
 
           cmd
             .seekInput(job.startTime)
@@ -337,6 +368,7 @@ export function renderClip(
               ...containerFlags
             ])
             .on('start', (cmdLine: string) => { onCommand?.(cmdLine) })
+            .on('stderr', (line: string) => { stderrOutput += line + '\n' })
             .on('progress', (progress) => {
               onProgress(Math.min(hasBumpers ? 85 : (hasOverlays ? 65 : 99), progress.percent ?? 0))
             })
@@ -349,13 +381,19 @@ export function renderClip(
             .on('error', (err: Error) => {
               activeCommands.delete(cmd)
               activeCommand = null
-              if (isGpuSessionError(err.message)) {
+              console.error(`[Render] FFmpeg stderr for clip ${job.clipId}:\n${stderrOutput}`)
+              if (!simpleFallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
+                simpleFallbackAttempted = true
+                console.warn('[Render] GPU error in simple path, falling back to software encoder + CPU scale')
+                videoFilter = stripCudaScaleFilter(videoFilter)
                 const { encoder: swEnc, flags: swFlags } = getSoftwareCodecFlags()
-                const swCmd = runWithEncoder(swEnc, swFlags)
+                const swCmd = runWithEncoder(swEnc, swFlags, false)
                 activeCommand = swCmd
                 activeCommands.add(swCmd)
               } else {
-                reject(err)
+                const stderrTail = stderrOutput.split('\n').slice(-10).join('\n')
+                const enhanced = new Error(`${err.message}\n[stderr tail] ${stderrTail}`)
+                reject(enhanced)
               }
             })
             .save(toFFmpegPath(mainOutputPath))

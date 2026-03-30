@@ -293,6 +293,40 @@ export interface RenderClipJob {
     type: 'filler' | 'silence' | 'repeat'
     label: string
   }>
+  /**
+   * When present, this job represents a segmented clip with per-segment visual
+   * treatment. The render pipeline routes these to renderSegmentedClip() instead
+   * of the normal single-segment or stitched render paths.
+   */
+  segmentedSegments?: SegmentedSegment[]
+}
+
+/**
+ * A single segment within a segmented clip render job.
+ * Each segment has its own layout, zoom, caption, and transition settings.
+ */
+export interface SegmentedSegment {
+  /** Segment time range in source video (absolute seconds) */
+  startTime: number
+  endTime: number
+  /** ID of the SegmentStyleVariant to apply (e.g. 'main-video-normal') */
+  styleVariantId: string
+  /** Zoom style for this segment */
+  zoomStyle: 'none' | 'drift' | 'snap' | 'word-pulse' | 'zoom-out'
+  /** Zoom intensity multiplier (1.0 = no zoom) */
+  zoomIntensity: number
+  /** Transition INTO this segment (hard-cut on first segment is ignored) */
+  transitionIn: TransitionType
+  /** Overlay text for text-based layouts */
+  overlayText?: string
+  /** Accent color for this segment (overrides edit style) */
+  accentColor?: string
+  /** Caption background opacity for this segment (overrides edit style) */
+  captionBgOpacity?: number
+  /** Path to a contextual image (for image-based layouts) */
+  imagePath?: string
+  /** Per-segment face crop override */
+  cropRect?: { x: number; y: number; width: number; height: number }
 }
 
 export interface RenderStitchedClipSegment {

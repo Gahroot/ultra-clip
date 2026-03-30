@@ -21,7 +21,7 @@ import { analyzeEmphasisHeuristic } from '../../word-emphasis'
 export const wordEmphasisFeature: RenderFeature = {
   name: 'word-emphasis',
 
-  async prepare(job: RenderClipJob, _batchOptions: RenderBatchOptions): Promise<PrepareResult> {
+  async prepare(job: RenderClipJob, _batchOptions: RenderBatchOptions, _onProgress?: (message: string, percent: number) => void): Promise<PrepareResult> {
     // Need word timestamps to compute emphasis
     const words = (job.wordTimestamps ?? []).filter(
       (w) => w.start >= job.startTime && w.end <= job.endTime

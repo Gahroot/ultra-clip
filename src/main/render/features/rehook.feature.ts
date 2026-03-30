@@ -113,7 +113,7 @@ export function createRehookFeature(): RenderFeature {
   return {
     name: 'rehook',
 
-    async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions): Promise<PrepareResult> {
+    async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions, _onProgress?: (message: string, percent: number) => void): Promise<PrepareResult> {
       // Guard: global rehook overlay must be enabled
       if (!batchOptions.rehookOverlay?.enabled) {
         return { tempFiles: [], modified: false }

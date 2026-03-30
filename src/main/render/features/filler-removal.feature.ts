@@ -110,7 +110,7 @@ export function createFillerRemovalFeature(): RenderFeature {
   return {
     name: 'filler-removal',
 
-    async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions): Promise<PrepareResult> {
+    async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions, onProgress?: (message: string, percent: number) => void): Promise<PrepareResult> {
       // Check: filler removal enabled?
       if (!batchOptions.fillerRemoval?.enabled) {
         return { tempFiles: [], modified: false }
@@ -191,6 +191,11 @@ export function createFillerRemovalFeature(): RenderFeature {
           const segDuration = seg.end - seg.start
           if (segDuration < 0.05) continue // skip micro segments
 
+          onProgress?.(
+            `Trimming segment ${i + 1}/${keepSegments.length}…`,
+            Math.round(((i + 1) / keepSegments.length) * 80)
+          )
+
           const trimPath = join(tmpdir(), `batchcontent-filler-trim-${ts}-${i}.mp4`)
           const absoluteStart = job.startTime + seg.start
           console.log(
@@ -217,6 +222,7 @@ export function createFillerRemovalFeature(): RenderFeature {
           // Actually, keep it in tempFiles — the orchestrator cleans up after render
         } else {
           console.log(`[FillerRemoval] Clip ${job.clipId}: concatenating ${trimmedPaths.length} segments`)
+          onProgress?.(`Concatenating ${trimmedPaths.length} segments…`, 85)
           await concatSegments(trimmedPaths, cleanPath)
         }
 

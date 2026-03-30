@@ -117,17 +117,15 @@ export const createClipsSlice: StateCreator<
           aiEndTime: prev?.aiEndTime ?? c.endTime
         }
       })
-      return { clips: { ...state.clips, [sourceId]: stamped } }
+      state.clips[sourceId] = stamped
     }),
 
   updateClipStatus: (sourceId, clipId, status) => {
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { status }) },
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { status })
     })
   },
 
@@ -135,74 +133,63 @@ export const createClipsSlice: StateCreator<
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { startTime, endTime, duration: endTime - startTime }) },
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { startTime, endTime, duration: endTime - startTime })
     })
   },
 
   updateClipThumbnail: (sourceId, clipId, thumbnail) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return { clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { thumbnail }) } }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { thumbnail })
     }),
 
   setClipCustomThumbnail: (sourceId, clipId, thumbnail) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { customThumbnail: thumbnail === null ? undefined : thumbnail }) }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { customThumbnail: thumbnail === null ? undefined : thumbnail })
     }),
 
   updateClipCrop: (sourceId, clipId, crop) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return { clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { cropRegion: crop }) } }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { cropRegion: crop })
     }),
 
   updateClipHookText: (sourceId, clipId, hookText) => {
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { hookText }) },
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { hookText })
     })
   },
 
   updateClipLoop: (sourceId, clipId, loopData) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return { clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, loopData) } }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, loopData)
     }),
 
   setClipVariants: (sourceId, clipId, variants) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return { clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { variants }) } }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { variants })
     }),
 
   updateVariantStatus: (sourceId, clipId, variantId, status) => {
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, (c) => ({
-            variants: c.variants?.map((v) => v.id === variantId ? { ...v, status } : v)
-          }))
-        },
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, (c) => ({
+        variants: c.variants?.map((v) => v.id === variantId ? { ...v, status } : v)
+      }))
     })
   },
 
@@ -210,13 +197,8 @@ export const createClipsSlice: StateCreator<
     _pushUndo(get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: sourceClips.map((c) => ({ ...c, status: 'approved' as const }))
-        },
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = sourceClips.map((c) => ({ ...c, status: 'approved' as const }))
     })
   },
 
@@ -235,8 +217,8 @@ export const createClipsSlice: StateCreator<
         return { ...c, status: 'rejected' as const }
       }
     })
-    set({
-      clips: { ...get().clips, [sourceId]: updated },
+    set((state) => {
+      state.clips[sourceId] = updated
     })
     return { approved: approvedCount, rejected: rejectedCount }
   },
@@ -245,13 +227,8 @@ export const createClipsSlice: StateCreator<
     _pushUndo(get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: sourceClips.map((c) => ({ ...c, status: 'rejected' as const }))
-        },
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = sourceClips.map((c) => ({ ...c, status: 'rejected' as const }))
     })
   },
 
@@ -260,18 +237,16 @@ export const createClipsSlice: StateCreator<
   reorderClips: (sourceId, activeId, overId) => {
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
+      if (!sourceClips) return
       const order = state.clipOrder[sourceId] ?? sourceClips.map((c) => c.id)
       const activeIndex = order.indexOf(activeId)
       const overIndex = order.indexOf(overId)
-      if (activeIndex === -1 || overIndex === -1) return {}
+      if (activeIndex === -1 || overIndex === -1) return
       const newOrder = [...order]
       newOrder.splice(activeIndex, 1)
       newOrder.splice(overIndex, 0, activeId)
-      return {
-        clipOrder: { ...state.clipOrder, [sourceId]: newOrder },
-        customOrder: true
-      }
+      state.clipOrder[sourceId] = newOrder
+      state.customOrder = true
     })
   },
 
@@ -287,7 +262,7 @@ export const createClipsSlice: StateCreator<
       } else {
         next.add(clipId)
       }
-      return { selectedClipIds: next }
+      state.selectedClipIds = next
     }),
 
   selectAllVisible: (clipIds) =>
@@ -300,7 +275,7 @@ export const createClipsSlice: StateCreator<
     _pushUndo(get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
+      if (!sourceClips) return
       const idSet = new Set(clipIds)
       const updated = sourceClips.map((c) => {
         if (!idSet.has(c.id)) return c
@@ -321,27 +296,23 @@ export const createClipsSlice: StateCreator<
         }
         return next
       })
-      return {
-        clips: { ...state.clips, [sourceId]: updated },
-      }
+      state.clips[sourceId] = updated
     })
   },
 
   setClipPartInfo: (sourceId, clipId, partInfo) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return { clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { partInfo }) } }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { partInfo })
     }),
 
   setClipOverride: (sourceId, clipId, key, value) => {
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, (c) => ({ overrides: { ...c.overrides, [key]: value } })) }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, (c) => ({ overrides: { ...c.overrides, [key]: value } }))
     })
   },
 
@@ -349,8 +320,8 @@ export const createClipsSlice: StateCreator<
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return { clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { overrides: undefined }) } }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { overrides: undefined })
     })
   },
 
@@ -358,102 +329,67 @@ export const createClipsSlice: StateCreator<
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, (c) => {
-            const start = c.aiStartTime ?? c.startTime
-            const end = c.aiEndTime ?? c.endTime
-            return { startTime: start, endTime: end, duration: end - start }
-          })
-        },
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, (c) => {
+        const start = c.aiStartTime ?? c.startTime
+        const end = c.aiEndTime ?? c.endTime
+        return { startTime: start, endTime: end, duration: end - start }
+      })
     })
   },
 
   rescoreClip: (sourceId, clipId, newScore, newReasoning, newHookText) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, (c) => ({
-            score: newScore,
-            reasoning: newReasoning,
-            ...(newHookText ? { hookText: newHookText } : {}),
-            originalScore: c.originalScore ?? c.score
-          }))
-        }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, (c) => ({
+        score: newScore,
+        reasoning: newReasoning,
+        ...(newHookText ? { hookText: newHookText } : {}),
+        originalScore: c.originalScore ?? c.score
+      }))
     }),
 
   setClipAIEditPlan: (sourceId, clipId, plan) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, { aiEditPlan: plan })
-        }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { aiEditPlan: plan })
     }),
 
   clearClipAIEditPlan: (sourceId, clipId) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, { aiEditPlan: undefined })
-        }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { aiEditPlan: undefined })
     }),
 
   setClipShots: (sourceId, clipId, shots) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, { shots })
-        }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { shots })
     }),
 
   clearClipShots: (sourceId, clipId) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, { shots: undefined })
-        }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { shots: undefined })
     }),
 
   setShotStyle: (sourceId, clipId, shotIndex, presetId) => {
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
+      if (!sourceClips) return
       const clip = sourceClips.find((c) => c.id === clipId)
-      if (!clip) return {}
+      if (!clip) return
       const existing = clip.shotStyles ?? []
       // Replace existing assignment for this shot index, or add new
       const updated = existing.filter((a) => a.shotIndex !== shotIndex)
       updated.push({ shotIndex, presetId })
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, { shotStyles: updated })
-        }
-      }
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { shotStyles: updated })
     })
   },
 
@@ -461,18 +397,13 @@ export const createClipsSlice: StateCreator<
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
+      if (!sourceClips) return
       const clip = sourceClips.find((c) => c.id === clipId)
-      if (!clip?.shotStyles) return {}
+      if (!clip?.shotStyles) return
       const updated = clip.shotStyles.filter((a) => a.shotIndex !== shotIndex)
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, {
-            shotStyles: updated.length > 0 ? updated : undefined
-          })
-        }
-      }
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, {
+        shotStyles: updated.length > 0 ? updated : undefined
+      })
     })
   },
 
@@ -480,15 +411,10 @@ export const createClipsSlice: StateCreator<
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, {
-            shotStyles: assignments.length > 0 ? assignments : undefined
-          })
-        }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, {
+        shotStyles: assignments.length > 0 ? assignments : undefined
+      })
     })
   },
 
@@ -496,78 +422,62 @@ export const createClipsSlice: StateCreator<
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, { shotStyles: undefined })
-        }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { shotStyles: undefined })
     })
   },
 
   setClipFillers: (sourceId, clipId, segments, timeSaved) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { fillerSegments: segments, fillerTimeSaved: timeSaved, restoredFillerIndices: [] }) }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { fillerSegments: segments, fillerTimeSaved: timeSaved, restoredFillerIndices: [] })
     }),
 
   toggleFillerRestore: (sourceId, clipId, segmentIndex) => {
     _pushClipUndo(sourceId, clipId, get(), set)
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: {
-          ...state.clips,
-          [sourceId]: updateItemById(sourceClips, clipId, (c) => {
-            const restored = [...(c.restoredFillerIndices ?? [])]
-            const idx = restored.indexOf(segmentIndex)
-            if (idx >= 0) restored.splice(idx, 1)
-            else restored.push(segmentIndex)
-            return { restoredFillerIndices: restored }
-          })
-        }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, (c) => {
+        const restored = [...(c.restoredFillerIndices ?? [])]
+        const idx = restored.indexOf(segmentIndex)
+        if (idx >= 0) restored.splice(idx, 1)
+        else restored.push(segmentIndex)
+        return { restoredFillerIndices: restored }
+      })
     })
   },
 
   clearClipFillers: (sourceId, clipId) =>
     set((state) => {
       const sourceClips = state.clips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        clips: { ...state.clips, [sourceId]: updateItemById(sourceClips, clipId, { fillerSegments: undefined, fillerTimeSaved: undefined, restoredFillerIndices: undefined }) }
-      }
+      if (!sourceClips) return
+      state.clips[sourceId] = updateItemById(sourceClips, clipId, { fillerSegments: undefined, fillerTimeSaved: undefined, restoredFillerIndices: undefined })
     }),
 
   // --- Stitched Clips ---
 
   setStitchedClips: (sourceId, clips) =>
-    set((state) => ({
-      stitchedClips: { ...state.stitchedClips, [sourceId]: clips }
-    })),
+    set((state) => {
+      state.stitchedClips[sourceId] = clips
+    }),
 
   updateStitchedClipStatus: (sourceId, clipId, status) => {
     _pushUndo(get(), set)
     set((state) => {
       const sourceClips = state.stitchedClips[sourceId]
-      if (!sourceClips) return {}
-      return {
-        stitchedClips: { ...state.stitchedClips, [sourceId]: updateItemById(sourceClips, clipId, { status }) },
-      }
+      if (!sourceClips) return
+      state.stitchedClips[sourceId] = updateItemById(sourceClips, clipId, { status })
     })
   },
 
   // --- Story Arcs ---
 
   setStoryArcs: (sourceId, arcs) =>
-    set((state) => ({
-      storyArcs: { ...state.storyArcs, [sourceId]: arcs }
-    })),
+    set((state) => {
+      state.storyArcs[sourceId] = arcs
+    }),
 
   // --- Computed ---
 
