@@ -47,9 +47,12 @@ export interface PipelineContext {
     setCachedSourcePath: (path: string) => void
     setClipAIEditPlan: (sourceId: string, clipId: string, plan: import('@shared/types').AIEditPlan) => void
     setSegments: (clipId: string, segments: VideoSegment[]) => void
+    updateSegment: (clipId: string, segmentId: string, updates: Partial<VideoSegment>) => void
   }
   /** Settings snapshot — read once at pipeline start. */
   geminiApiKey: string
+  /** fal.ai API key — empty string if not configured. */
+  falApiKey: string
   /** Processing config values. */
   processingConfig: {
     targetDuration: TargetDuration

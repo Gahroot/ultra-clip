@@ -158,6 +158,34 @@ export type ClipEndMode = 'loop-first' | 'completion-first' | 'cliffhanger'
 /** Animation style for word-level captions. */
 export type CaptionAnimation = 'captions-ai' | 'karaoke-fill' | 'word-pop' | 'fade-in' | 'glow' | 'word-box' | 'elastic-bounce' | 'typewriter' | 'impact-two' | 'cascade'
 
+/**
+ * Full caption visual identity for an EditStyle — self-contained, independent
+ * of the user's basic caption preset system.
+ */
+export interface CaptionStyleInput {
+  fontName: string
+  /** Fraction of frame height (e.g. 0.065). */
+  fontSize: number
+  /** Base text color hex (e.g. '#FFFFFF'). */
+  primaryColor: string
+  /** Currently-speaking word color hex. */
+  highlightColor: string
+  /** Outline/shadow color hex. */
+  outlineColor: string
+  /** Background box color with alpha (AARRGGBB, e.g. '#40000000'). */
+  backColor: string
+  outline: number
+  shadow: number
+  /** 1 = outline+shadow, 3 = opaque box behind text. */
+  borderStyle: number
+  wordsPerLine: number
+  animation: CaptionAnimation
+  /** Emphasis-level word color. Defaults to highlightColor. */
+  emphasisColor?: string
+  /** Supersize word color. Defaults to '#FFD700'. */
+  supersizeColor?: string
+}
+
 /** Word animation type for the live preview and CSS-based rendering. */
 export type WordAnimationType = 'none' | 'fade' | 'pop' | 'slide' | 'bounce' | 'typewriter'
 
@@ -773,6 +801,13 @@ export interface VideoSegment {
   transitionIn: TransitionType
   /** How this segment ends. */
   transitionOut: TransitionType
+  /**
+   * Absolute path to a locally-cached image file for this segment.
+   * Populated after fal.ai image generation during the segmenting pipeline stage.
+   * Used by the render pipeline when segmentStyleCategory is 'main-video-images'
+   * or 'fullscreen-image'. Absent until generation completes (or if key not set).
+   */
+  imagePath?: string
 }
 
 /** A complete edit style preset controlling the overall clip look & feel. */
@@ -792,7 +827,10 @@ export interface EditStyle {
   flashColor: string
   /** Target visual edits per second (controls segment pacing). */
   targetEditsPerSecond: number
-  captionStyle: 'white-clean' | 'colored-vibrant' | 'minimal-dark' | 'colored-wash'
+  /** Full caption visual identity — self-contained, overrides basic caption preset. */
+  captionStyle: CaptionStyleInput
   /** IDs of SegmentStyleVariants available in this edit style. */
   availableSegmentStyles: string[]
+  /** One-sentence summary of the style's visual character, shown as a tooltip. */
+  description?: string
 }

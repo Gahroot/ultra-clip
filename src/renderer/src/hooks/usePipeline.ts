@@ -47,6 +47,7 @@ export function usePipeline() {
   const setClipAIEditPlan = useStore((s) => s.setClipAIEditPlan)
   const setClipFillers = useStore((s) => s.setClipFillers)
   const setSegments = useStore((s) => s.setSegments)
+  const updateSegment = useStore((s) => s.updateSegment)
   const markStageCompleted = useStore((s) => s.markStageCompleted)
   const setFailedPipelineStage = useStore((s) => s.setFailedPipelineStage)
   const setCachedSourcePath = useStore((s) => s.setCachedSourcePath)
@@ -126,9 +127,11 @@ export function usePipeline() {
           setCachedSourcePath,
           setClipAIEditPlan,
           setClipFillers,
-          setSegments
+          setSegments,
+          updateSegment
         },
         geminiApiKey: currentState.settings.geminiApiKey,
+        falApiKey: currentState.settings.falApiKey,
         processingConfig: {
           targetDuration: currentState.processingConfig.targetDuration,
           enablePerfectLoop: currentState.processingConfig.enablePerfectLoop,
@@ -258,7 +261,7 @@ export function usePipeline() {
       updateClipTrim, updateClipThumbnail, addError, setClipVariants,
       setStitchedClips, setStoryArcs, setClipPartInfo, markStageCompleted,
       setFailedPipelineStage, setCachedSourcePath, clearPipelineCache,
-      snapshotSettings, setClipAIEditPlan, setClipFillers, setSegments
+      snapshotSettings, setClipAIEditPlan, setClipFillers, setSegments, updateSegment
     ]
   )
 

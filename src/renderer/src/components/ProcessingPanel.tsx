@@ -24,7 +24,9 @@ import {
   AlertCircle,
   Brain,
   Wand2,
-  Film
+  Film,
+  AlertTriangle,
+  ImageIcon
 } from 'lucide-react'
 import { useStore } from '../store'
 import type { PipelineStage, ClipCandidate } from '../store'
@@ -126,7 +128,7 @@ const STEPS: PipelineStepDef[] = [
   {
     id: 'segmenting',
     label: 'Segments',
-    description: 'Splitting clips into styled segments',
+    description: 'Splitting clips into styled segments & generating B-roll images',
     icon: <Film className="w-4 h-4" />
   },
   {
@@ -193,9 +195,13 @@ interface StepRowProps {
   isModelDownloading?: boolean
   /** 0–100 download progress within the model download phase */
   modelDownloadPercent?: number
+  /** True when the segmenting step is in the B-roll image generation sub-phase */
+  isGeneratingImages?: boolean
+  /** Progress text like "Generating B-roll images (2/5)…" */
+  imageGenerationText?: string
 }
 
-function StepRow({ step, status, progress, message, etaText, isModelDownloading, modelDownloadPercent }: StepRowProps) {
+function StepRow({ step, status, progress, message, etaText, isModelDownloading, modelDownloadPercent, isGeneratingImages, imageGenerationText }: StepRowProps) {
   const isActive = status === 'active'
 
   return (
@@ -314,6 +320,26 @@ function StepRow({ step, status, progress, message, etaText, isModelDownloading,
                   />
                   <p className="text-[10px] text-muted-foreground/70">
                     The model will be cached locally after first download.
+                  </p>
+                </motion.div>
+              )}
+
+              {/* B-roll image generation sub-indicator */}
+              {isGeneratingImages && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="rounded-md bg-violet-500/5 border border-violet-500/20 px-2.5 py-2 space-y-1"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <ImageIcon className="w-3 h-3 text-violet-500 shrink-0" />
+                    <span className="text-[11px] font-medium text-violet-500">
+                      {imageGenerationText ?? 'Generating B-roll images…'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/70">
+                    AI-generated images are cached locally for reuse.
                   </p>
                 </motion.div>
               )}
@@ -794,6 +820,12 @@ export function ProcessingPanel() {
           const modelDownloadPercent = isModelDownloading
             ? Math.round(((pipeline.percent - 20) / 30) * 100)
             : 0
+          // Detect B-roll image generation: segmenting step, percent in 80–100 range, message mentions "B-roll images"
+          const isGeneratingImages =
+            isActiveStep &&
+            step.id === 'segmenting' &&
+            pipeline.percent >= 80 &&
+            /B-roll images/i.test(pipeline.message)
           return (
             <div key={step.id}>
               <StepRow
@@ -804,6 +836,8 @@ export function ProcessingPanel() {
                 etaText={eta?.remaining}
                 isModelDownloading={isModelDownloading}
                 modelDownloadPercent={modelDownloadPercent}
+                isGeneratingImages={isGeneratingImages}
+                imageGenerationText={isGeneratingImages ? pipeline.message : undefined}
               />
               {i < visibleSteps.length - 1 && (
                 <div className="h-3 flex items-center" style={{ paddingLeft: '27px' }}>
@@ -855,6 +889,31 @@ export function ProcessingPanel() {
       <AnimatePresence>
         {needsGeminiKey && (isIdle || isError) && (
           <GeminiKeyPrompt onSave={setGeminiApiKey} />
+        )}
+      </AnimatePresence>
+
+      {/* fal.ai key missing — shown once while the segmenting stage is active */}
+      <AnimatePresence>
+        {stage === 'segmenting' && !settings.falApiKey && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 flex items-start gap-2.5"
+          >
+            <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0 space-y-0.5">
+              <p className="text-xs font-medium text-amber-500 flex items-center gap-1.5">
+                <ImageIcon className="w-3 h-3 shrink-0" />
+                B-roll images won&apos;t be generated
+              </p>
+              <p className="text-xs text-muted-foreground leading-snug">
+                fal.ai API key not set — add it in{' '}
+                <span className="text-foreground font-medium">Settings → AI Settings</span>{' '}
+                to auto-generate B-roll images for image segments.
+              </p>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

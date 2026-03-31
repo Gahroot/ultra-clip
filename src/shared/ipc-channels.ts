@@ -129,6 +129,10 @@ export const InvokeChannels = {
   // Filler Detection
   FILLER_DETECT: 'filler:detect',
 
+  // fal.ai Image Generation
+  FAL_GENERATE_IMAGE: 'fal:generateImage',
+  FAL_GENERATE_SEGMENT_IMAGE: 'fal:generateSegmentImage',
+
   // B-Roll
   BROLL_GENERATE_PLACEMENTS: 'broll:generatePlacements',
   BROLL_GENERATE_IMAGE: 'broll:generateImage',
@@ -173,6 +177,10 @@ export const InvokeChannels = {
   // Shell
   SHELL_OPEN_PATH: 'shell:openPath',
   SHELL_SHOW_ITEM_IN_FOLDER: 'shell:showItemInFolder',
+
+  // Image Cache
+  IMAGE_CACHE_CLEAR: 'image-cache:clear',
+  IMAGE_CACHE_STATS: 'image-cache:stats',
 
   // Settings Window
   SETTINGS_WINDOW_OPEN: 'settings-window:open',
