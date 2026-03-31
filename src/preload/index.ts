@@ -143,6 +143,10 @@ const api = {
   generateBRollImage: invoke(I.BROLL_GENERATE_IMAGE),
   regenerateBRollImage: invoke(I.BROLL_REGENERATE_IMAGE),
 
+  // fal.ai Image Generation
+  generateFalImage: invoke(I.FAL_GENERATE_IMAGE),
+  generateSegmentImage: invoke(I.FAL_GENERATE_SEGMENT_IMAGE),
+
   // Segment Editor
   splitSegmentsForEditor: invoke(I.SEGMENTS_SPLIT),
   assignSegmentStyles: invoke(I.SEGMENTS_ASSIGN_STYLES),
@@ -218,6 +222,10 @@ const api = {
 
   // Filler Detection
   detectFillers: invoke(I.FILLER_DETECT),
+
+  // Image Cache
+  clearImageCache: invoke(I.IMAGE_CACHE_CLEAR),
+  getImageCacheStats: invoke(I.IMAGE_CACHE_STATS),
 
   // Settings Window
   openSettingsWindow: invoke(I.SETTINGS_WINDOW_OPEN),

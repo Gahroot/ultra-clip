@@ -38,6 +38,10 @@ import { clearEditPlanCache, getEditPlanCacheSize } from '../ai/edit-plan-cache'
 import { segmentClipIntoShots } from '../shot-segmentation'
 import type { ShotSegmentationResult } from '@shared/types'
 import type { WordTimestamp } from '@shared/types'
+import { generateSegmentImage } from '../fal-image'
+import type { FalAspectRatio } from '../fal-image'
+import { generateAndCacheImage } from '../image-cache'
+import { buildSegmentImagePrompt } from '../image-prompt-builder'
 
 const AI_VALIDATION_MODEL = 'gemini-2.5-flash-lite'
 
@@ -375,6 +379,50 @@ export function registerAiHandlers(): void {
       config?: { targetDuration?: number; minDuration?: number; maxDuration?: number }
     ): ShotSegmentationResult => {
       return segmentClipIntoShots(words, clipStart, clipEnd, config)
+    })
+  )
+
+  // fal.ai — generate AI image for B-roll / segment layouts
+  ipcMain.handle(
+    Ch.Invoke.FAL_GENERATE_IMAGE,
+    wrapHandler(Ch.Invoke.FAL_GENERATE_IMAGE, async (
+      _event,
+      { prompt, aspectRatio, apiKey }: { prompt: string; aspectRatio: FalAspectRatio; apiKey: string }
+    ) => {
+      return generateSegmentImage(prompt, aspectRatio, apiKey)
+    })
+  )
+
+  // fal.ai — generate and cache a contextual B-roll image for a single segment
+  // Used by the segment-splitting pipeline stage after style assignment.
+  ipcMain.handle(
+    Ch.Invoke.FAL_GENERATE_SEGMENT_IMAGE,
+    wrapHandler(Ch.Invoke.FAL_GENERATE_SEGMENT_IMAGE, async (
+      _event,
+      {
+        brollSuggestion,
+        overlayText,
+        editStyleId,
+        accentColor,
+        segmentCategory,
+        apiKey
+      }: {
+        brollSuggestion: string
+        overlayText?: string
+        editStyleId: string
+        accentColor: string
+        segmentCategory: 'main-video-images' | 'fullscreen-image'
+        apiKey: string
+      }
+    ) => {
+      const prompt = buildSegmentImagePrompt({
+        brollSuggestion,
+        overlayText,
+        editStyleId,
+        accentColor,
+        segmentCategory
+      })
+      return generateAndCacheImage(prompt, '9:16', apiKey)
     })
   )
 }

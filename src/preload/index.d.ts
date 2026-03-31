@@ -922,6 +922,8 @@ interface VideoSegment {
   zoomKeyframes: ZoomKeyframe[]
   transitionIn: TransitionType
   transitionOut: TransitionType
+  /** Local file path of the fal.ai-generated B-roll image for this segment. */
+  imagePath?: string
 }
 
 interface EditStyle {
@@ -936,8 +938,11 @@ interface EditStyle {
   defaultTransition: TransitionType
   flashColor: string
   targetEditsPerSecond: number
-  captionStyle: 'white-clean' | 'colored-vibrant' | 'minimal-dark' | 'colored-wash'
+  /** Full caption visual identity — self-contained, overrides basic caption preset. */
+  captionStyle: CaptionStyleInput
   availableSegmentStyles: string[]
+  /** One-sentence summary of the style's visual character, shown as a tooltip. */
+  description?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -1266,6 +1271,21 @@ interface Api {
     source: 'ai-generated'
     videoPath: string
   } | null>
+  // fal.ai Image Generation
+  generateFalImage: (params: {
+    prompt: string
+    aspectRatio: '9:16' | '1:1' | '16:9'
+    apiKey: string
+  }) => Promise<string>
+  /** Generate a contextual B-roll image for one segment, with disk caching. */
+  generateSegmentImage: (params: {
+    brollSuggestion: string
+    overlayText?: string
+    editStyleId: string
+    accentColor: string
+    segmentCategory: 'main-video-images' | 'fullscreen-image'
+    apiKey: string
+  }) => Promise<string>
   // Emoji Burst / Reaction Overlay
   identifyEmojiMoments: (
     apiKey: string,
@@ -1366,6 +1386,10 @@ interface Api {
     settings: FillerDetectionSettings
   ) => Promise<FillerDetectionResult>
 
+  // Image Cache — management for AI-generated segment images
+  clearImageCache: () => Promise<{ deletedCount: number; freedBytes: number }>
+  getImageCacheStats: () => Promise<{ count: number; totalBytes: number; oldestDate: string }>
+
   // Settings Window
   openSettingsWindow: () => Promise<void>
   closeSettingsWindow: () => Promise<void>
@@ -1376,7 +1400,8 @@ interface Api {
   splitSegmentsForEditor: (
     clipId: string,
     words: WordTimestamp[],
-    targetSegmentDuration?: number
+    targetSegmentDuration?: number,
+    defaultTransition?: TransitionType
   ) => Promise<VideoSegment[]>
   assignSegmentStyles: (
     segments: VideoSegment[],
