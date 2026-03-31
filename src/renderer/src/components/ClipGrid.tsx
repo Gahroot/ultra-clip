@@ -640,8 +640,15 @@ export function ClipGrid() {
       precomputedFillerSegments: clip.fillerSegments && clip.fillerSegments.length > 0
         ? clip.fillerSegments.filter((_, i) => !(clip.restoredFillerIndices ?? []).includes(i))
         : undefined,
-      // Segmented clip data — when the clip has segments from the segment editor,
-      // populate segmentedSegments so the render pipeline routes to renderSegmentedClip()
+      // ── Render mode routing ──
+      // Two render paths exist:
+      //   1. Basic Clip Mode — no segments, uses global captionStyle from settings
+      //   2. AI Edit Mode — clip has segments (from segment editor), populates
+      //      segmentedSegments so the render pipeline routes to renderSegmentedClip()
+      //      which applies per-segment styles from the EditStyle system.
+      // The captionStyle from global settings is always passed as a fallback,
+      // but when segmentedSegments is populated, the segment renderer uses the
+      // EditStyle's caption approach instead.
       segmentedSegments: (() => {
         const segs = segments[clip.id]
         if (!segs || segs.length === 0) return undefined

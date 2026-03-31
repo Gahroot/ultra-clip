@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { ChevronDown, Check, Video, Type, Image, LayoutGrid, Maximize2 } from 'lucide-react'
-import { useStore, type VideoSegment, type SegmentStyleCategory, type SegmentStyleVariant } from '@/store'
+import { useStore, type VideoSegment, type SegmentStyleCategory, type SegmentStyleVariant, type TransitionType, type ZoomKeyframe } from '@/store'
 import { cn } from '@/lib/utils'
 
 // ---------------------------------------------------------------------------
@@ -48,14 +48,129 @@ const CATEGORY_ORDER: SegmentStyleCategory[] = [
 ]
 
 // ---------------------------------------------------------------------------
-// Placeholder preview builder — colored boxes representing each layout type
+// Module-level thumbnail cache (persists across re-renders)
+// ---------------------------------------------------------------------------
+
+const styleThumbCache = new Map<string, string>()
+
+// ---------------------------------------------------------------------------
+// Style preview with actual video frame thumbnail
+// ---------------------------------------------------------------------------
+
+function StylePreviewThumbnail({ variant, thumbnailSrc }: { variant: SegmentStyleVariant; thumbnailSrc: string }) {
+  const cat = variant.category
+
+  // Main video: show frame with different crop levels
+  if (cat === 'main-video') {
+    const isWide = variant.zoomStyle === 'drift' && variant.zoomIntensity < 1
+    const isTight = variant.name.toLowerCase().includes('tight')
+    const scale = isTight ? 1.8 : isWide ? 1.0 : 1.3
+    return (
+      <div className="w-full h-full rounded-md overflow-hidden bg-black">
+        <img
+          src={thumbnailSrc}
+          alt={variant.name}
+          className="w-full h-full object-cover"
+          style={{ transform: `scale(${scale})` }}
+          draggable={false}
+        />
+      </div>
+    )
+  }
+
+  // Main video + text: frame with text bar at bottom
+  if (cat === 'main-video-text') {
+    return (
+      <div className="w-full h-full rounded-md overflow-hidden bg-black relative">
+        <img
+          src={thumbnailSrc}
+          alt={variant.name}
+          className="w-full h-full object-cover"
+          style={{ transform: 'scale(1.3)' }}
+          draggable={false}
+        />
+        <div className="absolute bottom-0 left-0 right-0 h-[30%] bg-gradient-to-t from-black/80 to-transparent flex items-end justify-center pb-1">
+          <div className="flex gap-0.5">
+            <div className="w-6 h-1 rounded-full bg-white/60" />
+            <div className="w-4 h-1 rounded-full bg-white/40" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Main video + images: frame with mock overlay
+  if (cat === 'main-video-images') {
+    const isPip = variant.imageLayout === 'pip'
+    const isBehind = variant.imageLayout === 'behind-speaker'
+    return (
+      <div className="w-full h-full rounded-md overflow-hidden bg-black relative">
+        <img
+          src={thumbnailSrc}
+          alt={variant.name}
+          className="w-full h-full object-cover"
+          style={{ transform: 'scale(1.2)' }}
+          draggable={false}
+        />
+        {isPip && (
+          <div
+            className="absolute rounded-sm border border-indigo-400/40"
+            style={{ top: 3, right: 3, width: 16, height: 16, background: 'rgba(99, 102, 241, 0.35)', backdropFilter: 'blur(2px)' }}
+          />
+        )}
+        {isBehind && (
+          <div className="absolute inset-0 bg-indigo-500/15 border border-indigo-400/20 rounded-md" />
+        )}
+        {!isPip && !isBehind && (
+          <div className="absolute right-0 top-0 bottom-0 w-[40%] bg-indigo-500/25 border-l border-indigo-400/20" />
+        )}
+      </div>
+    )
+  }
+
+  // Fullscreen image: gradient placeholder (no video frame useful here)
+  if (cat === 'fullscreen-image') {
+    const isDark = variant.id.includes('dark')
+    return (
+      <div className="w-full h-full rounded-md flex items-center justify-center" style={{ background: isDark ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.08)' }}>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(148,163,184,0.35)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <circle cx="9" cy="9" r="1.5" />
+          <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+        </svg>
+      </div>
+    )
+  }
+
+  // Fullscreen text: text on darkened frame background
+  if (cat === 'fullscreen-text') {
+    return (
+      <div className="w-full h-full rounded-md overflow-hidden bg-black relative">
+        <img
+          src={thumbnailSrc}
+          alt={variant.name}
+          className="w-full h-full object-cover opacity-20"
+          style={{ transform: 'scale(1.1)', filter: 'blur(2px)' }}
+          draggable={false}
+        />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="font-black" style={{ fontSize: 20, color: 'rgba(255,255,255,0.7)', lineHeight: 1 }}>T</span>
+        </div>
+      </div>
+    )
+  }
+
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Fallback placeholder (used when no thumbnail available)
 // ---------------------------------------------------------------------------
 
 function VariantPlaceholder({ variant }: { variant: SegmentStyleVariant }) {
   const cat = variant.category
   const baseClass = 'w-full h-full rounded-md flex items-center justify-center'
 
-  // Main video: rectangle representing a person centered
   if (cat === 'main-video') {
     const isWide = variant.zoomStyle === 'drift' && variant.zoomIntensity < 1
     return (
@@ -73,32 +188,20 @@ function VariantPlaceholder({ variant }: { variant: SegmentStyleVariant }) {
     )
   }
 
-  // Main video + text: rectangle + large "T"
   if (cat === 'main-video-text') {
     return (
       <div className={baseClass} style={{ background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' }}>
         <div className="flex flex-col items-center gap-1">
           <div
             className="rounded-full"
-            style={{
-              width: 18,
-              height: 24,
-              background: 'rgba(148, 163, 184, 0.2)',
-              border: '1px solid rgba(148, 163, 184, 0.1)',
-            }}
+            style={{ width: 18, height: 24, background: 'rgba(148, 163, 184, 0.2)', border: '1px solid rgba(148, 163, 184, 0.1)' }}
           />
-          <span
-            className="font-bold"
-            style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 1 }}
-          >
-            T
-          </span>
+          <span className="font-bold" style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 1 }}>T</span>
         </div>
       </div>
     )
   }
 
-  // Main video + images: two rectangles side by side or PiP
   if (cat === 'main-video-images') {
     const isPip = variant.imageLayout === 'pip'
     const isBehind = variant.imageLayout === 'behind-speaker'
@@ -106,33 +209,20 @@ function VariantPlaceholder({ variant }: { variant: SegmentStyleVariant }) {
       return (
         <div className={cn(baseClass, 'relative')} style={{ background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' }}>
           <div className="flex items-center justify-center w-full h-full">
-            <div
-              className="rounded-full"
-              style={{ width: 22, height: 30, background: 'rgba(148, 163, 184, 0.2)', border: '1px solid rgba(148, 163, 184, 0.1)' }}
-            />
+            <div className="rounded-full" style={{ width: 22, height: 30, background: 'rgba(148, 163, 184, 0.2)', border: '1px solid rgba(148, 163, 184, 0.1)' }} />
           </div>
-          <div
-            className="absolute rounded-sm"
-            style={{ top: 4, right: 4, width: 14, height: 14, background: 'rgba(99, 102, 241, 0.3)', border: '1px solid rgba(99, 102, 241, 0.2)' }}
-          />
+          <div className="absolute rounded-sm" style={{ top: 4, right: 4, width: 14, height: 14, background: 'rgba(99, 102, 241, 0.3)', border: '1px solid rgba(99, 102, 241, 0.2)' }} />
         </div>
       )
     }
     if (isBehind) {
       return (
         <div className={cn(baseClass, 'relative')} style={{ background: 'rgba(99, 102, 241, 0.15)' }}>
-          <div
-            className="absolute rounded-sm"
-            style={{ inset: 4, background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.15)' }}
-          />
-          <div
-            className="absolute rounded-full"
-            style={{ bottom: 8, left: '50%', transform: 'translateX(-50%)', width: 22, height: 28, background: 'rgba(148, 163, 184, 0.25)', border: '1px solid rgba(148, 163, 184, 0.15)' }}
-          />
+          <div className="absolute rounded-sm" style={{ inset: 4, background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.15)' }} />
+          <div className="absolute rounded-full" style={{ bottom: 8, left: '50%', transform: 'translateX(-50%)', width: 22, height: 28, background: 'rgba(148, 163, 184, 0.25)', border: '1px solid rgba(148, 163, 184, 0.15)' }} />
         </div>
       )
     }
-    // side-by-side
     return (
       <div className={baseClass} style={{ background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' }}>
         <div className="flex gap-1 items-center justify-center w-full px-1">
@@ -143,7 +233,6 @@ function VariantPlaceholder({ variant }: { variant: SegmentStyleVariant }) {
     )
   }
 
-  // Fullscreen image: full rectangle with mountain icon feel
   if (cat === 'fullscreen-image') {
     const isDark = variant.id.includes('dark')
     return (
@@ -157,16 +246,10 @@ function VariantPlaceholder({ variant }: { variant: SegmentStyleVariant }) {
     )
   }
 
-  // Fullscreen text: large "T" centered
   if (cat === 'fullscreen-text') {
     return (
       <div className={baseClass} style={{ background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' }}>
-        <span
-          className="font-black"
-          style={{ fontSize: 24, color: 'rgba(255,255,255,0.55)', lineHeight: 1 }}
-        >
-          T
-        </span>
+        <span className="font-black" style={{ fontSize: 24, color: 'rgba(255,255,255,0.55)', lineHeight: 1 }}>T</span>
       </div>
     )
   }
@@ -183,11 +266,13 @@ function VariantCard({
   isSelected,
   accentColor,
   onClick,
+  thumbnailSrc,
 }: {
   variant: SegmentStyleVariant
   isSelected: boolean
   accentColor: string
   onClick: () => void
+  thumbnailSrc?: string
 }) {
   return (
     <button
@@ -206,7 +291,11 @@ function VariantCard({
     >
       {/* Thumbnail preview */}
       <div className="w-full relative" style={{ height: 60 }}>
-        <VariantPlaceholder variant={variant} />
+        {thumbnailSrc ? (
+          <StylePreviewThumbnail variant={variant} thumbnailSrc={thumbnailSrc} />
+        ) : (
+          <VariantPlaceholder variant={variant} />
+        )}
         {/* Selected checkmark badge */}
         {isSelected && (
           <div
@@ -237,6 +326,7 @@ function CategorySection({
   onStyleChange,
   segmentId,
   defaultExpanded,
+  thumbnailSrc,
 }: {
   category: SegmentStyleCategory
   variants: SegmentStyleVariant[]
@@ -245,6 +335,7 @@ function CategorySection({
   onStyleChange: (segmentId: string, variantId: string) => void
   segmentId: string
   defaultExpanded: boolean
+  thumbnailSrc?: string
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const config = CATEGORY_CONFIG[category]
@@ -275,6 +366,7 @@ function CategorySection({
                 isSelected={selectedStyleId === variant.id}
                 accentColor={accentColor}
                 onClick={() => onStyleChange(segmentId, variant.id)}
+                thumbnailSrc={thumbnailSrc}
               />
             ))}
           </div>
@@ -288,23 +380,110 @@ function CategorySection({
 // Main component
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Transition / Zoom option constants
+// ---------------------------------------------------------------------------
+
+const TRANSITION_OPTIONS: { value: TransitionType; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'hard-cut', label: 'Hard Cut' },
+  { value: 'crossfade', label: 'Crossfade' },
+  { value: 'flash-cut', label: 'Flash Cut' },
+  { value: 'color-wash', label: 'Color Wash' },
+]
+
+const ZOOM_EASING_OPTIONS: { value: string; label: string }[] = [
+  { value: 'linear', label: 'Linear' },
+  { value: 'ease-in', label: 'Ease In' },
+  { value: 'ease-out', label: 'Ease Out' },
+  { value: 'ease-in-out', label: 'Ease In-Out' },
+  { value: 'snap', label: 'Snap' },
+]
+
+// ---------------------------------------------------------------------------
+// Inline select component (compact dropdown)
+// ---------------------------------------------------------------------------
+
+function InlineSelect<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (v: T) => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-[10px] text-muted-foreground whitespace-nowrap">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as T)}
+        className="text-[10px] bg-muted/50 border border-border/50 rounded px-1.5 py-0.5 text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer min-w-[90px]"
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 interface SegmentStylePickerProps {
   segment: VideoSegment
   onStyleChange: (segmentId: string, variantId: string) => void
+  onSegmentSettingsChange?: (segmentId: string, updates: Partial<VideoSegment>) => void
   accentColor?: string
+  sourcePath?: string
 }
 
-export function SegmentStylePicker({ segment, onStyleChange, accentColor }: SegmentStylePickerProps) {
+export function SegmentStylePicker({ segment, onStyleChange, onSegmentSettingsChange, accentColor, sourcePath }: SegmentStylePickerProps) {
   const selectedEditStyleId = useStore((s) => s.selectedEditStyleId)
 
   // Load all available segment style variants
   const [allVariants, setAllVariants] = useState<SegmentStyleVariant[]>([])
   useEffect(() => {
     window.api.getSegmentStyleVariants().then(setAllVariants).catch(() => {
-      // Fallback: empty — section will show nothing
       setAllVariants([])
     })
   }, [])
+
+  // Fetch thumbnail for this segment's midpoint
+  const [thumbnailSrc, setThumbnailSrc] = useState<string | undefined>(undefined)
+  const lastThumbKeyRef = useRef<string>('')
+
+  useEffect(() => {
+    if (!sourcePath) return
+    const midTime = (segment.startTime + segment.endTime) / 2
+    const cacheKey = `${sourcePath}:${midTime.toFixed(2)}`
+
+    // Skip if same key
+    if (cacheKey === lastThumbKeyRef.current) return
+    lastThumbKeyRef.current = cacheKey
+
+    // Check cache
+    const cached = styleThumbCache.get(cacheKey)
+    if (cached) {
+      setThumbnailSrc(cached)
+      return
+    }
+
+    let cancelled = false
+    window.api.getThumbnail(sourcePath, midTime).then((base64) => {
+      if (cancelled) return
+      styleThumbCache.set(cacheKey, base64)
+      setThumbnailSrc(base64)
+    }).catch(() => {
+      // Failed to generate thumbnail — leave as undefined
+    })
+    return () => { cancelled = true }
+  }, [sourcePath, segment.startTime, segment.endTime])
 
   // Group variants by category
   const groupedVariants = useMemo(() => {
@@ -353,9 +532,68 @@ export function SegmentStylePicker({ segment, onStyleChange, accentColor }: Segm
               onStyleChange={onStyleChange}
               segmentId={segment.id}
               defaultExpanded={CATEGORY_CONFIG[cat].defaultExpanded}
+              thumbnailSrc={thumbnailSrc}
             />
           )
         })}
+
+        {/* ── Segment Settings (Transitions & Zoom) ── */}
+        {onSegmentSettingsChange && (
+          <div className="border-t border-border/50 px-3 py-3">
+            <span className="text-xs font-semibold text-foreground">Segment Settings</span>
+            <div className="mt-2 flex flex-col gap-2">
+              <InlineSelect<TransitionType>
+                label="Transition In"
+                value={segment.transitionIn}
+                options={TRANSITION_OPTIONS}
+                onChange={(v) => onSegmentSettingsChange(segment.id, { transitionIn: v })}
+              />
+              <InlineSelect<TransitionType>
+                label="Transition Out"
+                value={segment.transitionOut}
+                options={TRANSITION_OPTIONS}
+                onChange={(v) => onSegmentSettingsChange(segment.id, { transitionOut: v })}
+              />
+              <InlineSelect<string>
+                label="Zoom Easing"
+                value={segment.zoomKeyframes[0]?.easing ?? 'ease-in-out'}
+                options={ZOOM_EASING_OPTIONS}
+                onChange={(v) => {
+                  const kf = segment.zoomKeyframes[0]
+                  const base = kf ?? { time: 0, scale: 1.0, x: 0.5, y: 0.5, easing: 'ease-in-out' as const }
+                  onSegmentSettingsChange(segment.id, {
+                    zoomKeyframes: [{ ...base, easing: v as ZoomKeyframe['easing'] }],
+                  })
+                }}
+              />
+              {/* Zoom Scale slider */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">Zoom Scale</span>
+                <div className="flex items-center gap-1.5 min-w-[90px]">
+                  <input
+                    type="range"
+                    min={1.0}
+                    max={1.3}
+                    step={0.01}
+                    value={segment.zoomKeyframes[0]?.scale ?? 1.0}
+                    onChange={(e) => {
+                      const scale = parseFloat(e.target.value)
+                      const kf = segment.zoomKeyframes[0]
+                      const base = kf ?? { time: 0, scale: 1.0, x: 0.5, y: 0.5, easing: 'ease-in-out' as const }
+                      onSegmentSettingsChange(segment.id, {
+                        zoomKeyframes: [{ ...base, scale }],
+                      })
+                    }}
+                    className="flex-1 h-1 accent-indigo-500 cursor-pointer"
+                  />
+                  <span className="text-[9px] text-muted-foreground w-8 text-right">
+                    {((segment.zoomKeyframes[0]?.scale ?? 1.0)).toFixed(2)}x
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

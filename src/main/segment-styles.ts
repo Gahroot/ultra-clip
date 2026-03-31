@@ -115,6 +115,18 @@ export const SEGMENT_STYLE_VARIANTS: SegmentStyleVariant[] = [
     imageLayout: 'behind-speaker',
     imagePlacement: 'bottom'
   },
+  {
+    id: 'main-video-images-topbottom',
+    category: 'main-video-images',
+    name: 'Top/Bottom',
+    description:
+      'Speaker fills the top half (960px), contextual image fills the bottom half (960px). The most common Captions.ai layout for engagement — keeps the speaker visible while adding visual context below.',
+    zoomStyle: 'drift',
+    zoomIntensity: 1.05,
+    captionPosition: 'center',
+    imageLayout: 'top-bottom',
+    imagePlacement: 'bottom'
+  },
 
   // ── Category: fullscreen-image (2 variants) ────────────────────────────
 
