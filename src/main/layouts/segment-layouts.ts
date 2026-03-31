@@ -390,6 +390,36 @@ function buildMainVideoImagesSide(params: SegmentLayoutParams): SegmentLayoutRes
 }
 
 /**
+ * main-video-images-topbottom: Speaker fills top half (960px), contextual image fills bottom half.
+ * Input 0: speaker video, Input 1: contextual image.
+ * Optional accent-colored divider line at the split point.
+ */
+function buildMainVideoImagesTopBottom(params: SegmentLayoutParams): SegmentLayoutResult {
+  const w = params.width   // 1080
+  const h = params.height  // 1920
+  const halfH = roundEven(h / 2) // 960
+
+  const accentColor = hexToFFmpeg(params.accentColor ?? '#FFD700')
+  const dividerH = 4 // px — thin accent line at the split
+
+  const speakerChain = buildSpeakerCropScale(params, w, halfH, 1.0)
+
+  const parts: string[] = [
+    // Top half: speaker cropped and scaled to 1080×960
+    `[0:v]${speakerChain}[top]`,
+    // Bottom half: image scaled to cover-fill 1080×960 (no letterbox)
+    `[1:v]scale=${w}:${halfH}:force_original_aspect_ratio=increase,crop=${w}:${halfH}[bottom]`,
+    // Stack vertically to produce 1080×1920
+    `[top][bottom]vstack=inputs=2[stacked]`,
+    // Draw accent divider at the split point (y = halfH - dividerH/2)
+    `[stacked]drawbox=x=0:y=${halfH - Math.round(dividerH / 2)}:w=${w}:h=${dividerH}:color=${accentColor}@0.90:t=fill[composed]`,
+    finalize('composed')
+  ]
+
+  return { filterComplex: parts.join(';'), inputCount: 2 }
+}
+
+/**
  * main-video-images-behind: Image as background, speaker in smaller window center-bottom.
  * Input 0: contextual image (background), Input 1: speaker video.
  *
@@ -576,6 +606,8 @@ export async function buildSegmentLayout(
       return buildMainVideoImagesSide(params)
     case 'main-video-images-behind':
       return buildMainVideoImagesBehind(params)
+    case 'main-video-images-topbottom':
+      return buildMainVideoImagesTopBottom(params)
 
     // ── fullscreen-image ────────────────────────────────────────────────
     case 'fullscreen-image-dark':

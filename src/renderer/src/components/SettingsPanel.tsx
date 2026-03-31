@@ -654,13 +654,11 @@ function EditStyleStrip() {
   if (styles.length === 0) return null
 
   return (
-    <div className="shrink-0 border-b border-border px-3 py-3">
-      <EditStyleSelector
-        styles={styles}
-        selectedStyleId={selectedEditStyleId}
-        onSelectStyle={setSelectedEditStyleId}
-      />
-    </div>
+    <EditStyleSelector
+      styles={styles}
+      selectedStyleId={selectedEditStyleId}
+      onSelectStyle={setSelectedEditStyleId}
+    />
   )
 }
 
@@ -1104,8 +1102,7 @@ export function SettingsPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* ── Edit Style Selector ── */}
-      <EditStyleStrip />
+      {/* EditStyleStrip moved into the Effects tab as "AI Edit Style" section */}
 
       {/* ── Settings Changed Warning Banner ── */}
       {settingsSnapshot && settingsChanged && changedSettingNames.length > 0 && (
@@ -1990,6 +1987,20 @@ export function SettingsPanel() {
             </p>
           </div>
         </div>
+        </div>
+
+        {/* AI Edit Style — applies to clips with AI Edit enabled */}
+        <div className="rounded-lg border border-border bg-card/50 p-5 space-y-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Wand2 className="w-3.5 h-3.5 text-muted-foreground" />
+              <SectionHeader>AI Edit Style</SectionHeader>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Applies to clips with AI Edit enabled. Basic clips use the Caption Style from the Style tab instead.
+            </p>
+            <EditStyleStrip />
+          </div>
         </div>
 
             </div>

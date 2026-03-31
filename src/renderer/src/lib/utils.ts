@@ -88,6 +88,22 @@ export function estimateClipSize(
   return Math.round(totalDuration * RATE)
 }
 
+// ---------------------------------------------------------------------------
+// AI Edit mode detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true if a clip is operating in "AI Edit" mode rather than basic
+ * clip mode. A clip is in AI Edit mode when it has an aiEditPlan OR when
+ * segments have been created for it in the segment editor.
+ */
+export function isAIEditClip(
+  clip: { aiEditPlan?: unknown },
+  segments?: unknown[]
+): boolean {
+  return !!clip.aiEditPlan || (Array.isArray(segments) && segments.length > 0)
+}
+
 /** Format bytes as a human-readable file size: "8.2 MB", "1.1 GB", etc. */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`

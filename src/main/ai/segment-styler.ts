@@ -122,7 +122,7 @@ RULES:
 - Last segment: prefer main-video (call to action, personal close)
 - Short segments (<3 seconds) work well as fullscreen-text or fullscreen-image
 - Longer segments (>6 seconds) work better as main-video or main-video-images
-- When the speaker describes a concept/thing/place, use main-video-images
+- When the speaker describes a concept/thing/place, use main-video-images; prefer "main-video-images-topbottom" when the concept can be visualized (products, places, data, ideas) — it keeps the speaker visible while showing context below
 - When the speaker makes a bold claim or quote, consider fullscreen-text
 - When the speaker tells a personal story, use main-video (tight or normal)
 - Energy level "${editStyle.energy}" means ${editStyle.energy === 'high' ? 'more variety, more fullscreen cuts, faster pacing' : editStyle.energy === 'low' ? 'more main-video, fewer cuts, calmer pacing' : 'balanced variety between speaker and visual cuts'}

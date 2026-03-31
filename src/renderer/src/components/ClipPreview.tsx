@@ -23,7 +23,8 @@ import {
   Eye,
   RotateCw,
   Palette,
-  Type
+  Type,
+  Wand2
 } from 'lucide-react'
 import {
   Dialog,
@@ -36,7 +37,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn, getScoreDescription } from '@/lib/utils'
+import { cn, getScoreDescription, isAIEditClip } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -424,6 +425,7 @@ export function ClipPreview({
   const [origEnd] = useState(clip.endTime)
 
   const videoRef = useRef<HTMLVideoElement>(null)
+  const userSeekingRef = useRef(false)
 
   // Source video native dimensions (set on loadedmetadata)
   const [videoDims, setVideoDims] = useState<{ w: number; h: number } | null>(null)
@@ -500,11 +502,19 @@ export function ClipPreview({
     return () => { cancelled = true }
   }, [open, sourcePath, sliderMin, sliderMax]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Auto-split into segments when dialog opens ──
+  // ── Auto-split into segments when dialog opens (AI Edit clips only) ──
+  // Only auto-split if the clip is already in AI Edit mode (has aiEditPlan
+  // or existing segments). Basic clips stay in the simple layout until the
+  // user explicitly clicks "Switch to AI Edit".
   useEffect(() => {
     if (!open) return
     // Already have segments → show editor immediately
     if (clipSegments.length > 0) return
+    // Not in AI Edit mode → use basic layout, don't auto-split
+    if (!isAIEditClip(clip, clipSegments)) {
+      setUseOldLayout(true)
+      return
+    }
     // Need word timestamps to split
     const words = clip.wordTimestamps?.filter((w) => w.start >= localStart && w.end <= localEnd)
     if (!words || words.length === 0) {
@@ -535,6 +545,7 @@ export function ClipPreview({
   // ── Auto-update selectedSegmentIndex when video plays through boundary ──
   useEffect(() => {
     if (clipSegments.length === 0) return
+    if (userSeekingRef.current) return
     for (let i = 0; i < clipSegments.length; i++) {
       if (currentTime >= clipSegments[i].startTime && currentTime <= clipSegments[i].endTime) {
         if (i !== selectedSegmentIndex) {
@@ -544,6 +555,15 @@ export function ClipPreview({
       }
     }
   }, [currentTime, clipSegments, selectedSegmentIndex, storeSetSelectedSegmentIndex])
+
+  // ── Load edit styles into Zustand if not yet populated ──
+  useEffect(() => {
+    if (!open) return
+    if (editStyles.length > 0) return
+    window.api.getEditStyles().then((styles) => {
+      useStore.getState().setEditStyles(styles)
+    }).catch(() => {})
+  }, [open, editStyles.length])
 
   // ── Reset segment editor state when dialog closes ──
   useEffect(() => {
@@ -649,6 +669,7 @@ export function ClipPreview({
   // ── Segment editor handlers ──
 
   const handleSelectSegment = useCallback((index: number) => {
+    userSeekingRef.current = true
     storeSetSelectedSegmentIndex(index)
     // Seek video to segment start
     const seg = clipSegments[index]
@@ -656,29 +677,27 @@ export function ClipPreview({
       const seekTo = showPreview ? Math.max(0, seg.startTime - localStart) : seg.startTime
       videoRef.current.currentTime = seekTo
       setCurrentTime(seg.startTime)
+      // Release guard after seek settles
+      setTimeout(() => { userSeekingRef.current = false }, 200)
     }
   }, [clipSegments, showPreview, localStart, storeSetSelectedSegmentIndex])
 
   const handleSegmentStyleChange = useCallback((segmentId: string, variantId: string) => {
-    window.api.updateSegmentStyle(segmentId, variantId)
-      .then((updated: VideoSegment) => {
-        storeUpdateSegment(clip.id, segmentId, updated)
-      })
-      .catch(() => {
-        // Optimistic: still update locally
-        storeUpdateSegment(clip.id, segmentId, { segmentStyleId: variantId })
-      })
+    userSeekingRef.current = true
+    setTimeout(() => { userSeekingRef.current = false }, 300)
+    storeUpdateSegment(clip.id, segmentId, { segmentStyleId: variantId })
+  }, [clip.id, storeUpdateSegment])
+
+  const handleSegmentSettingsChange = useCallback((segmentId: string, updates: Partial<VideoSegment>) => {
+    userSeekingRef.current = true
+    setTimeout(() => { userSeekingRef.current = false }, 300)
+    storeUpdateSegment(clip.id, segmentId, updates)
   }, [clip.id, storeUpdateSegment])
 
   const handleSegmentCaptionUpdate = useCallback((segmentId: string, newText: string) => {
-    window.api.updateSegmentCaption(segmentId, newText)
-      .then((updated: VideoSegment) => {
-        storeUpdateSegment(clip.id, segmentId, updated)
-      })
-      .catch(() => {
-        // Optimistic update
-        storeUpdateSegment(clip.id, segmentId, { captionText: newText })
-      })
+    userSeekingRef.current = true
+    setTimeout(() => { userSeekingRef.current = false }, 300)
+    storeUpdateSegment(clip.id, segmentId, { captionText: newText })
   }, [clip.id, storeUpdateSegment])
 
   const handleEditStyleSelect = useCallback((styleId: string) => {
@@ -761,8 +780,18 @@ export function ClipPreview({
   }, [settings.geminiApiKey, clip, localStart, localEnd, sourceId, rescoreClip])
 
   // Render this clip (applies pending edits first, then starts render)
+  const renderTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   const handleRenderThisClip = useCallback(async () => {
-    if (isRendering || isSingleRenderActive) return
+    if (isSingleRenderActive) return
+    if (isRendering) {
+      addError({ source: 'render', message: 'A batch render is in progress. Please wait or cancel it first.' })
+      return
+    }
+    // Reset error state so user can retry
+    if (singleRenderStatus === 'error') {
+      setSingleRenderState({ clipId: null, status: 'idle', progress: 0, outputPath: null, error: null })
+    }
     // Apply pending edits to store first
     updateClipTrim(sourceId, clip.id, localStart, localEnd)
     if (localHook !== clip.hookText) {
@@ -790,22 +819,35 @@ export function ClipPreview({
     }
     setSingleRenderState({ clipId: clip.id, progress: 0, status: 'rendering', outputPath: null, error: null })
     const cleanups: Array<() => void> = []
+    // Safety timeout — if no progress within 30s, show error
+    if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current)
+    renderTimeoutRef.current = setTimeout(() => {
+      const st = useStore.getState()
+      if (st.singleRenderProgress === 0 && st.singleRenderStatus === 'rendering') {
+        setSingleRenderState({ status: 'error', error: 'Render timed out — no progress received. Try the batch render button instead.' })
+      }
+    }, 30000)
     cleanups.push(window.api.onRenderClipProgress((data) => {
       if (data.clipId !== clip.id) return
+      if (renderTimeoutRef.current) { clearTimeout(renderTimeoutRef.current); renderTimeoutRef.current = null }
       setSingleRenderState({ progress: data.percent })
     }))
     cleanups.push(window.api.onRenderClipDone((data) => {
       if (data.clipId !== clip.id) return
+      if (renderTimeoutRef.current) { clearTimeout(renderTimeoutRef.current); renderTimeoutRef.current = null }
       setSingleRenderState({ status: 'done', progress: 100, outputPath: data.outputPath })
     }))
     cleanups.push(window.api.onRenderClipError((data) => {
       if (data.clipId !== clip.id) return
+      if (renderTimeoutRef.current) { clearTimeout(renderTimeoutRef.current); renderTimeoutRef.current = null }
       setSingleRenderState({ status: 'error', error: data.error })
     }))
     cleanups.push(window.api.onRenderBatchDone(() => {
+      if (renderTimeoutRef.current) { clearTimeout(renderTimeoutRef.current); renderTimeoutRef.current = null }
       for (const cleanup of cleanups) cleanup()
     }))
     cleanups.push(window.api.onRenderCancelled(() => {
+      if (renderTimeoutRef.current) { clearTimeout(renderTimeoutRef.current); renderTimeoutRef.current = null }
       setSingleRenderState({ clipId: null, status: 'idle', progress: 0, outputPath: null, error: null })
       for (const cleanup of cleanups) cleanup()
     }))
@@ -827,11 +869,12 @@ export function ClipPreview({
         geminiApiKey: settings.geminiApiKey || undefined,
       })
     } catch (err) {
+      if (renderTimeoutRef.current) { clearTimeout(renderTimeoutRef.current); renderTimeoutRef.current = null }
       setSingleRenderState({ status: 'error', error: err instanceof Error ? err.message : String(err) })
       for (const cleanup of cleanups) cleanup()
       addError({ source: 'render', message: `Failed to render clip: ${err instanceof Error ? err.message : String(err)}` })
     }
-  }, [isRendering, isSingleRenderActive, settings, clip, sourceId, sourcePath, localStart, localEnd, localHook, updateClipTrim, updateClipHookText, setSingleRenderState, addError])
+  }, [isRendering, isSingleRenderActive, singleRenderStatus, settings, clip, sourceId, sourcePath, localStart, localEnd, localHook, updateClipTrim, updateClipHookText, setSingleRenderState, addError])
 
   // Boundary change magnitude (vs original AI boundaries)
   const boundaryChangedSignificantly =
@@ -1083,7 +1126,7 @@ export function ClipPreview({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className={cn('w-full p-0 overflow-hidden gap-0 max-h-[90vh]', hasSegments && !useOldLayout ? 'max-w-5xl' : 'max-w-2xl overflow-y-auto')}>
+      <DialogContent className={cn('w-full p-0 overflow-hidden gap-0 max-h-[90vh]', hasSegments && !useOldLayout ? 'max-w-6xl' : 'max-w-2xl overflow-y-auto')}>
         {/* Segment loading overlay */}
         {segmentLoading && (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -1189,6 +1232,11 @@ export function ClipPreview({
                     {previewLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
                     Preview
                   </button>
+                  {previewError && (
+                    <span className="text-[10px] text-red-400 truncate max-w-[200px]" title={previewError}>
+                      ⚠ {previewError}
+                    </span>
+                  )}
                 </div>
 
                 {/* Video player */}
@@ -1205,6 +1253,7 @@ export function ClipPreview({
                   return (
                     <div
                       className="relative flex-1 bg-black flex items-center justify-center cursor-pointer min-h-0"
+                      style={{ minHeight: isOutputView ? 340 : undefined }}
                       onClick={handleVideoClick}
                     >
                       <div
@@ -1213,7 +1262,7 @@ export function ClipPreview({
                           isOutputView ? 'mx-auto rounded-sm border border-border/30' : 'w-full'
                         )}
                         style={isOutputView
-                          ? { aspectRatio: '9/16', maxHeight: 'calc(100vh - 320px)' }
+                          ? { aspectRatio: '9/16', height: 'min(100%, calc(100vh - 280px))', minHeight: 340 }
                           : { aspectRatio: '16/9' }
                         }
                       >
@@ -1239,10 +1288,8 @@ export function ClipPreview({
                             if (videoRef.current) {
                               const seekTo = showPreview ? 0 : localStart
                               videoRef.current.currentTime = seekTo
-                              setCurrentTime(seekTo)
-                              if (!showPreview) {
-                                setVideoDims({ w: videoRef.current.videoWidth, h: videoRef.current.videoHeight })
-                              }
+                              setCurrentTime(showPreview ? localStart : seekTo)
+                              setVideoDims({ w: videoRef.current.videoWidth, h: videoRef.current.videoHeight })
                             }
                           }}
                         />
@@ -1298,11 +1345,17 @@ export function ClipPreview({
                   <span className="text-[10px] text-muted-foreground tabular-nums font-mono">
                     {formatTime(relativeTime)}
                   </span>
+                  <div className="flex-1" />
+                  {videoDims && videoDims.w > 0 && (
+                    <span className="text-[9px] text-muted-foreground/60 tabular-nums font-mono">
+                      {videoDims.w}×{videoDims.h} · {(videoDims.w / videoDims.h).toFixed(2)}
+                    </span>
+                  )}
                 </div>
               </div>
 
               {/* Right: Style + Caption sidebar */}
-              <div className="w-72 border-l border-border flex flex-col overflow-hidden shrink-0">
+              <div className="w-80 border-l border-border flex flex-col overflow-hidden shrink-0">
                 {/* Tab bar */}
                 <div className="flex border-b border-border shrink-0">
                   <button
@@ -1335,7 +1388,9 @@ export function ClipPreview({
                     <SegmentStylePicker
                       segment={selectedSegment}
                       onStyleChange={handleSegmentStyleChange}
+                      onSegmentSettingsChange={handleSegmentSettingsChange}
                       accentColor={activeEditStyle?.accentColor ?? undefined}
+                      sourcePath={sourcePath}
                     />
                   )}
                   {sidebarTab === 'captions' && (
@@ -1392,7 +1447,7 @@ export function ClipPreview({
                 </div>
               )}
               <div className="flex-1" />
-              <Button size="sm" variant="default" onClick={handleRenderThisClip} disabled={isRendering || (isSingleRenderActive && !isThisClipRendering)} className="gap-1 text-[10px] h-7">
+              <Button size="sm" variant="default" onClick={handleRenderThisClip} disabled={isSingleRenderActive && !isThisClipRendering} className="gap-1 text-[10px] h-7">
                 {isThisClipRendering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3 fill-current" />}
                 {isThisClipRendering ? 'Rendering…' : 'Render'}
               </Button>
@@ -2235,6 +2290,42 @@ export function ClipPreview({
             </div>
           )}
         </div>
+
+        {/* Switch to AI Edit — only for basic clips that have word timestamps */}
+        {!isAIEditClip(clip, clipSegments) && clip.wordTimestamps && clip.wordTimestamps.length > 0 && (
+          <div className="border-t border-border px-5 py-3">
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full gap-2 text-xs h-8 border-violet-500/30 text-violet-400 hover:bg-violet-500/10 hover:text-violet-300"
+              disabled={segmentLoading}
+              onClick={() => {
+                const words = clip.wordTimestamps?.filter((w) => w.start >= localStart && w.end <= localEnd)
+                if (!words || words.length === 0) return
+                setSegmentLoading(true)
+                setUseOldLayout(false)
+                window.api.splitSegmentsForEditor(clip.id, words)
+                  .then((segs: VideoSegment[]) => {
+                    storeSetSegments(clip.id, segs)
+                    setSegmentLoading(false)
+                    if (!selectedEditStyleId) {
+                      setShowStyleModal(true)
+                    }
+                  })
+                  .catch(() => {
+                    setUseOldLayout(true)
+                    setSegmentLoading(false)
+                  })
+              }}
+            >
+              {segmentLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+              {segmentLoading ? 'Splitting into segments…' : 'Switch to AI Edit'}
+            </Button>
+            <p className="text-[10px] text-muted-foreground/50 text-center mt-1.5">
+              Splits clip into segments for per-shot styling, B-Roll placement, and advanced editing
+            </p>
+          </div>
+        )}
 
         {/* Clip-level render overrides */}
         <div className="border-t border-border">

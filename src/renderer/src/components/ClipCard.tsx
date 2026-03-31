@@ -13,7 +13,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { cn, estimateClipSize, formatFileSize, getScoreDescription } from '@/lib/utils'
+import { cn, estimateClipSize, formatFileSize, getScoreDescription, isAIEditClip } from '@/lib/utils'
 import { useStore } from '../store'
 import type { ClipCandidate, ClipRenderSettings } from '../store'
 import { EditableTime, formatTime } from './EditableTime'
@@ -107,6 +107,7 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
   const singleRenderError = useStore((s) => s.singleRenderError)
   const settings = useStore((s) => s.settings)
   const searchQuery = useStore((s) => s.searchQuery)
+  const clipSegments = useStore((s) => s.segments[clip.id])
 
   const selectedClipIds = useStore((s) => s.selectedClipIds)
   const toggleClipSelection = useStore((s) => s.toggleClipSelection)
@@ -654,22 +655,28 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
                   {clip.loopScore}
                 </Badge>
               )}
-              {clip.aiEditPlan && (
+              {isAIEditClip(clip, clipSegments) && (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Badge
                         variant="outline"
                         className="text-xs flex items-center gap-1 border-violet-500/40 text-violet-400 bg-violet-500/10 cursor-pointer hover:bg-violet-500/20 transition-colors"
-                        onClick={() => setShowEditPlanPanel((v) => !v)}
+                        onClick={() => clip.aiEditPlan && setShowEditPlanPanel((v) => !v)}
                       >
                         <Wand2 className="w-3 h-3" />
                         AI Edit
                       </Badge>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="max-w-[260px]">
-                      <p className="text-xs">AI Edit Plan applied — {clip.aiEditPlan.wordEmphasis.length} emphasis tags, {clip.aiEditPlan.brollSuggestions.length} B-Roll suggestions{clip.aiEditPlan.brollSuggestions.length > 0 && ` (${clip.aiEditPlan.brollSuggestions.map((b) => ('suggestedSource' in b && b.suggestedSource === 'ai-generated') ? '🖼️' : '📹').join('')})`}, {clip.aiEditPlan.sfxSuggestions.length} SFX hits</p>
-                      <p className="text-[10px] text-muted-foreground mt-1">Click to view details</p>
+                      {clip.aiEditPlan ? (
+                        <>
+                          <p className="text-xs">AI Edit Plan applied — {clip.aiEditPlan.wordEmphasis.length} emphasis tags, {clip.aiEditPlan.brollSuggestions.length} B-Roll suggestions{clip.aiEditPlan.brollSuggestions.length > 0 && ` (${clip.aiEditPlan.brollSuggestions.map((b) => ('suggestedSource' in b && b.suggestedSource === 'ai-generated') ? '🖼️' : '📹').join('')})`}, {clip.aiEditPlan.sfxSuggestions.length} SFX hits</p>
+                          <p className="text-[10px] text-muted-foreground mt-1">Click to view details</p>
+                        </>
+                      ) : (
+                        <p className="text-xs">Clip has AI Edit segments — uses segment editor &amp; edit style for rendering</p>
+                      )}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

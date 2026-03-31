@@ -26,6 +26,7 @@ const MEDIUM_ENERGY_SEGMENTS = [
   'main-video-text-lower',
   'main-video-text-upper',
   'main-video-images-pip',
+  'main-video-images-topbottom',
   'fullscreen-text-quote'
 ]
 
@@ -36,6 +37,7 @@ const HIGH_ENERGY_SEGMENTS = [
   'main-video-text-upper',
   'main-video-images-pip',
   'main-video-images-side',
+  'main-video-images-topbottom',
   'fullscreen-image-fill',
   'fullscreen-text-quote',
   'fullscreen-text-bold'

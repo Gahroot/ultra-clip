@@ -67,17 +67,27 @@ export function SegmentTimeline({
     return -1
   }, [currentTime, segments])
 
-  // Generate thumbnails for all segments on mount / when segments change
-  useEffect(() => {
-    if (!sourcePath || segments.length === 0) return
+  // Stable key from segment boundaries — doesn't change when style/caption updates
+  const segmentBoundsKey = useMemo(
+    () => segments.map(s => `${s.startTime.toFixed(2)}-${s.endTime.toFixed(2)}`).join(','),
+    [segments]
+  )
+  // Keep a ref to segments so we can read them inside the effect without triggering re-runs
+  const segmentsRef = useRef(segments)
+  segmentsRef.current = segments
 
+  // Generate thumbnails for all segments on mount / when segment boundaries change
+  useEffect(() => {
+    if (!sourcePath || segmentBoundsKey === '') return
+
+    const segs = segmentsRef.current
     const entries: Record<number, string> = {}
     let cancelled = false
 
     async function loadThumbnails() {
-      for (let i = 0; i < segments.length; i++) {
+      for (let i = 0; i < segs.length; i++) {
         if (cancelled) return
-        const seg = segments[i]
+        const seg = segs[i]
         const midTime = (seg.startTime + seg.endTime) / 2
         const cacheKey = `${sourcePath}:${midTime.toFixed(2)}`
 
@@ -108,7 +118,7 @@ export function SegmentTimeline({
 
     loadThumbnails()
     return () => { cancelled = true }
-  }, [sourcePath, segments, clipId])
+  }, [sourcePath, segmentBoundsKey, clipId])
 
   // Scroll selected segment into view
   useEffect(() => {

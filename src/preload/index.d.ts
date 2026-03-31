@@ -895,7 +895,7 @@ interface SegmentStyleVariant {
   zoomStyle: 'none' | 'drift' | 'snap' | 'word-pulse' | 'zoom-out'
   zoomIntensity: number
   captionPosition: 'lower-third' | 'center' | 'top'
-  imageLayout?: 'pip' | 'side-by-side' | 'behind-speaker' | 'fullscreen'
+  imageLayout?: 'pip' | 'side-by-side' | 'behind-speaker' | 'fullscreen' | 'top-bottom'
   imagePlacement?: 'left' | 'right' | 'top' | 'bottom'
 }
 
