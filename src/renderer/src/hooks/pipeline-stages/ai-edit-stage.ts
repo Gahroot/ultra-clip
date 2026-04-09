@@ -8,11 +8,11 @@
 // emphasis, B-Roll placement, and SFX selection.
 // ---------------------------------------------------------------------------
 
-import type { ClipCandidate } from '../../store'
+import type { ClipCandidate, StitchedClipCandidate } from '../../store'
 import { createStageReporter } from '../../lib/progress-reporter'
 import type { PipelineContext } from './types'
 import { handleStageError } from './types'
-/** Run AI edit plan generation for all scored clips. */
+/** Run AI edit plan generation for all scored clips (regular + stitched). */
 export async function aiEditStage(
   ctx: PipelineContext,
   clips: ClipCandidate[]
@@ -36,7 +36,33 @@ export async function aiEditStage(
   const selectedEditStyleId = ctx.getState().selectedEditStyleId
   const stylePresetId = selectedEditStyleId ?? 'cinematic'
   const stylePresetName = stylePresetId
-  const stylePresetCategory = 'custom'
+
+  // Map style IDs to AI guidance categories.
+  // 'cinematic' guidance → restraint, slow crossfades, minimal SFX (used for premium/film styles)
+  // 'viral'     guidance → high density, energetic SFX
+  // 'educational' guidance → clarity-first, moderate density
+  // 'minimal'   guidance → near-zero intervention
+  const STYLE_CATEGORY_MAP: Record<string, string> = {
+    // Low-energy cinematic / documentary
+    ember: 'cinematic',
+    elevate: 'cinematic',
+    film: 'cinematic',
+    // Clean minimal
+    clarity: 'minimal',
+    paper_ii: 'minimal',
+    // High-energy viral
+    volt: 'viral',
+    growth: 'viral',
+    lumen: 'viral',
+    // Educational / informational
+    align: 'educational',
+    prime: 'educational'
+  }
+  const stylePresetCategory = STYLE_CATEGORY_MAP[stylePresetId] ?? 'custom'
+
+  // Gather stitched clips from the store
+  const stitchedClips: StitchedClipCandidate[] =
+    Object.values(ctx.getState().stitchedClips).flat()
 
   // Build clip input list — only clips that have word timestamps
   const clipInputs = clips
@@ -49,7 +75,21 @@ export async function aiEditStage(
       transcriptText: c.text
     }))
 
-  if (clipInputs.length === 0) {
+  // Add stitched clips — use earliest start / latest end as time range
+  const stitchedInputs = stitchedClips
+    .filter((sc) => sc.wordTimestamps && sc.wordTimestamps.length > 0)
+    .map((sc) => ({
+      clipId: sc.id,
+      clipStart: Math.min(...sc.segments.map((s) => s.startTime)),
+      clipEnd: Math.max(...sc.segments.map((s) => s.endTime)),
+      words: sc.wordTimestamps ?? [],
+      transcriptText: sc.segments.map((s) => s.text).join(' ')
+    }))
+
+  const stitchedClipIds = new Set(stitchedInputs.map((s) => s.clipId))
+  const allInputs = [...clipInputs, ...stitchedInputs]
+
+  if (allInputs.length === 0) {
     reporter.done('No clips with transcript data — skipping')
     ctx.markStageCompleted('ai-editing')
     return
@@ -65,7 +105,7 @@ export async function aiEditStage(
   try {
     plans = await window.api.generateBatchEditPlans(
       geminiApiKey,
-      clipInputs,
+      allInputs,
       stylePresetId,
       stylePresetName,
       stylePresetCategory
@@ -79,11 +119,15 @@ export async function aiEditStage(
 
   check()
 
-  // Apply each plan to its clip
+  // Apply each plan to its clip (regular or stitched)
   for (const plan of plans) {
-    store.setClipAIEditPlan(source.id, plan.clipId, plan)
+    if (stitchedClipIds.has(plan.clipId)) {
+      store.setStitchedClipAIEditPlan(source.id, plan.clipId, plan)
+    } else {
+      store.setClipAIEditPlan(source.id, plan.clipId, plan)
+    }
   }
 
-  reporter.done(`AI edit plans ready — ${plans.length}/${clipInputs.length} clips`)
+  reporter.done(`AI edit plans ready — ${plans.length}/${allInputs.length} clips`)
   ctx.markStageCompleted('ai-editing')
 }

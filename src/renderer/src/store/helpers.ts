@@ -1491,7 +1491,7 @@ export const DEFAULT_PROCESSING_CONFIG: ProcessingConfig = {
   clipEndMode: 'loop-first',
   enableVariants: false,
   enableMultiPart: false,
-  enableClipStitching: false,
+  enableClipStitching: true,
   enableAiEdit: true,
   targetAudience: DEFAULT_TARGET_AUDIENCE
 }

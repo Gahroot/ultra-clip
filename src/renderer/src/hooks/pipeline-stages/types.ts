@@ -46,6 +46,7 @@ export interface PipelineContext {
     setClipPartInfo: (sourceId: string, clipId: string, info: PartInfoUI) => void
     setCachedSourcePath: (path: string) => void
     setClipAIEditPlan: (sourceId: string, clipId: string, plan: import('@shared/types').AIEditPlan) => void
+    setStitchedClipAIEditPlan: (sourceId: string, clipId: string, plan: import('@shared/types').AIEditPlan) => void
     setSegments: (clipId: string, segments: VideoSegment[]) => void
     updateSegment: (clipId: string, segmentId: string, updates: Partial<VideoSegment>) => void
   }

@@ -150,6 +150,10 @@ export interface StitchedClipCandidate {
   reasoning: string
   status: 'pending' | 'approved' | 'rejected'
   cropRegion?: CropRegion
+  /** AI Edit Plan — generated the same way as for regular clips. */
+  aiEditPlan?: import('@shared/types').AIEditPlan
+  /** Word timestamps spanning all stitch segments (populated from transcription). */
+  wordTimestamps?: WordTimestamp[]
 }
 
 export interface PartInfoUI {
