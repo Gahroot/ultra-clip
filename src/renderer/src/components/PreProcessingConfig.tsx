@@ -1,4 +1,4 @@
-import { Clock, Repeat, Repeat2, CheckCircle2, Zap, Layers, BookOpen, Scissors, Wand2 } from 'lucide-react'
+import { Clock, Repeat, Repeat2, CheckCircle2, Zap, Layers, BookOpen, Scissors, Wand2, Users } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
@@ -155,6 +155,26 @@ export function PreProcessingConfig() {
             </label>
           </div>
         )}
+      </div>
+
+      {/* Target Audience */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5">
+          <Users className="w-3.5 h-3.5 text-muted-foreground" />
+          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Target Audience
+          </Label>
+        </div>
+        <textarea
+          value={config.targetAudience ?? ''}
+          onChange={(e) => setConfig({ targetAudience: e.target.value })}
+          placeholder="Describe your target audience. The AI will only clip content that THIS audience would find valuable."
+          rows={3}
+          className="w-full rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30 resize-none"
+        />
+        <p className="text-[10px] text-muted-foreground leading-tight">
+          Clips are filtered by relevance to this audience. Only content they'd find valuable gets clipped.
+        </p>
       </div>
 
       {/* Target Duration */}

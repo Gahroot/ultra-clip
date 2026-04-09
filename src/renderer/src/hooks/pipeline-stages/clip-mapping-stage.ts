@@ -40,7 +40,8 @@ export async function clipMappingStage(
       geminiApiKey,
       transcription.formattedForAI,
       source.duration,
-      processingConfig.targetDuration
+      processingConfig.targetDuration,
+      processingConfig.targetAudience
     )
   } finally {
     unsubScoring()

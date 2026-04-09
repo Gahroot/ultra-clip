@@ -49,10 +49,10 @@ export function registerAiHandlers(): void {
   // AI — score transcript segments for viral potential
   ipcMain.handle(
     Ch.Invoke.AI_SCORE_TRANSCRIPT,
-    wrapHandler(Ch.Invoke.AI_SCORE_TRANSCRIPT, async (event, apiKey: string, formattedTranscript: string, videoDuration: number, targetDuration?: string) => {
+    wrapHandler(Ch.Invoke.AI_SCORE_TRANSCRIPT, async (event, apiKey: string, formattedTranscript: string, videoDuration: number, targetDuration?: string, targetAudience?: string) => {
       return scoreTranscript(apiKey, formattedTranscript, videoDuration, (progress) => {
         event.sender.send(Ch.Send.AI_SCORING_PROGRESS, progress)
-      }, (targetDuration as TargetDuration) || 'auto')
+      }, (targetDuration as TargetDuration) || 'auto', targetAudience || '')
     })
   )
 
@@ -102,39 +102,8 @@ export function registerAiHandlers(): void {
           return { valid: false, error: 'Invalid API key' }
         }
         if (status === 429 || /resource.exhausted|rate.limit|quota/i.test(msg)) {
-          return { valid: true }
+          return { valid: true, warning: 'API key is valid but temporarily rate-limited. Usage may fail until quota resets.' }
         }
-        if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)) {
-          return { valid: false, error: 'Network error — check your internet connection' }
-        }
-        return { valid: false, error: msg.slice(0, 120) }
-      }
-    }
-  )
-
-  // AI — validate a Pexels API key
-  ipcMain.handle(
-    Ch.Invoke.AI_VALIDATE_PEXELS_KEY,
-    async (_event, apiKey: string): Promise<{ valid: boolean; error?: string }> => {
-      if (!apiKey || !apiKey.trim()) {
-        return { valid: false, error: 'API key is empty' }
-      }
-      try {
-        const url = new URL('https://api.pexels.com/videos/search')
-        url.searchParams.set('query', 'nature')
-        url.searchParams.set('per_page', '1')
-        const response = await fetch(url.toString(), {
-          headers: { Authorization: apiKey.trim() }
-        })
-        if (response.ok) {
-          return { valid: true }
-        }
-        if (response.status === 401 || response.status === 403) {
-          return { valid: false, error: 'Invalid API key' }
-        }
-        return { valid: false, error: `API error: ${response.status} ${response.statusText}` }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
         if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)) {
           return { valid: false, error: 'Network error — check your internet connection' }
         }
@@ -368,6 +337,22 @@ export function registerAiHandlers(): void {
     })
   )
 
+  // Velocity Style — build complete -vf filter chain for high-energy social-media style
+  ipcMain.handle(
+    Ch.Invoke.OVERLAY_BUILD_VELOCITY,
+    wrapHandler(Ch.Invoke.OVERLAY_BUILD_VELOCITY, async (
+      _event,
+      options: import('../overlays/velocity').VelocityOptions,
+      width: number,
+      height: number,
+      durationSeconds: number,
+      segmentStart: number
+    ) => {
+      const { buildVelocityFilterComplex } = await import('../overlays/velocity')
+      return buildVelocityFilterComplex(options, width, height, durationSeconds, segmentStart)
+    })
+  )
+
   // Shot Segmentation — segment a clip's transcript into 4-6 second "shots"
   ipcMain.handle(
     Ch.Invoke.SHOT_SEGMENT_CLIP,
@@ -423,6 +408,64 @@ export function registerAiHandlers(): void {
         segmentCategory
       })
       return generateAndCacheImage(prompt, '9:16', apiKey)
+    })
+  )
+
+  // AI Edit — orchestrate the full segment preparation pipeline for a clip
+  // (a) Split clip into segments via segment-styler
+  // (b) Assign per-segment styles
+  // (c) Generate images for image-needing segments
+  // Returns the fully prepared VideoSegment[] to the renderer
+  ipcMain.handle(
+    Ch.Invoke.AI_GENERATE_EDIT_PLAN_SEGMENTS,
+    wrapHandler(Ch.Invoke.AI_GENERATE_EDIT_PLAN_SEGMENTS, async (
+      _event,
+      opts: {
+        clipId: string
+        segments: import('@shared/types').VideoSegment[]
+        editStyleId: string
+        geminiApiKey: string
+        accentColor?: string
+      }
+    ) => {
+      const { EDIT_STYLES } = await import('../edit-styles')
+      const { assignSegmentStyles } = await import('../ai/segment-styler')
+      const { generateSegmentImages } = await import('../ai/segment-images')
+
+      const editStyle = EDIT_STYLES.find((s) => s.id === opts.editStyleId)
+      if (!editStyle) throw new Error(`Edit style "${opts.editStyleId}" not found`)
+
+      // Step 1: Assign segment styles via AI (or deterministic fallback)
+      console.log(`[AI Edit Plan] Clip ${opts.clipId}: assigning styles for ${opts.segments.length} segment(s)`)
+      const styledSegments = await assignSegmentStyles(
+        opts.segments,
+        editStyle,
+        opts.geminiApiKey
+      )
+
+      // Step 2: Generate images for image-needing segments
+      console.log(`[AI Edit Plan] Clip ${opts.clipId}: generating segment images`)
+      const { results: imageResults, failures } = await generateSegmentImages(
+        styledSegments,
+        opts.geminiApiKey,
+        undefined,
+        editStyle.name.toLowerCase().replace(/\s+/g, '-')
+      )
+
+      // Step 3: Attach image paths to segments
+      for (const seg of styledSegments) {
+        const imgResult = imageResults.find((r) => r.segmentId === seg.id)
+        if (imgResult) {
+          seg.imagePath = imgResult.imagePath
+        }
+      }
+
+      if (failures.length > 0) {
+        console.warn(`[AI Edit Plan] Clip ${opts.clipId}: ${failures.length} image generation failure(s)`)
+      }
+
+      console.log(`[AI Edit Plan] Clip ${opts.clipId}: done — ${styledSegments.length} segments, ${imageResults.length} images`)
+      return { segments: styledSegments }
     })
   )
 }

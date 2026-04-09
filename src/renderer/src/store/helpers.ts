@@ -20,6 +20,8 @@ import type {
   StitchedClipCandidate,
   StoryArcUI,
   Platform,
+  PrimeAIOptions,
+  PulseAIOptions,
 } from './types'
 import { DEFAULT_MIN_SCORE, DEFAULT_FILENAME_TEMPLATE } from '@shared/constants'
 
@@ -1349,7 +1351,6 @@ export const DEFAULT_PROGRESS_BAR_OVERLAY: ProgressBarOverlaySettings = {
 
 export const DEFAULT_BROLL: BRollSettings = {
   enabled: false,
-  pexelsApiKey: localStorage.getItem('batchcontent-pexels-key') || '',
   intervalSeconds: 5,
   clipDuration: 3,
   displayMode: 'split-top',
@@ -1379,8 +1380,49 @@ export const DEFAULT_RENDER_QUALITY: RenderQualitySettings = {
   encodingPreset: 'veryfast'
 }
 
+export const DEFAULT_PRIME_AI: PrimeAIOptions = {
+  enabled: false,
+  segmentStyle: 'clean',
+  accentColor: '#00A8E1',
+  showBanner: true,
+  showFloatingCurrency: false,
+  currencyText: '$9.99/mo',
+  showSparkles: false,
+  showFullscreenText: false,
+  fullscreenText: '',
+  fullscreenTextTime: 0.5,
+  fullscreenTextDuration: 1.2,
+  showBadge: false,
+  badgeText: 'EXCLUSIVE',
+  badgePosition: 'top-right',
+  showSubtitleStyle: false,
+  showProgressBar: false,
+  textOverlays: [],
+  imageOverlays: [],
+}
+
+export const DEFAULT_PULSE_AI: PulseAIOptions = {
+  enabled: false,
+  accentColor: '#00FFFF',
+  showGrid: true,
+  gridSize: 60,
+  gridOpacity: 0.18,
+  showFrameBorder: true,
+  borderThickness: 4,
+  showStatusBar: true,
+  statusBarText: 'REC · AI EDIT',
+  showCornerBrackets: true,
+  showDataReadouts: true,
+  showProgressBar: true,
+  showGlowPulse: true,
+  glowPulsePeriod: 6,
+  showScanLine: true,
+  showDataParticles: true,
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
   geminiApiKey: localStorage.getItem('batchcontent-gemini-key') || '',
+  falApiKey: localStorage.getItem('batchcontent-fal-key') || '',
   outputDirectory: null,
   minScore: DEFAULT_MIN_SCORE,
   captionStyle: CAPTION_PRESETS['captions-ai'],
@@ -1398,8 +1440,50 @@ export const DEFAULT_SETTINGS: AppSettings = {
   renderQuality: DEFAULT_RENDER_QUALITY,
   outputAspectRatio: '9:16',
   filenameTemplate: DEFAULT_FILENAME_TEMPLATE,
-  renderConcurrency: 1
+  renderConcurrency: 1,
+  velocityOptions: {
+    enabled: false,
+    segmentStyle: 'default',
+    glitchScanlines: false,
+    glitchIntensity: 0.15,
+    lightLeak: false,
+    lightLeakOpacity: 0.35,
+    particles: false,
+    vignette: false,
+    vignetteStrength: 0.35,
+    colorGrade: false,
+    saturation: 1.25,
+    contrast: 1.1,
+    warmth: 0.1,
+    primaryText: '',
+    primaryTextDuration: 2.5,
+    secondaryText: '',
+    secondaryTextDuration: 2.0,
+    accentTag: '',
+    lowerThird: false,
+    lowerThirdText: '',
+    calloutRing: false,
+    calloutX: 0.5,
+    calloutY: 0.5,
+    priceStatCard: false,
+    priceStatValue: '',
+    priceStatLabel: '',
+    stepCounter: false,
+    stepNumber: 1,
+    stepTotal: 3,
+    arrowPointer: false,
+    arrowX: 0.5,
+    arrowY: 0.6,
+    velocityProgressBar: false,
+    velocityProgressBarColor: '#FF4444',
+    transitionIn: 'cut',
+    transitionDuration: 0.3
+  },
+  primeAI: DEFAULT_PRIME_AI,
+  pulseAI: DEFAULT_PULSE_AI
 }
+
+export const DEFAULT_TARGET_AUDIENCE = 'Business owners interested in AI — making money, saving time, getting clients, handling marketing/sales, automating busy work. Content must deliver actionable value to entrepreneurs and founders.'
 
 export const DEFAULT_PROCESSING_CONFIG: ProcessingConfig = {
   targetDuration: 'auto',
@@ -1408,7 +1492,8 @@ export const DEFAULT_PROCESSING_CONFIG: ProcessingConfig = {
   enableVariants: false,
   enableMultiPart: false,
   enableClipStitching: false,
-  enableAiEdit: true
+  enableAiEdit: true,
+  targetAudience: DEFAULT_TARGET_AUDIENCE
 }
 
 export const DEFAULT_PIPELINE = {
@@ -1423,7 +1508,7 @@ export const DEFAULT_PIPELINE = {
 
 export const DEFAULT_TEMPLATE_LAYOUT: TemplateLayout = {
   titleText: { x: 50, y: 12 },
-  subtitles: { x: 50, y: 50 },
+  subtitles: { x: 50, y: 75 },
   rehookText: { x: 50, y: 12 },
   media: { x: 50, y: 75 }
 }
@@ -1442,6 +1527,8 @@ export interface ProjectFileData {
   clipOrder?: Record<string, string[]>
   customOrder?: boolean
   selectedEditStyleId?: string | null
+  editMode?: 'basic' | 'ai-edit' | null
+  aiEditAccentColor?: string
   processingConfig?: ProcessingConfig
 }
 
@@ -1461,20 +1548,19 @@ export function loadPersistedSettings(): AppSettings {
         ...DEFAULT_SETTINGS,
         ...saved,
         geminiApiKey: localStorage.getItem('batchcontent-gemini-key') || '',
+        falApiKey: localStorage.getItem('batchcontent-fal-key') || '',
         soundDesign: { ...DEFAULT_SOUND_DESIGN, ...(saved.soundDesign ?? {}) },
         autoZoom: { ...DEFAULT_AUTO_ZOOM, ...(saved.autoZoom ?? {}) },
         brandKit: { ...DEFAULT_BRAND_KIT, ...(saved.brandKit ?? {}) },
         hookTitleOverlay: { ...DEFAULT_HOOK_TITLE_OVERLAY, ...(saved.hookTitleOverlay ?? {}) },
         rehookOverlay: { ...DEFAULT_REHOOK_OVERLAY, ...(saved.rehookOverlay ?? {}) },
         progressBarOverlay: { ...DEFAULT_PROGRESS_BAR_OVERLAY, ...(saved.progressBarOverlay ?? {}) },
-        broll: {
-          ...DEFAULT_BROLL,
-          ...(saved.broll ?? {}),
-          pexelsApiKey: localStorage.getItem('batchcontent-pexels-key') || ''
-        },
+        broll: { ...DEFAULT_BROLL, ...(saved.broll ?? {}) },
         fillerRemoval: { ...DEFAULT_FILLER_REMOVAL, ...(saved.fillerRemoval ?? {}) },
         renderQuality: { ...DEFAULT_RENDER_QUALITY, ...(saved.renderQuality ?? {}) },
-        captionStyle: { ...CAPTION_PRESETS['captions-ai'], ...(saved.captionStyle ?? {}) }
+        captionStyle: { ...CAPTION_PRESETS['captions-ai'], ...(saved.captionStyle ?? {}) },
+        primeAI: { ...DEFAULT_PRIME_AI, ...(saved.primeAI ?? {}) },
+        pulseAI: { ...DEFAULT_PULSE_AI, ...(saved.pulseAI ?? {}) }
       }
     }
   } catch {
@@ -1498,11 +1584,8 @@ export function loadPersistedProcessingConfig(): ProcessingConfig {
 
 export function persistSettings(settings: AppSettings): void {
   try {
-    const { geminiApiKey: _g, ...rest } = settings
-    const toSave = {
-      ...rest,
-      broll: { ...rest.broll, pexelsApiKey: undefined }
-    }
+    const { geminiApiKey: _g, falApiKey: _f, ...rest } = settings
+    const toSave = { ...rest }
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(toSave))
   } catch {
     // Storage full or unavailable — silently ignore
@@ -1526,7 +1609,6 @@ const ACTIVE_PROFILE_STORAGE_KEY = 'batchcontent-active-profile'
 
 /** Extract the profile-relevant fields from the full AppSettings. */
 export function extractProfileFromSettings(settings: AppSettings): SettingsProfile {
-  const { pexelsApiKey: _p, ...brollWithoutKey } = settings.broll
   return {
     captionStyle: settings.captionStyle,
     captionsEnabled: settings.captionsEnabled,
@@ -1536,7 +1618,7 @@ export function extractProfileFromSettings(settings: AppSettings): SettingsProfi
     hookTitleOverlay: settings.hookTitleOverlay,
     rehookOverlay: settings.rehookOverlay,
     progressBarOverlay: settings.progressBarOverlay,
-    broll: brollWithoutKey,
+    broll: settings.broll,
     fillerRemoval: settings.fillerRemoval,
     renderQuality: settings.renderQuality,
     outputAspectRatio: settings.outputAspectRatio,
@@ -1559,7 +1641,7 @@ export function applyProfileToSettings(settings: AppSettings, profile: SettingsP
     hookTitleOverlay: profile.hookTitleOverlay,
     rehookOverlay: profile.rehookOverlay,
     progressBarOverlay: profile.progressBarOverlay,
-    broll: { ...profile.broll, pexelsApiKey: settings.broll.pexelsApiKey },
+    broll: { ...profile.broll },
     fillerRemoval: profile.fillerRemoval,
     renderQuality: profile.renderQuality,
     outputAspectRatio: profile.outputAspectRatio,

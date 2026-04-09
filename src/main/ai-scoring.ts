@@ -27,7 +27,7 @@ function getTimingRule(targetDuration: TargetDuration): string {
       return 'Each segment MUST be 90-120 seconds (optimal: 95-110 seconds)'
     case 'auto':
     default:
-      return 'Each segment MUST be 15-60 seconds (optimal: 20-45 seconds)'
+      return 'Each segment should be 15 seconds MINIMUM, with ~40 seconds being ideal. Clips can be up to 3 minutes if every second is pure value. There is no such thing as too long, only too boring.'
   }
 }
 
@@ -37,44 +37,65 @@ function getTimingRule(targetDuration: TargetDuration): string {
 function getMinDuration(targetDuration: TargetDuration): number {
   switch (targetDuration) {
     case '15-30':
-      return 10
+      return 15
     case '30-60':
-      return 20
+      return 25
     case '60-90':
-      return 40
+      return 50
     case '90-120':
-      return 60
+      return 75
     case 'auto':
     default:
-      return 10
+      return 15
   }
 }
 
-function buildSystemPrompt(targetDuration: TargetDuration): string {
-  return `You are an expert at analyzing video transcripts to find the most engaging segments for short-form vertical video content (TikTok, Instagram Reels, YouTube Shorts).
+function buildSystemPrompt(targetDuration: TargetDuration, targetAudience: string): string {
+  const audienceBlock = targetAudience
+    ? `\nTARGET AUDIENCE:\n${targetAudience}\n\nEvery clip MUST pass this filter: "Would the person I want to attract find this valuable?" If the answer is no, do NOT include it. You are playing the CONVERSION GAME — education, on-target views, shares, average view duration. NOT the awareness/entertainment game.`
+    : ''
 
-FIND AS MANY COMPELLING SEGMENTS AS POSSIBLE. Do not limit yourself — if there are 20 good clips, return all 20.
+  return `You are an expert at analyzing video transcripts to find the most valuable, complete segments for short-form vertical video content (TikTok, Instagram Reels, YouTube Shorts).
+${audienceBlock}
 
-SEGMENT SELECTION CRITERIA:
-1. STRONG HOOKS: Attention-grabbing opening lines that stop the scroll
-2. VALUABLE CONTENT: Tips, insights, interesting facts, stories, how-tos
-3. EMOTIONAL MOMENTS: Excitement, surprise, humor, inspiration, controversy
-4. COMPLETE THOUGHTS: Self-contained ideas that make sense standalone without context
-5. SHAREABLE: Content people would want to share or save
+CORE PHILOSOPHY:
+- Quality over quantity. Fewer, better clips that deliver COMPLETE THOUGHTS and ACTIONABLE VALUE.
+- Every clip must reframe thinking, teach something, or deliver an insight the audience can USE.
+- If a clip doesn't make the viewer think "I need to save/share this" — don't include it.
+- NEVER clip fragments, half-thoughts, or vague motivational fluff. That's spam, not content.
+
+SEGMENT SELECTION CRITERIA (in priority order):
+1. COMPLETE THOUGHTS: The clip MUST contain a self-contained idea with setup AND payoff. A clip that starts a thought but doesn't finish it is WORTHLESS. If the full thought takes 50 seconds, clip 50 seconds — don't cut it at 15.
+2. ACTIONABLE VALUE: Tips, frameworks, specific how-tos, reframes, insights the audience can immediately apply. "Here's what to do" beats "here's what happened."
+3. STRONG HOOK: The first 2-3 seconds must stop the scroll — but a great hook with no payoff is clickbait. The HOOK earns attention, the CONTENT earns the share.
+4. MINI-PAYOFFS & REHOOKS: Longer clips need moments that re-engage every 8-12 seconds — a surprising stat, a pivot ("but here's the thing"), a specific example. Look for these to determine if a longer clip will hold attention.
+5. EMOTIONAL RESONANCE: Evokes curiosity, urgency, surprise, or "I never thought of it that way."
+6. SHAREABILITY: Content people would send to a friend, save for later, or comment "THIS" on.
+
+WHAT TO EXCLUDE:
+- Rambling intros or throat-clearing ("so today I want to talk about...")
+- Generic advice that doesn't teach anything specific
+- Incomplete arguments — if the payoff comes 30 seconds after the setup, include BOTH
+- Pure entertainment/humor with no value for the target audience
+- Segments where the speaker is just repeating themselves
 
 SCORING (0-100):
-- 90-100: Guaranteed viral — perfect hook + high emotion + universally relatable
-- 80-89: Very strong — great hook, compelling content, broad appeal
-- 70-79: Strong — good standalone clip, clear value or entertainment
-- 69: Minimum threshold — decent content but may need editing to shine
-- Below 69: Do not include
+- 90-100: Must-clip — complete thought + strong hook + specific actionable insight + high share potential
+- 80-89: Very strong — clear value delivery, complete idea, good hook, audience would save this
+- 70-79: Solid — good standalone value, may benefit from tight editing but the thought is complete
+- 69: Minimum — borderline; the thought is there but delivery could be stronger
+- Below 69: Do not include — incomplete thought, no clear value, or off-target for audience
 
 TIMING RULES:
 - ${getTimingRule(targetDuration)}
+- MINIMUM 15 seconds — anything shorter cannot deliver a complete thought
+- ~40 seconds is the SWEET SPOT for most valuable clips
+- Clips CAN be 1-3 minutes IF every single second delivers value with no dead air or repetition. Long clips are rare but possible — do not artificially cut a great segment short.
+- NEVER cut a clip short just to hit a time target. Complete the thought, THEN end.
 - start_time MUST be LESS than end_time
 - Segments must not overlap
 - Use EXACT timestamps from the transcript
-- Start at natural sentence beginnings, end at natural conclusions
+- Start at natural hook points, end AFTER the payoff/conclusion
 
 HOOK TEXT:
 For each segment, write 1-5 words of on-screen hook text that appears in the first 2 seconds. 80%+ viewers watch with sound off — the hook must work silently.
@@ -100,7 +121,7 @@ Return valid JSON with this exact structure:
       "text": "transcript text for this segment",
       "score": 85,
       "hook_text": "Introverts: this changes everything",
-      "reasoning": "Strong opening hook with surprising insight about..."
+      "reasoning": "Why this delivers value: complete thought about X, strong hook, actionable takeaway about Y"
     }
   ],
   "summary": "Brief summary of the full video",
@@ -258,7 +279,8 @@ export async function scoreTranscript(
   formattedTranscript: string,
   videoDuration: number,
   onProgress: (p: ScoringProgress) => void,
-  targetDuration: TargetDuration = 'auto'
+  targetDuration: TargetDuration = 'auto',
+  targetAudience: string = ''
 ): Promise<ScoringResult> {
   onProgress({ stage: 'sending', message: 'Sending transcript to Gemini AI...' })
 
@@ -270,7 +292,7 @@ export async function scoreTranscript(
     }
   })
 
-  const systemPrompt = buildSystemPrompt(targetDuration)
+  const systemPrompt = buildSystemPrompt(targetDuration, targetAudience)
 
   const prompt = `${systemPrompt}
 

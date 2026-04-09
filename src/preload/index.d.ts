@@ -73,6 +73,22 @@ interface FaceDetectionProgress {
   total: number
 }
 
+/** A single entry in a face-tracking timeline produced by `detectFaceTimeline`. */
+interface FaceTimelineEntry {
+  /** Timestamp in seconds from the start of the video. */
+  t: number
+  /** Left edge of the 9:16 crop rectangle (source-video pixels). */
+  x: number
+  /** Top edge of the 9:16 crop rectangle (source-video pixels). */
+  y: number
+  /** Width of the crop rectangle. */
+  width: number
+  /** Height of the crop rectangle. */
+  height: number
+  /** Whether a face was detected in this frame (false = centre-crop fallback). */
+  faceDetected: boolean
+}
+
 interface SoundDesignSettings {
   enabled: boolean
   backgroundMusicTrack: 'ambient-tech' | 'ambient-motivational' | 'ambient-chill'
@@ -138,12 +154,108 @@ interface ProgressBarOverlaySettings {
   style: 'solid' | 'gradient' | 'glow'
 }
 
+// ---- Velocity Style -------------------------------------------------------
+
+type VelocitySegmentStyle = 'default' | 'impact' | 'chill' | 'emphasis' | 'split-screen'
+type VelocityTransition = 'cut' | 'flash' | 'fade' | 'zoom-blur'
+
+interface VelocityOptions {
+  enabled: boolean
+  segmentStyle: VelocitySegmentStyle
+  glitchScanlines: boolean
+  glitchIntensity: number
+  lightLeak: boolean
+  lightLeakOpacity: number
+  particles: boolean
+  vignette: boolean
+  vignetteStrength: number
+  colorGrade: boolean
+  saturation: number
+  contrast: number
+  warmth: number
+  primaryText: string
+  primaryTextDuration: number
+  secondaryText: string
+  secondaryTextDuration: number
+  accentTag: string
+  lowerThird: boolean
+  lowerThirdText: string
+  calloutRing: boolean
+  calloutX: number
+  calloutY: number
+  priceStatCard: boolean
+  priceStatValue: string
+  priceStatLabel: string
+  stepCounter: boolean
+  stepNumber: number
+  stepTotal: number
+  arrowPointer: boolean
+  arrowX: number
+  arrowY: number
+  velocityProgressBar: boolean
+  velocityProgressBarColor: string
+  transitionIn: VelocityTransition
+  transitionDuration: number
+}
+
+// ---- Prime AI Render Style ------------------------------------------------
+
+type PrimeSegmentStyle = 'clean' | 'cinematic' | 'spotlight' | 'editorial'
+
+interface PrimeTextOverlay {
+  text: string
+  startTime: number
+  duration: number
+  yFraction?: number
+  fontSize?: number
+  color?: string
+  withPanel?: boolean
+}
+
+interface PrimeImageOverlay {
+  imagePath: string
+  startTime: number
+  duration: number
+  x?: number
+  y?: number
+  width?: number
+  opacity?: number
+}
+
+interface PrimeAIOptions {
+  enabled: boolean
+  segmentStyle: PrimeSegmentStyle
+  accentColor: string
+  showBanner: boolean
+  showFloatingCurrency: boolean
+  currencyText: string
+  showSparkles: boolean
+  showFullscreenText: boolean
+  fullscreenText: string
+  fullscreenTextTime: number
+  fullscreenTextDuration: number
+  showBadge: boolean
+  badgeText: string
+  badgePosition: 'top-left' | 'top-right'
+  showSubtitleStyle: boolean
+  showProgressBar: boolean
+  textOverlays: PrimeTextOverlay[]
+  imageOverlays: PrimeImageOverlay[]
+}
+
 interface RenderClipJob {
   clipId: string
   sourceVideoPath: string
   startTime: number
   endTime: number
   cropRegion?: { x: number; y: number; width: number; height: number }
+  /**
+   * Face-tracking timeline for animated crop.
+   * When ≥ 2 entries are present, the render pipeline uses an animated crop
+   * that pans with the face instead of the static cropRegion.
+   * Times are clip-relative (0-based, seconds).
+   */
+  faceTimeline?: Array<{ t: number; x: number; y: number; w: number; h: number }>
   /** Path to a pre-generated .ass subtitle file to burn in */
   assFilePath?: string
   /** Optional override for the output filename (without extension) */
@@ -216,6 +328,27 @@ interface RenderClipJob {
   }>
 }
 
+// ---- Pulse AI Render Style ------------------------------------------------
+
+interface PulseAIOptions {
+  enabled: boolean
+  accentColor: string
+  showGrid: boolean
+  gridSize: number
+  gridOpacity: number
+  showFrameBorder: boolean
+  borderThickness: number
+  showStatusBar: boolean
+  statusBarText: string
+  showCornerBrackets: boolean
+  showDataReadouts: boolean
+  showProgressBar: boolean
+  showGlowPulse: boolean
+  glowPulsePeriod: number
+  showScanLine: boolean
+  showDataParticles: boolean
+}
+
 interface RenderBatchOptions {
   jobs: RenderClipJob[]
   outputDirectory: string
@@ -264,17 +397,15 @@ interface RenderBatchOptions {
     silenceTargetGap: number
     fillerWords: string[]
   }
-  /** B-Roll overlay settings — when enabled, generates stock footage placements */
+  /** B-Roll overlay settings — when enabled, generates AI image placements */
   broll?: {
     enabled: boolean
-    pexelsApiKey: string
     intervalSeconds: number
     clipDuration: number
     displayMode: 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
     transition: 'hard-cut' | 'crossfade' | 'swipe-up' | 'swipe-down'
     pipSize: number
     pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
-    sourceMode?: 'stock' | 'ai-generated' | 'auto'
   }
   /** Gemini API key — used for AI-generated B-Roll images and other AI features */
   geminiApiKey?: string
@@ -322,6 +453,12 @@ interface RenderBatchOptions {
   outputAspectRatio?: '9:16' | '1:1' | '4:5' | '16:9'
   /** Filename template for rendered clips */
   filenameTemplate?: string
+  /** Velocity high-energy style — applied as a -vf filter chain during render */
+  velocity?: VelocityOptions
+  /** Prime AI render style — Amazon Prime Video-inspired overlay */
+  primeAI?: PrimeAIOptions
+  /** Pulse AI render style — futuristic tech-interface overlay */
+  pulseAI?: PulseAIOptions
 }
 
 interface RenderClipStartEvent {
@@ -926,6 +1063,54 @@ interface VideoSegment {
   imagePath?: string
 }
 
+type VFXOverlayType =
+  | 'glowing-ring'
+  | 'bokeh-blobs'
+  | 'diagonal-slash'
+  | 'color-vignette'
+  | 'gradient-bar-bottom'
+  | 'gradient-bar-top'
+  | 'color-tint'
+  | 'grid-overlay'
+  | 'scan-line'
+  | 'corner-brackets'
+  | 'pulse-border'
+  | 'image-overlay'
+  | 'video-overlay'
+
+type OverlayBlendMode = 'normal' | 'screen' | 'multiply'
+
+interface VFXOverlay {
+  type: VFXOverlayType
+  opacity: number
+  /** Which segment categories this overlay applies to. 'all' matches every category. */
+  applyToCategories: SegmentStyleCategory[] | 'all'
+  /** Path relative to resources/overlays/ for asset-based overlays. */
+  assetPath?: string
+  /** Blend mode for asset-based overlays (default: 'normal'). */
+  blendMode?: OverlayBlendMode
+}
+
+interface ColorGradeParams {
+  /** Warmth shift: -1.0 (cool/blue) to 1.0 (warm/orange). 0 = neutral */
+  warmth: number
+  /** Contrast: 0.8 (flat) to 1.4 (punchy). 1.0 = no change */
+  contrast: number
+  /** Saturation: 0.0 (grayscale) to 1.5 (oversaturated). 1.0 = no change */
+  saturation: number
+  /** Black level lift: 0.0 (deep blacks) to 0.15 (lifted/faded shadows) */
+  blackLift: number
+  /** Highlight rolloff: 0.0 (harsh) to 1.0 (soft highlight rolloff) */
+  highlightSoftness: number
+}
+
+type TextAnimationStyle =
+  | 'fade-in'    // smooth opacity fade from 0→1 over 0.3s
+  | 'snap-in'    // instant appear, 0-frame
+  | 'scale-up'   // start at 80% size, scale to 100% over 0.2s
+  | 'slide-up'   // slide in from below + fade
+  | 'none'       // no animation, static
+
 interface EditStyle {
   id: string
   name: string
@@ -943,6 +1128,16 @@ interface EditStyle {
   availableSegmentStyles: string[]
   /** One-sentence summary of the style's visual character, shown as a tooltip. */
   description?: string
+  /** VFX overlay layers applied per segment (optional — empty = no overlays). */
+  vfxOverlays?: VFXOverlay[]
+  /** Per-style color grading applied to every segment rendered with this style. */
+  colorGrade?: ColorGradeParams
+  /** Text reveal animation for drawtext overlays in text-based segment layouts. */
+  textAnimation?: TextAnimationStyle
+  /** Per-energy-tier segment duration target for viewer retention optimization. */
+  segmentDurationTarget?: { min: number; max: number; ideal: number }
+  /** Duration in seconds for xfade/color-wash transitions between segments. */
+  transitionDuration?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -1015,6 +1210,7 @@ interface FillerDetectionResult {
 interface Api {
   openFiles: () => Promise<string[]>
   openDirectory: () => Promise<string | null>
+  openImageFile: () => Promise<string | null>
   getPathForFile: (file: File) => string
   getMetadata: (filePath: string) => Promise<VideoMetadata>
   extractAudio: (videoPath: string) => Promise<string>
@@ -1026,14 +1222,19 @@ interface Api {
   transcribeVideo: (videoPath: string) => Promise<TranscriptionResult>
   formatTranscriptForAI: (result: TranscriptionResult) => Promise<string>
   onTranscribeProgress: (callback: (data: TranscriptionProgress) => void) => () => void
-  scoreTranscript: (apiKey: string, transcript: string, duration: number, targetDuration?: string) => Promise<ScoringResult>
+  scoreTranscript: (apiKey: string, transcript: string, duration: number, targetDuration?: string, targetAudience?: string) => Promise<ScoringResult>
   onScoringProgress: (callback: (data: ScoringProgress) => void) => () => void
   generateHookText: (apiKey: string, transcript: string, videoSummary?: string, keyTopics?: string[]) => Promise<string>
   rescoreSingleClip: (apiKey: string, clipText: string, clipDuration: number) => Promise<{ score: number; reasoning: string; hookText: string }>
   generateRehookText: (apiKey: string, transcript: string, clipStart: number, clipEnd: number, videoSummary?: string, keyTopics?: string[]) => Promise<string>
-  validateGeminiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>
-  validatePexelsKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>
+  validateGeminiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string; warning?: string }>
   detectFaceCrops: (videoPath: string, segments: { start: number; end: number }[]) => Promise<CropRegion[]>
+  /**
+   * Run face tracking on the entire source video at 2 FPS and return a timeline
+   * of per-frame 9:16 crop positions. Use this instead of `detectFaceCrops` when
+   * you need smooth tracking of a moving speaker rather than a single static crop.
+   */
+  detectFaceTimeline: (sourceVideoPath: string) => Promise<FaceTimelineEntry[]>
   onFaceDetectionProgress: (callback: (data: FaceDetectionProgress) => void) => () => void
   generateCaptions: (
     words: WordTimestamp[],
@@ -1219,7 +1420,6 @@ interface Api {
   // B-Roll
   generateBRollPlacements: (
     geminiApiKey: string,
-    pexelsApiKey: string,
     transcriptText: string,
     wordTimestamps: WordTimestamp[],
     clipStart: number,
@@ -1308,6 +1508,13 @@ interface Api {
     comment: FakeCommentData,
     config: FakeCommentConfig
   ) => Promise<string[]>
+  buildVelocityFilter: (
+    options: VelocityOptions,
+    width: number,
+    height: number,
+    durationSeconds: number,
+    segmentStart: number
+  ) => Promise<string>
   // Clip Stitcher
   generateStitchedClips: (
     apiKey: string,
@@ -1411,10 +1618,9 @@ interface Api {
   generateSegmentImages: (
     segments: VideoSegment[],
     geminiApiKey: string,
-    pexelsApiKey: string,
     outputDir?: string,
     styleCategory?: string
-  ) => Promise<Record<string, string>>
+  ) => Promise<{ results: Record<string, string>; failures: Array<{ segmentId: string; query: string; error: string }> }>
   updateSegmentCaption: (
     segmentId: string,
     newText: string
@@ -1429,6 +1635,15 @@ interface Api {
   // Edit Styles — Captions.ai-style edit style presets
   getEditStyles: () => Promise<EditStyle[]>
   getEditStyleById: (id: string) => Promise<EditStyle | null>
+
+  // AI Edit — orchestrate the full AI edit preparation pipeline for a clip
+  generateEditPlanSegments: (opts: {
+    clipId: string
+    segments: VideoSegment[]
+    editStyleId: string
+    geminiApiKey: string
+    accentColor?: string
+  }) => Promise<{ segments: VideoSegment[] }>
 
   // Shot Segmentation — segment a clip's transcript into natural 4-6 second "shots"
   segmentClipIntoShots: (
