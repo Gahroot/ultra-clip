@@ -243,6 +243,14 @@ export interface ClipCandidate {
   restoredFillerIndices?: number[]
   /** Time saved by filler removal (seconds) */
   fillerTimeSaved?: number
+  /**
+   * Face-tracking timeline for animated crop.
+   *
+   * When present and has ≥ 2 entries, the render pipeline uses an animated
+   * crop that pans smoothly with the face instead of the static cropRegion.
+   * Times are clip-relative (0-based, seconds).
+   */
+  faceTimeline?: Array<{ t: number; x: number; y: number; w: number; h: number }>
 }
 
 /** Filler segment as stored in the renderer — mirrors the main-process FillerSegment type. */
@@ -441,8 +449,6 @@ export interface ProgressBarOverlaySettings {
 export interface BRollSettings {
   /** Whether B-Roll insertion is enabled at render time */
   enabled: boolean
-  /** Pexels API key for stock footage search */
-  pexelsApiKey: string
   /**
    * Target interval between B-Roll insertions in seconds.
    * Default: 5
@@ -461,8 +467,6 @@ export interface BRollSettings {
   pipSize: number
   /** PiP corner position. Default: 'bottom-right' */
   pipPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
-  /** B-Roll source preference. Default: 'auto' */
-  sourceMode?: 'stock' | 'ai-generated' | 'auto'
 }
 
 export type BRollDisplayMode = 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'
@@ -511,8 +515,126 @@ export interface RenderQualitySettings {
   encodingPreset: EncodingPreset
 }
 
+// ---- Velocity Style --------------------------------------------------------
+
+export type VelocitySegmentStyle = 'default' | 'impact' | 'chill' | 'emphasis' | 'split-screen'
+export type VelocityTransition = 'cut' | 'flash' | 'fade' | 'zoom-blur'
+
+export interface VelocityOptions {
+  enabled: boolean
+  segmentStyle: VelocitySegmentStyle
+  glitchScanlines: boolean
+  glitchIntensity: number
+  lightLeak: boolean
+  lightLeakOpacity: number
+  particles: boolean
+  vignette: boolean
+  vignetteStrength: number
+  colorGrade: boolean
+  saturation: number
+  contrast: number
+  warmth: number
+  primaryText: string
+  primaryTextDuration: number
+  secondaryText: string
+  secondaryTextDuration: number
+  accentTag: string
+  lowerThird: boolean
+  lowerThirdText: string
+  calloutRing: boolean
+  calloutX: number
+  calloutY: number
+  priceStatCard: boolean
+  priceStatValue: string
+  priceStatLabel: string
+  stepCounter: boolean
+  stepNumber: number
+  stepTotal: number
+  arrowPointer: boolean
+  arrowX: number
+  arrowY: number
+  velocityProgressBar: boolean
+  velocityProgressBarColor: string
+  transitionIn: VelocityTransition
+  transitionDuration: number
+}
+
+// ---------------------------------------------------------------------------
+// Prime AI Render Style
+// ---------------------------------------------------------------------------
+
+export type PrimeSegmentStyle = 'clean' | 'cinematic' | 'spotlight' | 'editorial'
+
+export interface PrimeTextOverlay {
+  text: string
+  startTime: number
+  duration: number
+  yFraction?: number
+  fontSize?: number
+  color?: string
+  withPanel?: boolean
+}
+
+export interface PrimeImageOverlay {
+  imagePath: string
+  startTime: number
+  duration: number
+  x?: number
+  y?: number
+  width?: number
+  opacity?: number
+}
+
+export interface PrimeAIOptions {
+  enabled: boolean
+  segmentStyle: PrimeSegmentStyle
+  accentColor: string
+  showBanner: boolean
+  showFloatingCurrency: boolean
+  currencyText: string
+  showSparkles: boolean
+  showFullscreenText: boolean
+  fullscreenText: string
+  fullscreenTextTime: number
+  fullscreenTextDuration: number
+  showBadge: boolean
+  badgeText: string
+  badgePosition: 'top-left' | 'top-right'
+  showSubtitleStyle: boolean
+  showProgressBar: boolean
+  textOverlays: PrimeTextOverlay[]
+  imageOverlays: PrimeImageOverlay[]
+}
+
+// ---------------------------------------------------------------------------
+// Pulse AI Render Style
+// ---------------------------------------------------------------------------
+
+export type PulseAICaptionStyle = 'monospace' | 'minimal' | 'scanline'
+
+export interface PulseAIOptions {
+  enabled: boolean
+  accentColor: string
+  showGrid: boolean
+  gridSize: number
+  gridOpacity: number
+  showFrameBorder: boolean
+  borderThickness: number
+  showStatusBar: boolean
+  statusBarText: string
+  showCornerBrackets: boolean
+  showDataReadouts: boolean
+  showProgressBar: boolean
+  showGlowPulse: boolean
+  glowPulsePeriod: number
+  showScanLine: boolean
+  showDataParticles: boolean
+}
+
 export interface AppSettings {
   geminiApiKey: string
+  /** fal.ai API key for AI-generated B-roll images. */
+  falApiKey: string
   outputDirectory: string | null
   minScore: number
   captionStyle: CaptionStyle
@@ -546,6 +668,12 @@ export interface AppSettings {
    * Default: 1 (sequential).
    */
   renderConcurrency: number
+  /** Velocity high-energy social-media render style options. */
+  velocityOptions: VelocityOptions
+  /** Prime AI render style — Amazon Prime Video-inspired overlay. */
+  primeAI: PrimeAIOptions
+  /** Pulse AI render style — futuristic tech-interface overlay. */
+  pulseAI: PulseAIOptions
 }
 
 // ---------------------------------------------------------------------------
@@ -565,7 +693,7 @@ export interface SettingsProfile {
   hookTitleOverlay: HookTitleOverlaySettings
   rehookOverlay: RehookOverlaySettings
   progressBarOverlay: ProgressBarOverlaySettings
-  broll: Omit<BRollSettings, 'pexelsApiKey'>
+  broll: BRollSettings
   fillerRemoval: FillerRemovalSettings
   renderQuality: RenderQualitySettings
   outputAspectRatio: OutputAspectRatio
@@ -587,6 +715,11 @@ export interface ProcessingConfig {
   enableClipStitching: boolean
   /** Run the AI edit orchestrator after scoring — generates word emphasis, B-Roll, and SFX plans for every clip. */
   enableAiEdit: boolean
+  /**
+   * Target audience description used to filter clips for relevance.
+   * The AI scores clips based on what THIS audience would find valuable.
+   */
+  targetAudience: string
 }
 
 export interface AutoModeConfig {
@@ -632,6 +765,13 @@ export interface HookTextTemplate {
 }
 
 export type PythonSetupState = 'checking' | 'not-setup' | 'installing' | 'ready' | 'skipped' | 'error'
+
+// ---------------------------------------------------------------------------
+// Edit Mode (Two-Track Architecture)
+// ---------------------------------------------------------------------------
+
+/** Determines which render/UI track is active. */
+export type EditMode = 'basic' | 'ai-edit'
 
 // ---------------------------------------------------------------------------
 // Full AppState
@@ -835,6 +975,7 @@ export interface AppState {
 
   // Actions — Settings
   setGeminiApiKey: (key: string) => void
+  setFalApiKey: (key: string) => void
   setOutputDirectory: (dir: string) => void
   setMinScore: (score: number) => void
   setCaptionStyle: (style: CaptionStyle) => void
@@ -883,10 +1024,8 @@ export interface AppState {
 
   // Actions — B-Roll
   setBRollEnabled: (enabled: boolean) => void
-  setBRollPexelsApiKey: (key: string) => void
   setBRollIntervalSeconds: (seconds: number) => void
   setBRollClipDuration: (seconds: number) => void
-  setBRollSourceMode: (mode: 'stock' | 'ai-generated' | 'auto') => void
 
   // Actions — Filler Removal
   setFillerRemovalEnabled: (enabled: boolean) => void
@@ -1060,6 +1199,20 @@ export interface AppState {
   // Actions — Segment Editor
   setSegments: (clipId: string, segments: VideoSegment[]) => void
   updateSegment: (clipId: string, segmentId: string, updates: Partial<VideoSegment>) => void
+  /** Convenience action: update a segment's style variant by index within a clip. */
+  updateSegmentStyle: (clipId: string, segmentIndex: number, variantId: string, category?: SegmentStyleCategory) => void
+  /** Convenience action: update the transition type that plays before a given segment. */
+  updateSegmentTransition: (clipId: string, segmentIndex: number, transitionType: TransitionType) => void
   setEditStyles: (styles: EditStyle[]) => void
   setSelectedEditStyleId: (styleId: string | null) => void
+
+  // Edit Mode (Two-Track Architecture)
+  /** Which editing track is active. null = not yet chosen (show TrackSelector). */
+  editMode: EditMode | null
+  /** Accent color chosen by the user for the AI Edit track. */
+  aiEditAccentColor: string
+  /** Set the edit mode (basic or ai-edit). */
+  setEditMode: (mode: EditMode | null) => void
+  /** Set the AI Edit accent color override. */
+  setAiEditAccentColor: (color: string) => void
 }
