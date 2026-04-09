@@ -233,6 +233,8 @@ export function isGpuSessionError(errorMessage: string): boolean {
     errorMessage.includes('out of memory') ||
     errorMessage.includes('hwupload_cuda failed') ||
     errorMessage.includes('CUDA') ||
+    // Windows ACCESS_VIOLATION (0xC0000005 = 3221225477) — NVENC driver crash
+    errorMessage.includes('3221225477') ||
     msg.includes('cuda') ||
     msg.includes('nvenc') ||
     msg.includes('h264_nvenc') ||
@@ -241,6 +243,25 @@ export function isGpuSessionError(errorMessage: string): boolean {
     msg.includes('hwdownload') ||
     msg.includes('scale_cuda')
   )
+}
+
+/**
+ * Whether the GPU encoder has been disabled for this session due to a crash.
+ * Once set, all subsequent encodes use software fallback without even trying GPU.
+ */
+let gpuEncoderDisabledForSession = false
+
+/** Mark GPU encoder as broken for the rest of this app session. */
+export function disableGpuEncoderForSession(): void {
+  if (!gpuEncoderDisabledForSession) {
+    gpuEncoderDisabledForSession = true
+    console.warn('[FFmpeg] GPU encoder disabled for this session due to crash — all subsequent encodes will use software fallback')
+  }
+}
+
+/** Check if GPU encoder was disabled by a prior crash this session. */
+export function isGpuEncoderDisabled(): boolean {
+  return gpuEncoderDisabledForSession
 }
 
 /**
@@ -375,20 +396,26 @@ export function cropAndExport(
   const scaleFilter = `scale=${resolution.width}:${resolution.height}`
   const videoFilter = `${cropFilter},${scaleFilter}`
 
-  const { encoder, presetFlag } = getEncoder()
+  const gpuOff = isGpuEncoderDisabled()
+  const { encoder, presetFlag } = gpuOff ? getSoftwareEncoder() : getEncoder()
 
   return new Promise((resolve, reject) => {
-    ffmpeg(inputPath)
-      .inputOptions(['-hwaccel', 'auto'])
+    let stderrOutput = ''
+    const cmd = ffmpeg(inputPath)
+    if (!gpuOff) {
+      cmd.inputOptions(['-hwaccel', 'auto'])
+    }
+    cmd
       .videoFilters(videoFilter)
       .outputOptions(['-y', '-c:v', encoder, ...presetFlag, '-c:a', 'aac'])
+      .on('stderr', (line: string) => { stderrOutput += line + '\n' })
       .on('end', () => resolve(outputPath))
       .on('error', (err: Error) => {
-        if (isGpuSessionError(err.message)) {
+        if (isGpuSessionError(err.message + '\n' + stderrOutput)) {
           // Retry with software encoder
+          disableGpuEncoderForSession()
           const sw = getSoftwareEncoder()
           ffmpeg(inputPath)
-            .inputOptions(['-hwaccel', 'auto'])
             .videoFilters(videoFilter)
             .outputOptions(['-y', '-c:v', sw.encoder, ...sw.presetFlag, '-c:a', 'aac'])
             .on('end', () => resolve(outputPath))

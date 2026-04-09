@@ -19,6 +19,8 @@ import {
   getEncoder,
   getSoftwareEncoder,
   isGpuSessionError,
+  isGpuEncoderDisabled,
+  disableGpuEncoderForSession,
   stripCudaScaleFilter,
   hasScaleCuda,
   type QualityParams
@@ -32,6 +34,7 @@ import { buildSoundFilterComplex } from './features/sound-design.feature'
 import { concatWithBumpers } from './bumpers'
 import { activeCommands, runOverlayPasses } from './overlay-runner'
 import type { OverlayPassResult } from './features/feature'
+import { buildFaceTrackCropFilter } from './face-track-filter'
 
 // Re-export activeCommands so the pipeline orchestrator can access it
 export { activeCommands }
@@ -62,6 +65,12 @@ export function buildVideoFilter(
   // Determine the target aspect ratio for center-crop fallback.
   // When an explicit aspect ratio is given, use it; otherwise derive from outW/outH.
   const aspectRatioForCrop: OutputAspectRatio = outputAspectRatio ?? '9:16'
+
+  // Face-tracking animated crop: takes precedence over static cropRegion when ≥2 entries.
+  if (job.faceTimeline && job.faceTimeline.length >= 2) {
+    const animated = buildFaceTrackCropFilter(job.faceTimeline, sourceWidth, sourceHeight, outW, outH)
+    if (animated !== null) return animated
+  }
 
   let cropFilter: string
 
@@ -151,6 +160,10 @@ export function renderClip(
         encoder: 'libvpx-vp9',
         flags: ['-crf', String(crf), '-b:v', '0', '-cpu-used', '4']
       }
+    }
+    // If GPU encoder was disabled by a prior crash this session, go straight to software
+    if (isGpuEncoderDisabled()) {
+      return getSoftwareCodecFlags()
     }
     const { encoder, presetFlag } = getEncoder(qualityParams)
     return { encoder, flags: presetFlag }
@@ -252,6 +265,7 @@ export function renderClip(
               console.error(`[Render] FFmpeg stderr for clip ${job.clipId}:\n${stderrOutput}`)
               if (!soundFallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
                 soundFallbackAttempted = true
+                disableGpuEncoderForSession()
                 console.warn(`[Render] GPU error in sound-design path, falling back to software encoder + CPU scale: ${err.message}`)
                 videoFilter = stripCudaScaleFilter(videoFilter)
                 const { encoder: swEnc, flags: swFlags } = getSoftwareCodecFlags()
@@ -323,6 +337,7 @@ export function renderClip(
               console.error(`[Render] FFmpeg stderr for clip ${job.clipId}:\n${stderrOutput}`)
               if (!logoFallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
                 logoFallbackAttempted = true
+                disableGpuEncoderForSession()
                 console.warn('[Render] GPU error in logo-only path, falling back to software encoder + CPU scale')
                 videoFilter = stripCudaScaleFilter(videoFilter)
                 const { encoder: swEnc, flags: swFlags } = getSoftwareCodecFlags()
@@ -384,6 +399,7 @@ export function renderClip(
               console.error(`[Render] FFmpeg stderr for clip ${job.clipId}:\n${stderrOutput}`)
               if (!simpleFallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
                 simpleFallbackAttempted = true
+                disableGpuEncoderForSession()
                 console.warn('[Render] GPU error in simple path, falling back to software encoder + CPU scale')
                 videoFilter = stripCudaScaleFilter(videoFilter)
                 const { encoder: swEnc, flags: swFlags } = getSoftwareCodecFlags()

@@ -12,8 +12,8 @@
 import { join } from 'path'
 import { unlinkSync, writeFileSync, renameSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
-import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, getVideoMetadata } from '../ffmpeg'
-import type { BrandKitRenderOptions } from './types'
+import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, isGpuEncoderDisabled, disableGpuEncoderForSession, getVideoMetadata } from '../ffmpeg'
+import type { BrandKitRenderOptions, HookTitleConfig } from './types'
 import type { CaptionStyleInput } from '../captions'
 import type { EmphasizedWord } from '@shared/types'
 import type { ProgressBarConfig } from '../overlays/progress-bar'
@@ -22,9 +22,17 @@ import { generateCaptions } from '../captions'
 import { analyzeEmphasisHeuristic } from '../word-emphasis'
 import { resolveFontsDir } from '../font-registry'
 import { buildCaptionBackground, buildLetterboxBars } from '../overlays/caption-background'
+import { buildSnapZoom, buildWordPulseZoom, buildDriftZoom, buildZoomOutReveal } from '../zoom-filters'
 import { buildProgressBarFilter } from '../overlays/progress-bar'
-import { applyFilterComplexPass } from './overlay-runner'
+import { applyFilterPass, applyFilterComplexPass } from './overlay-runner'
 import { buildLogoOnlyFilterComplex } from './features/brand-kit.feature'
+import { generateHookTitleASSFile } from './features/hook-title.feature'
+import { resolveSfxPath } from '../sound-design'
+import type { SoundPlacementData } from '../sound-design'
+import { buildSegmentLayout, type SegmentLayoutParams } from '../layouts/segment-layouts'
+import { buildVFXFilterChain, buildVFXOverlays, type VFXBuildResult } from './vfx-filters'
+import { buildFaceTrackCropFilter, type FaceTrackEntry } from './face-track-filter'
+import { buildEditStyleColorGradeFilter } from './color-grade-filter'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,6 +80,12 @@ export interface SegmentRenderConfig {
   sourceHeight: number
   /** Face detection crop rect (fallback when segment has none) */
   defaultCropRect?: { x: number; y: number; width: number; height: number }
+  /**
+   * Face-tracking timeline for animated crop (clip-relative, seconds).
+   * When present and has ≥ 2 entries, the segment render uses an animated
+   * crop instead of the static defaultCropRect / segment cropRect.
+   */
+  faceTimeline?: FaceTrackEntry[]
   /** Word timestamps (absolute, for caption generation) */
   wordTimestamps?: { text: string; start: number; end: number }[]
   /** Word emphasis data */
@@ -86,11 +100,39 @@ export interface SegmentRenderConfig {
   progressBarConfig?: ProgressBarConfig
   /** Template layout positions */
   templateLayout?: { titleText: { x: number; y: number }; subtitles: { x: number; y: number }; rehookText: { x: number; y: number } }
+  /**
+   * User-chosen accent color (from AI Edit settings).
+   * When set, overrides the edit style's default accentColor for all segments
+   * that don't have a per-segment accentColor.
+   */
+  userAccentColor?: string
+  /** AI-suggested SFX placements (clip-relative timestamps) */
+  soundPlacements?: SoundPlacementData[]
+  /** Hook title text to display at the start of the clip */
+  hookTitleText?: string
+  /** Hook title styling + timing config */
+  hookTitleConfig?: HookTitleConfig
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Derive a lighter tint from a hex color.
+ * Blends the input color toward white by the given amount (0–1).
+ * Mirrors the same function in accent-color.feature.ts.
+ */
+function lightenColor(hex: string, amount = 0.4): string {
+  const clean = hex.replace('#', '')
+  const r = parseInt(clean.substring(0, 2), 16)
+  const g = parseInt(clean.substring(2, 4), 16)
+  const b = parseInt(clean.substring(4, 6), 16)
+  const lr = Math.round(r + (255 - r) * amount)
+  const lg = Math.round(g + (255 - g) * amount)
+  const lb = Math.round(b + (255 - b) * amount)
+  return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`
+}
 
 /**
  * Build a crop+scale filter for a segment based on its crop rect (or default).
@@ -135,57 +177,115 @@ function buildSegmentZoomFilter(
   seg: ResolvedSegment,
   segDuration: number,
   targetWidth: number,
-  targetHeight: number
+  targetHeight: number,
+  fps: number,
+  wordTimestamps?: { text: string; start: number; end: number }[],
+  wordEmphasis?: EmphasizedWord[]
 ): string {
   const { style, intensity } = seg.zoom
   if (style === 'none' || intensity <= 1.001) return ''
 
   switch (style) {
     case 'snap': {
-      // Instant snap-zoom: apply a constant zoom crop then scale back
-      const invScale = 1 / intensity
-      const newW = Math.round(targetWidth * invScale)
-      const newH = Math.round(targetHeight * invScale)
-      const ox = Math.round((targetWidth - newW) / 2)
-      const oy = Math.round((targetHeight - newH) / 2)
-      return `crop=${newW}:${newH}:${ox}:${oy},scale=${targetWidth}:${targetHeight}`
+      // Per-word snap zoom: jump IN on emphasis words, HOLD for the word
+      // duration, then SNAP back to 1.0×.
+      // Filter emphasis words that fall within this segment's time range and
+      // convert to segment-local time (0-based).
+      const segStart = seg.startTime
+      const segEnd = seg.endTime
+      const localEmphasis: { time: number; duration: number }[] = []
+      if (wordEmphasis) {
+        for (const em of wordEmphasis) {
+          if (em.emphasis === 'normal') continue
+          if (em.end > segStart && em.start < segEnd) {
+            const clampedStart = Math.max(em.start, segStart)
+            const clampedEnd = Math.min(em.end, segEnd)
+            localEmphasis.push({
+              time: clampedStart - segStart,
+              duration: clampedEnd - clampedStart,
+            })
+          }
+        }
+      }
+
+      if (localEmphasis.length > 0) {
+        return buildSnapZoom({
+          width: targetWidth,
+          height: targetHeight,
+          fps,
+          duration: segDuration,
+          zoomIntensity: intensity,
+          startTime: 0,
+          emphasisTimestamps: localEmphasis,
+        })
+      }
+
+      // Fallback: no emphasis data — degrade to drift zoom instead of static
+      // crop so the segment still has motion.
+      console.warn(`[Segment Render] Snap zoom degraded to drift — no emphasis data for segment at ${seg.startTime}s`)
+      return buildDriftZoom({
+        width: targetWidth,
+        height: targetHeight,
+        fps,
+        duration: segDuration,
+        zoomIntensity: intensity,
+        startTime: 0,
+      })
     }
     case 'drift': {
-      // Gentle Ken Burns drift: slow zoom-in over the segment duration
-      // nanSafe guard: at filter init t=NAN, return full frame (no zoom)
-      const PI_VAL = '3.141592653589793'
-      const amp = ((intensity - 1) * 0.5).toFixed(4)
-      const T = Math.max(2, segDuration * 2).toFixed(2)
-      const zExpr = `1+${amp}*(0.5+0.5*cos(2*${PI_VAL}*t/${T}))`
-      const ns = (expr: string, fb: string): string => `if(isnan(t),${fb},${expr})`
-      return [
-        `crop=w='${ns(`iw/(${zExpr})`, 'iw')}':h='${ns(`ih/(${zExpr})`, 'ih')}':x='${ns(`iw/2-iw/(2*(${zExpr}))`, '0')}':y='${ns(`ih/2-ih/(2*(${zExpr}))`, '0')}'`,
-        `scale=${targetWidth}:${targetHeight}`
-      ].join(',')
+      // Gentle Ken Burns drift: slow linear zoom-in over the segment duration.
+      // Delegates to the canonical buildDriftZoom() builder so the output is
+      // consistent with the standalone zoom-filter tests.
+      return buildDriftZoom({
+        width: targetWidth,
+        height: targetHeight,
+        fps,
+        duration: segDuration,
+        zoomIntensity: intensity,
+        startTime: 0, // segment-local: FFmpeg resets t=0 at seekInput
+      })
     }
     case 'zoom-out': {
-      // Start zoomed in, slowly zoom out
-      const PI_VAL = '3.141592653589793'
-      const amp = ((intensity - 1) * 0.5).toFixed(4)
-      const T = Math.max(2, segDuration * 2).toFixed(2)
-      const zExpr = `1+${amp}*(0.5-0.5*cos(2*${PI_VAL}*t/${T}))`
-      const ns = (expr: string, fb: string): string => `if(isnan(t),${fb},${expr})`
-      return [
-        `crop=w='${ns(`iw/(${zExpr})`, 'iw')}':h='${ns(`ih/(${zExpr})`, 'ih')}':x='${ns(`iw/2-iw/(2*(${zExpr}))`, '0')}':y='${ns(`ih/2-ih/(2*(${zExpr}))`, '0')}'`,
-        `scale=${targetWidth}:${targetHeight}`
-      ].join(',')
+      // Start zoomed in, slowly pull back to 1.0×.
+      // Delegates to the canonical buildZoomOutReveal() builder.
+      return buildZoomOutReveal({
+        width: targetWidth,
+        height: targetHeight,
+        fps,
+        duration: segDuration,
+        zoomIntensity: intensity,
+        startTime: 0,
+      })
     }
     case 'word-pulse': {
-      // Zoom pulses tied to word emphasis — simplified as gentle breathing
-      const PI_VAL = '3.141592653589793'
-      const amp = ((intensity - 1) * 0.3).toFixed(4)
-      const T = Math.max(1, segDuration).toFixed(2)
-      const zExpr = `1+${amp}*(0.5+0.5*cos(2*${PI_VAL}*t/${T}))`
-      const ns = (expr: string, fb: string): string => `if(isnan(t),${fb},${expr})`
-      return [
-        `crop=w='${ns(`iw/(${zExpr})`, 'iw')}':h='${ns(`ih/(${zExpr})`, 'ih')}':x='${ns(`iw/2-iw/(2*(${zExpr}))`, '0')}':y='${ns(`ih/2-ih/(2*(${zExpr}))`, '0')}'`,
-        `scale=${targetWidth}:${targetHeight}`
-      ].join(',')
+      // Filter word timestamps to this segment's time range and convert to
+      // segment-local time (relative to segment start).
+      const segStart = seg.startTime
+      const segEnd = seg.endTime
+      const localWords: { time: number; duration: number }[] = []
+      if (wordTimestamps) {
+        for (const w of wordTimestamps) {
+          if (w.end > segStart && w.start < segEnd) {
+            const clampedStart = Math.max(w.start, segStart)
+            const clampedEnd = Math.min(w.end, segEnd)
+            localWords.push({
+              time: clampedStart - segStart,
+              duration: clampedEnd - clampedStart,
+            })
+          }
+        }
+      }
+      // Delegate to the proper word-pulse zoom builder
+      return buildWordPulseZoom({
+        width: targetWidth,
+        height: targetHeight,
+        fps,
+        duration: segDuration,
+        zoomIntensity: intensity,
+        startTime: 0,
+        allWordTimestamps: localWords.length > 0 ? localWords : undefined,
+        emphasisTimestamps: localWords.length === 0 ? [{ time: 0, duration: segDuration }] : undefined,
+      })
     }
     default:
       return ''
@@ -206,21 +306,25 @@ async function generateSegmentCaptions(
   captionsEnabled: boolean | undefined,
   targetWidth: number,
   targetHeight: number,
+  userAccentColor?: string,
   templateLayout?: { subtitles: { x: number; y: number } }
 ): Promise<string | null> {
   if (!captionsEnabled || !captionStyle || !wordTimestamps) return null
 
-  // Filter words that fall within this segment's absolute time range
+  // Filter words that overlap this segment's absolute time range.
+  // Uses overlap logic (end > segStart && start < segEnd) so words that
+  // straddle a segment boundary are included and clamped, not silently dropped.
   const segWords = wordTimestamps.filter(
-    (w) => w.start >= segStartTime && w.end <= segEndTime
+    (w) => w.end > segStartTime && w.start < segEndTime
   )
   if (segWords.length === 0) return null
 
-  // Convert to segment-local time (0-based)
+  // Convert to segment-local time (0-based), clamping words that straddle
+  // the segment boundary so they start/end at the segment edge.
   const localWordsBase = segWords.map((w) => ({
     text: w.text,
-    start: w.start - segStartTime,
-    end: w.end - segStartTime
+    start: Math.max(w.start, segStartTime) - segStartTime,
+    end: Math.min(w.end, segEndTime) - segStartTime
   }))
 
   // Resolve emphasis: prefer pre-computed > heuristic
@@ -247,7 +351,23 @@ async function generateSegmentCaptions(
     const marginVOverride = templateLayout?.subtitles
       ? Math.round((1 - templateLayout.subtitles.y / 100) * targetHeight)
       : undefined
-    return await generateCaptions(localWords, captionStyle, undefined, targetWidth, targetHeight, marginVOverride)
+
+    // Apply per-segment accent color to caption highlight/emphasis/supersize colors.
+    // This mirrors the full-clip logic in accent-color.feature.ts but operates on a
+    // per-segment basis so segments with different accent colors render correctly.
+    // Resolution order: per-segment → user-chosen → edit-style default.
+    let effectiveCaptionStyle = captionStyle
+    const segAccent = seg.accentColor ?? userAccentColor
+    if (segAccent) {
+      effectiveCaptionStyle = {
+        ...captionStyle,
+        highlightColor: segAccent,
+        emphasisColor: segAccent,
+        supersizeColor: lightenColor(segAccent, 0.4)
+      }
+    }
+
+    return await generateCaptions(localWords, effectiveCaptionStyle, undefined, targetWidth, targetHeight, marginVOverride)
   } catch (err) {
     console.warn(`[SegmentRender] Failed to generate captions for segment:`, err)
     return null
@@ -292,6 +412,231 @@ function generateSegmentOverlayASS(
   ].join('\n')
 }
 
+// ---------------------------------------------------------------------------
+// Layout category routing
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true for categories that should use buildSegmentLayout() from
+ * segment-layouts.ts instead of the default crop/scale/zoom pipeline.
+ */
+function isLayoutCategory(category: SegmentStyleCategory): boolean {
+  return (
+    category === 'main-video-images' ||
+    category === 'fullscreen-image' ||
+    category === 'fullscreen-text'
+  )
+}
+
+/**
+ * Encode a segment using a layout-based filter_complex from segment-layouts.ts.
+ *
+ * Handles image inputs, caption overlays, overlay text, and audio mapping.
+ * The layout builder produces a filter_complex with output label [outv]; this
+ * function appends optional caption + overlay-text filters after that.
+ */
+async function encodeLayoutSegment(
+  config: SegmentRenderConfig,
+  seg: ResolvedSegment,
+  segIndex: number,
+  segDuration: number,
+  tempPath: string,
+  onProgress: (percent: number) => void
+): Promise<string[]> {
+  const segmentTempFiles: string[] = []
+  const fontsDir = resolveFontsDir()
+  const { encoder: detectedEncoder, presetFlag: detectedPresetFlag } = getEncoder()
+  // If a prior segment crashed the GPU encoder this session, go straight to software
+  const useSwFallback = isGpuEncoderDisabled() && detectedEncoder !== 'libx264'
+  const sw = useSwFallback ? getSoftwareEncoder() : null
+  const encoder = sw ? sw.encoder : detectedEncoder
+  const presetFlag = sw ? sw.presetFlag : detectedPresetFlag
+  const { width: tw, height: th, sourceWidth, sourceHeight } = config
+  const category = seg.styleVariant.category
+
+  // ── Build layout parameters ────────────────────────────────────────────
+  const layoutParams: SegmentLayoutParams = {
+    width: tw,
+    height: th,
+    segmentDuration: segDuration,
+    imagePath: seg.imagePath,
+    overlayText: seg.overlayText,
+    accentColor: seg.accentColor ?? config.userAccentColor,
+    captionBgOpacity: seg.captionBgOpacity,
+    sourceWidth,
+    sourceHeight,
+    cropRect: seg.cropRect ?? config.defaultCropRect,
+    textAnimation: config.editStyle.textAnimation ?? 'none'
+  }
+
+  // Get the filter_complex from the layout builder
+  const layoutResult = await buildSegmentLayout(seg.styleVariant, layoutParams)
+  let filterComplex = layoutResult.filterComplex
+
+  // For fullscreen-image, the layout uses [0:v] for the image, but we supply
+  // the source video as input 0 (for audio) and the image as input 1.
+  // Remap [0:v] → [1:v] so the filter reads from the image input.
+  if (category === 'fullscreen-image') {
+    filterComplex = filterComplex.replace(/\[0:v\]/g, '[1:v]')
+  }
+
+  // ── Append caption + overlay-text filters after [outv] ─────────────────
+  let currentLabel = 'outv'
+  const extraFilters: string[] = []
+
+  // Edit style color grade — applied first, before VFX and captions
+  if (config.editStyle?.colorGrade) {
+    const gradeFilter = buildEditStyleColorGradeFilter(config.editStyle.colorGrade)
+    if (gradeFilter) {
+      extraFilters.push(`[${currentLabel}]${gradeFilter}[grade]`)
+      currentLabel = 'grade'
+    }
+  }
+
+  // VFX overlays — inserted before captions so VFX renders under text
+  // Build both procedural and asset-based overlays
+  let layoutVfxResult: VFXBuildResult | undefined
+  if (config.editStyle?.vfxOverlays && config.editStyle.vfxOverlays.length > 0) {
+    const effectiveAccent = seg.accentColor ?? config.userAccentColor ?? config.editStyle.accentColor ?? '#FF6B35'
+    layoutVfxResult = buildVFXOverlays(config.editStyle.vfxOverlays, effectiveAccent, tw, th, category)
+    // Procedural filters chain directly in the filter graph
+    if (layoutVfxResult.proceduralFilters) {
+      extraFilters.push(`[${currentLabel}]${layoutVfxResult.proceduralFilters}[vfx]`)
+      currentLabel = 'vfx'
+    }
+  }
+
+  // Per-segment captions
+  const captionAssPath = await generateSegmentCaptions(
+    seg,
+    seg.startTime,
+    seg.endTime,
+    config.wordTimestamps,
+    config.wordEmphasis,
+    config.captionStyle,
+    config.captionsEnabled,
+    tw,
+    th,
+    config.userAccentColor,
+    config.templateLayout
+  )
+  if (captionAssPath) {
+    segmentTempFiles.push(captionAssPath)
+    const captionFilter = buildASSFilter(captionAssPath, fontsDir)
+    extraFilters.push(`[${currentLabel}]${captionFilter}[cap]`)
+    currentLabel = 'cap'
+  }
+
+  // Overlay text (skip for fullscreen-text — the layout already renders it)
+  if (seg.overlayText && category !== 'fullscreen-text') {
+    const overlayAss = generateSegmentOverlayASS(seg.overlayText, tw, th)
+    const overlayAssPath = join(tmpdir(), `batchcontent-seg-overlay-${Date.now()}-${segIndex}.ass`)
+    writeFileSync(overlayAssPath, overlayAss, 'utf-8')
+    segmentTempFiles.push(overlayAssPath)
+    const overlayFilter = buildASSFilter(overlayAssPath, fontsDir)
+    extraFilters.push(`[${currentLabel}]${overlayFilter}[ovl]`)
+    currentLabel = 'ovl'
+  }
+
+  // Asset-based VFX overlays — appended after captions so they render on top
+  // (light leaks, film grain, etc. should be the final visual layer)
+  if (layoutVfxResult && layoutVfxResult.assetFilterBuilders.length > 0) {
+    // Asset inputs will be added after existing inputs (source + optional image).
+    // We need to know the starting input index for asset overlays.
+    const needsImageInput =
+      seg.imagePath &&
+      (category === 'main-video-images' || category === 'fullscreen-image')
+    let assetInputStartIdx = needsImageInput ? 2 : 1  // 0=source, 1=image(maybe)
+
+    for (let i = 0; i < layoutVfxResult.assetFilterBuilders.length; i++) {
+      const builder = layoutVfxResult.assetFilterBuilders[i]
+      const { filterExpr, outputLabel } = builder(currentLabel, assetInputStartIdx + i)
+      extraFilters.push(filterExpr)
+      currentLabel = outputLabel
+    }
+  }
+
+  // Combine layout filter_complex with any extra filters
+  const fullFilterComplex =
+    extraFilters.length > 0
+      ? filterComplex + ';' + extraFilters.join(';')
+      : filterComplex
+
+  // ── Run FFmpeg with filter_complex ─────────────────────────────────────
+  await new Promise<void>((resolve, reject) => {
+    let fallbackAttempted = false
+
+    function runEncode(enc: string, flags: string[], useHwAccel = true): void {
+      const cmd = ffmpeg(toFFmpegPath(config.sourceVideoPath))
+      let stderrOutput = ''
+
+      if (useHwAccel) {
+        cmd.inputOptions(['-hwaccel', 'auto'])
+      }
+
+      // Seek source video to segment start
+      cmd.seekInput(seg.startTime)
+      cmd.duration(segDuration)
+
+      // Add image as input for image-based layouts (looped for duration)
+      const needsImageInput =
+        seg.imagePath &&
+        (category === 'main-video-images' || category === 'fullscreen-image')
+
+      if (needsImageInput) {
+        cmd.input(toFFmpegPath(seg.imagePath))
+        cmd.inputOptions(['-loop', '1'])
+      }
+
+      // Add asset overlay inputs (after source + optional image)
+      if (layoutVfxResult) {
+        for (const assetInput of layoutVfxResult.assetInputs) {
+          cmd.input(toFFmpegPath(assetInput.filePath))
+          cmd.inputOptions(assetInput.inputOptions)
+        }
+      }
+
+      cmd
+        .outputOptions([
+          '-filter_complex', fullFilterComplex,
+          '-map', `[${currentLabel}]`,
+          '-map', '0:a',
+          '-c:v', enc,
+          ...flags,
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-movflags', '+faststart',
+          '-y'
+        ])
+        .on('progress', (progress: { percent?: number }) => {
+          onProgress(Math.min(99, progress.percent ?? 0))
+        })
+        .on('stderr', (line: string) => { stderrOutput += line + '\n' })
+        .on('end', () => {
+          onProgress(100)
+          resolve()
+        })
+        .on('error', (err: Error) => {
+          if (!fallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
+            fallbackAttempted = true
+            disableGpuEncoderForSession()
+            console.warn(`[SegmentRender] GPU error in layout segment encode, falling back to software encoder: ${err.message}`)
+            const sw = getSoftwareEncoder()
+            runEncode(sw.encoder, sw.presetFlag, false)
+          } else {
+            const stderrTail = stderrOutput.split('\n').slice(-10).join('\n')
+            reject(new Error(`${err.message}\n[stderr tail] ${stderrTail}`))
+          }
+        })
+        .save(toFFmpegPath(tempPath))
+    }
+
+    runEncode(encoder, presetFlag)
+  })
+
+  return segmentTempFiles
+}
+
 /**
  * Encode a single segment as a temp MP4 file.
  * Returns an array of temp file paths created during encoding (for cleanup).
@@ -304,20 +649,103 @@ async function encodeSegment(
   tempPath: string,
   onProgress: (percent: number) => void
 ): Promise<string[]> {
+  const category = seg.styleVariant.category
+
+  // ── Route layout-based segments to the layout encoder ───────────────────
+  // Layout-based categories use buildSegmentLayout() for their filter_complex
+  // instead of the default crop/scale/zoom pipeline.
+  if (isLayoutCategory(category)) {
+    // Image-based layouts require imagePath — fall back to main-video if missing
+    if (
+      (category === 'main-video-images' || category === 'fullscreen-image') &&
+      (!seg.imagePath || !existsSync(seg.imagePath))
+    ) {
+      console.warn(
+        `[SegmentRender] Segment ${segIndex} has layout '${seg.styleVariant.id}' ` +
+        `but imagePath is missing or does not exist — falling back to main-video pipeline`
+      )
+      // Fall through to main-video pipeline below
+    } else {
+      return encodeLayoutSegment(config, seg, segIndex, segDuration, tempPath, onProgress)
+    }
+  }
+
+  // ── Main-video / main-video-text pipeline (crop/scale/zoom + ASS) ──────
   const segmentTempFiles: string[] = []
   const fontsDir = resolveFontsDir()
-  const { encoder, presetFlag } = getEncoder()
+  const { encoder: detectedEncoder2, presetFlag: detectedPresetFlag2 } = getEncoder()
+  // If a prior segment crashed the GPU encoder this session, go straight to software
+  const useSwFallback2 = isGpuEncoderDisabled() && detectedEncoder2 !== 'libx264'
+  const sw2 = useSwFallback2 ? getSoftwareEncoder() : null
+  const encoder = sw2 ? sw2.encoder : detectedEncoder2
+  const presetFlag = sw2 ? sw2.presetFlag : detectedPresetFlag2
   const { width: tw, height: th, sourceWidth, sourceHeight } = config
 
   // Build filter chain: crop/scale → zoom → caption bg → letterbox → ASS
   const filterChain: string[] = []
 
-  // 1. Crop + scale
-  filterChain.push(buildCropScaleFilter(seg, config.defaultCropRect, sourceWidth, sourceHeight, tw, th))
+  // 1. Crop + scale — prefer animated face-track crop when available
+  //
+  // The full face timeline covers the entire clip, but each segment only spans
+  // a small portion.  We must (a) trim to entries near this segment and
+  // (b) shift timestamps to segment-local time because -ss (seekInput) resets
+  // FFmpeg's `t` to ≈0.  Without trimming, the nested if(between(...)) expression
+  // can exceed Windows' 32 767-char command-line limit and FFmpeg receives a
+  // truncated command → "Option not found".
+  if (config.faceTimeline && config.faceTimeline.length >= 2 && !seg.cropRect) {
+    const segStart = seg.startTime
+    const segEnd = seg.endTime
+
+    // Find the sub-range of timeline entries that bracket this segment.
+    // Include one entry before/after for smooth interpolation at edges.
+    let firstIdx = config.faceTimeline.findIndex(e => e.t >= segStart)
+    let lastIdx = -1
+    for (let fi = config.faceTimeline.length - 1; fi >= 0; fi--) {
+      if (config.faceTimeline[fi].t <= segEnd) { lastIdx = fi; break }
+    }
+    if (firstIdx < 0) firstIdx = config.faceTimeline.length - 1
+    if (lastIdx < 0) lastIdx = 0
+    if (firstIdx > 0) firstIdx--
+    if (lastIdx < config.faceTimeline.length - 1) lastIdx++
+
+    // Shift timestamps to segment-local time (0-based)
+    const localTimeline: FaceTrackEntry[] = config.faceTimeline
+      .slice(firstIdx, lastIdx + 1)
+      .map(e => ({ ...e, t: e.t - segStart }))
+
+    const animated = localTimeline.length >= 2
+      ? buildFaceTrackCropFilter(localTimeline, sourceWidth, sourceHeight, tw, th)
+      : null
+    if (animated !== null) {
+      filterChain.push(animated)
+    } else {
+      filterChain.push(buildCropScaleFilter(seg, config.defaultCropRect, sourceWidth, sourceHeight, tw, th))
+    }
+  } else {
+    filterChain.push(buildCropScaleFilter(seg, config.defaultCropRect, sourceWidth, sourceHeight, tw, th))
+  }
 
   // 2. Zoom
-  const zoomFilter = buildSegmentZoomFilter(seg, segDuration, tw, th)
+  const zoomFilter = buildSegmentZoomFilter(seg, segDuration, tw, th, config.fps, config.wordTimestamps, config.wordEmphasis)
   if (zoomFilter) filterChain.push(zoomFilter)
+
+  // 2a. Edit style color grade (after crop/scale/zoom, before VFX overlays)
+  if (config.editStyle?.colorGrade) {
+    const gradeFilter = buildEditStyleColorGradeFilter(config.editStyle.colorGrade)
+    if (gradeFilter) filterChain.push(gradeFilter)
+  }
+
+  // 2b. VFX overlays (after crop/scale/zoom, before caption background)
+  // Build both procedural filters and asset-based overlay inputs.
+  let vfxResult: VFXBuildResult | undefined
+  if (config.editStyle?.vfxOverlays && config.editStyle.vfxOverlays.length > 0) {
+    const effectiveAccent = seg.accentColor ?? config.userAccentColor ?? config.editStyle.accentColor ?? '#FF6B35'
+    vfxResult = buildVFXOverlays(config.editStyle.vfxOverlays, effectiveAccent, tw, th, category)
+    // Procedural filters go directly into the -vf chain
+    if (vfxResult.proceduralFilters) filterChain.push(vfxResult.proceduralFilters)
+  }
+
+  const hasAssetOverlays = vfxResult && vfxResult.assetInputs.length > 0
 
   // 3. Caption background
   const bgOpacity = seg.captionBgOpacity ?? config.editStyle.captionBgOpacity ?? 0
@@ -343,6 +771,7 @@ async function encodeSegment(
     config.captionsEnabled,
     tw,
     th,
+    config.userAccentColor,
     config.templateLayout
   )
   if (captionAssPath) {
@@ -359,22 +788,69 @@ async function encodeSegment(
     filterChain.push(buildASSFilter(overlayAssPath, fontsDir))
   }
 
-  const videoFilter = filterChain.join(',')
+  // ── Encode: choose simple -vf or filter_complex based on asset overlays ──
 
   await new Promise<void>((resolve, reject) => {
     let fallbackAttempted = false
+
     function runEncode(enc: string, flags: string[], useHwAccel = true): void {
       const cmd = ffmpeg(toFFmpegPath(config.sourceVideoPath))
+      let stderrOutput = ''
 
       if (useHwAccel) {
         cmd.inputOptions(['-hwaccel', 'auto'])
       }
 
-      cmd
-        .seekInput(seg.startTime)
-        .duration(segDuration)
-        .videoFilters(videoFilter)
-        .outputOptions([
+      cmd.seekInput(seg.startTime)
+      cmd.duration(segDuration)
+
+      if (hasAssetOverlays && vfxResult) {
+        // ── filter_complex path: asset overlays need extra inputs ──────────
+        // Add each asset overlay as an additional input
+        // Input 0 = source video, asset inputs start at index 1
+        let nextInputIdx = 1
+        for (const assetInput of vfxResult.assetInputs) {
+          cmd.input(toFFmpegPath(assetInput.filePath))
+          cmd.inputOptions(assetInput.inputOptions)
+          nextInputIdx++
+        }
+
+        // Build filter_complex:
+        // [0:v] → procedural filters → [proc]; then chain asset composites
+        const baseVideoFilter = filterChain.join(',')
+        const fcParts: string[] = []
+
+        // Step 1: apply all procedural filters to the source video
+        fcParts.push(`[0:v]${baseVideoFilter}[vfx_proc]`)
+
+        // Step 2: chain asset overlay composites sequentially
+        let currentLabel = 'vfx_proc'
+        let assetInputOffset = 1 // asset inputs start at index 1
+        for (let i = 0; i < vfxResult.assetFilterBuilders.length; i++) {
+          const builder = vfxResult.assetFilterBuilders[i]
+          const { filterExpr, outputLabel } = builder(currentLabel, assetInputOffset + i)
+          fcParts.push(filterExpr)
+          currentLabel = outputLabel
+        }
+
+        const fullFilterComplex = fcParts.join(';')
+
+        cmd.outputOptions([
+          '-filter_complex', fullFilterComplex,
+          '-map', `[${currentLabel}]`,
+          '-map', '0:a',
+          '-c:v', enc,
+          ...flags,
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-movflags', '+faststart',
+          '-y'
+        ])
+      } else {
+        // ── Simple -vf path (no asset overlays) ───────────────────────────
+        const videoFilter = filterChain.join(',')
+        cmd.videoFilters(videoFilter)
+        cmd.outputOptions([
           '-y',
           '-c:v', enc,
           ...flags,
@@ -382,20 +858,27 @@ async function encodeSegment(
           '-b:a', '192k',
           '-movflags', '+faststart'
         ])
+      }
+
+      cmd
         .on('progress', (progress) => {
           onProgress(Math.min(99, progress.percent ?? 0))
         })
+        .on('stderr', (line: string) => { stderrOutput += line + '\n' })
         .on('end', () => {
           onProgress(100)
           resolve()
         })
         .on('error', (err: Error) => {
-          if (!fallbackAttempted && isGpuSessionError(err.message)) {
+          if (!fallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
             fallbackAttempted = true
+            disableGpuEncoderForSession()
+            console.warn(`[SegmentRender] GPU error in segment encode, falling back to software encoder: ${err.message}`)
             const sw = getSoftwareEncoder()
             runEncode(sw.encoder, sw.presetFlag, false)
           } else {
-            reject(err)
+            const stderrTail = stderrOutput.split('\n').slice(-10).join('\n')
+            reject(new Error(`${err.message}\n[stderr tail] ${stderrTail}`))
           }
         })
         .save(toFFmpegPath(tempPath))
@@ -452,13 +935,20 @@ async function concatWithDemuxer(
 /**
  * Get the xfade transition name for a TransitionType.
  * Returns null for hard-cut (use concat demuxer instead).
+ *
+ * When flashColor is provided and not white (#FFFFFF), flash-cut uses
+ * fadecolor instead of fadewhite so the flash color can be customised.
  */
-function getXfadeType(transition: TransitionType): string | null {
+function getXfadeType(transition: TransitionType, flashColor?: string): string | null {
   switch (transition) {
     case 'crossfade':
       return 'fade'
-    case 'flash-cut':
-      return 'fadeblack'
+    case 'flash-cut': {
+      if (flashColor && flashColor.toUpperCase() !== '#FFFFFF') {
+        return 'fadecolor'
+      }
+      return 'fadewhite'
+    }
     case 'color-wash':
       return 'fadecolor'
     case 'hard-cut':
@@ -476,7 +966,9 @@ async function concatWithXfade(
   segmentFiles: string[],
   transitions: TransitionType[],
   outputPath: string,
-  onProgress: (percent: number) => void
+  onProgress: (percent: number) => void,
+  flashColor?: string,
+  transitionDuration?: number
 ): Promise<void> {
   if (segmentFiles.length === 0) throw new Error('No segments to concatenate')
   if (segmentFiles.length === 1) {
@@ -496,7 +988,7 @@ async function concatWithXfade(
   // Build xfade filter chain
   // xfade chains: [0][1] → [v0], then [v0][2] → [v1], etc.
   const filterParts: string[] = []
-  const xfadeDuration = 0.3 // seconds for each transition
+  const xfadeDuration = transitionDuration ?? 0.3
 
   let inputLabel = '0:v'
   let outputLabel = 'v0'
@@ -504,7 +996,7 @@ async function concatWithXfade(
 
   for (let i = 1; i < segmentFiles.length; i++) {
     const transition = transitions[i] ?? 'hard-cut'
-    const xfadeType = getXfadeType(transition)
+    const xfadeType = getXfadeType(transition, flashColor)
 
     if (xfadeType === null) {
       // Hard cut — still need to concatenate via xfade with a minimal duration
@@ -518,9 +1010,12 @@ async function concatWithXfade(
       const offset = Math.max(0, accumulatedDuration - xfadeDuration)
       let filterStr = `[${inputLabel}][${i}:v]xfade=transition=${xfadeType}:duration=${xfadeDuration.toFixed(3)}:offset=${offset.toFixed(3)}`
 
-      if (transition === 'color-wash') {
-        // color-wash: use fadecolor with custom color (currently just black)
-        filterStr += ':color=black'
+      if (transition === 'color-wash' || (transition === 'flash-cut' && xfadeType === 'fadecolor')) {
+        // color-wash / custom-color flash-cut: use fadecolor with the edit style's flashColor
+        const ffmpegColor = flashColor
+          ? '0x' + flashColor.replace(/^#/, '').toUpperCase()
+          : 'black'
+        filterStr += `:color=${ffmpegColor}`
       }
 
       filterStr += `[${outputLabel}]`
@@ -543,20 +1038,24 @@ async function concatWithXfade(
 
   // Build ffmpeg command with all segment inputs
   await new Promise<void>((resolve, reject) => {
-    const { encoder, presetFlag } = getEncoder()
+    const { encoder: xfDetectedEnc, presetFlag: xfDetectedFlags } = getEncoder()
+    const xfUseSw = isGpuEncoderDisabled() && xfDetectedEnc !== 'libx264'
+    const xfSw = xfUseSw ? getSoftwareEncoder() : null
+    const xfEncoder = xfSw ? xfSw.encoder : xfDetectedEnc
+    const xfPresetFlag = xfSw ? xfSw.presetFlag : xfDetectedFlags
     let fallbackAttempted = false
     let stderrOutput = ''
 
     function runXfade(enc: string, flags: string[], useHwAccel = true): void {
       const cmd = ffmpeg()
 
-      if (useHwAccel) {
-        cmd.inputOptions(['-hwaccel', 'auto'])
-      }
-
       // Add each segment file as an input
-      for (const f of segmentFiles) {
-        cmd.input(toFFmpegPath(f))
+      for (let fi = 0; fi < segmentFiles.length; fi++) {
+        cmd.input(toFFmpegPath(segmentFiles[fi]))
+        // Apply hwaccel to the first input (must come after input() call)
+        if (fi === 0 && useHwAccel) {
+          cmd.inputOptions(['-hwaccel', 'auto'])
+        }
       }
 
       cmd
@@ -582,6 +1081,7 @@ async function concatWithXfade(
           console.error(`[SegmentRender] xfade stderr:\n${stderrOutput}`)
           if (!fallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
             fallbackAttempted = true
+            disableGpuEncoderForSession()
             const sw = getSoftwareEncoder()
             runXfade(sw.encoder, sw.presetFlag, false)
           } else {
@@ -592,7 +1092,7 @@ async function concatWithXfade(
         .save(toFFmpegPath(outputPath))
     }
 
-    runXfade(encoder, presetFlag)
+    runXfade(xfEncoder, xfPresetFlag, !xfUseSw)
   })
 }
 
@@ -612,7 +1112,9 @@ function runLogoOverlay(
   targetWidth: number
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const { encoder, presetFlag } = getEncoder()
+    const { encoder: logoDetEnc, presetFlag: logoDetFlags } = getEncoder()
+    const logoUseSw = isGpuEncoderDisabled() && logoDetEnc !== 'libx264'
+    const logoSw = logoUseSw ? getSoftwareEncoder() : null
     let fallbackAttempted = false
     let stderrOutput = ''
 
@@ -648,6 +1150,7 @@ function runLogoOverlay(
           console.error(`[SegmentRender] Logo overlay stderr:\n${stderrOutput}`)
           if (!fallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
             fallbackAttempted = true
+            disableGpuEncoderForSession()
             const sw = getSoftwareEncoder()
             run(sw.encoder, sw.presetFlag, false)
           } else {
@@ -657,7 +1160,175 @@ function runLogoOverlay(
         .save(toFFmpegPath(outputPath))
     }
 
-    run(encoder, presetFlag)
+    run(logoSw ? logoSw.encoder : logoDetEnc, logoSw ? logoSw.presetFlag : logoDetFlags, !logoUseSw)
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Transition SFX helpers
+// ---------------------------------------------------------------------------
+
+const DEFAULT_XFADE_DURATION = 0.3
+
+/**
+ * Compute SFX placements for segment transitions.
+ *
+ * Mirrors the offset accumulation logic inside concatWithXfade so that
+ * SFX hit times land on the same frame as the visual xfade transition.
+ *
+ * Volume levels (not scaled by sfxVolume — the segment render has no global
+ * sound-design options, so fixed levels are used as per the spec):
+ *   - crossfade  → whoosh-soft  at 0.40
+ *   - flash-cut  → impact-high  at 0.75
+ *   - color-wash → whoosh-hard  at 0.55
+ *
+ * Missing SFX files are silently skipped.
+ */
+function computeTransitionSfxPlacements(
+  segments: ResolvedSegment[],
+  transitions: TransitionType[],
+  fps: number,
+  xfadeDuration: number = DEFAULT_XFADE_DURATION
+): SoundPlacementData[] {
+  const placements: SoundPlacementData[] = []
+
+  // Resolve SFX file paths once — skip silently when file is absent
+  function tryResolve(name: string): string | null {
+    const p = resolveSfxPath(name)
+    return existsSync(p) ? p : null
+  }
+  const whooshSoft = tryResolve('whoosh-soft')
+  const impactHigh = tryResolve('impact-high')
+  const whooshHard = tryResolve('whoosh-hard')
+
+  // Walk the same offset accumulation as concatWithXfade
+  let accumulatedDuration = segments[0].endTime - segments[0].startTime
+
+  for (let i = 1; i < segments.length; i++) {
+    const transition = transitions[i] ?? 'hard-cut'
+    const segDuration = segments[i].endTime - segments[i].startTime
+
+    if (transition === 'crossfade') {
+      const offset = Math.max(0, accumulatedDuration - xfadeDuration)
+      const midpoint = offset + xfadeDuration / 2
+      const sfxTime = Math.round(midpoint * fps) / fps
+
+      if (whooshSoft) {
+        placements.push({
+          type: 'sfx',
+          filePath: whooshSoft,
+          startTime: sfxTime,
+          duration: 0.4,
+          volume: 0.4,
+        })
+      }
+      accumulatedDuration += segDuration - xfadeDuration
+
+    } else if (transition === 'flash-cut') {
+      const offset = Math.max(0, accumulatedDuration - xfadeDuration)
+      const sfxTime = Math.round(offset * fps) / fps
+
+      if (impactHigh) {
+        placements.push({
+          type: 'sfx',
+          filePath: impactHigh,
+          startTime: sfxTime,
+          duration: 0.35,
+          volume: 0.75,
+        })
+      }
+      accumulatedDuration += segDuration - xfadeDuration
+
+    } else if (transition === 'color-wash') {
+      const offset = Math.max(0, accumulatedDuration - xfadeDuration)
+      const rawMid = offset + xfadeDuration / 2 - 0.1  // 0.1s before midpoint = "rise into"
+      const sfxTime = Math.round(Math.max(0, rawMid) * fps) / fps
+
+      if (whooshHard) {
+        placements.push({
+          type: 'sfx',
+          filePath: whooshHard,
+          startTime: sfxTime,
+          duration: 0.5,
+          volume: 0.55,
+        })
+      }
+      accumulatedDuration += segDuration - xfadeDuration
+
+    } else {
+      // hard-cut / none — no SFX; minimal xfade duration consumed
+      accumulatedDuration += segDuration - 0.01
+    }
+  }
+
+  return placements
+}
+
+/**
+ * Mix transition SFX into the audio track of a concatenated video.
+ *
+ * Uses adelay + amix (the same pattern as sound-design.feature.ts).
+ * Video is stream-copied — no re-encode of picture data.
+ * Missing SFX files in the placements array are treated as caller errors;
+ * callers should filter them out via computeTransitionSfxPlacements.
+ */
+function mixTransitionSfx(
+  inputPath: string,
+  outputPath: string,
+  placements: SoundPlacementData[]
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let stderrOutput = ''
+
+    // Build filter_complex: delay + volume each SFX, then amix with original audio
+    const filterParts: string[] = []
+    const mixInputs: string[] = ['[0:a]']
+
+    placements.forEach((p, i) => {
+      const inputIdx = i + 1
+      const label = `[sfx${i}]`
+      const delayMs = Math.round(p.startTime * 1000)
+      filterParts.push(
+        `[${inputIdx}:a]adelay=delays=${delayMs}:all=1,volume=${p.volume.toFixed(3)}${label}`
+      )
+      mixInputs.push(label)
+    })
+
+    // duration=first → output length matches original audio (0:a)
+    // normalize=0   → don't halve volume by input count
+    filterParts.push(
+      `${mixInputs.join('')}amix=inputs=${mixInputs.length}:duration=first:normalize=0[outa]`
+    )
+
+    const filterComplex = filterParts.join(';')
+
+    const cmd = ffmpeg(toFFmpegPath(inputPath))
+
+    for (const p of placements) {
+      cmd.input(toFFmpegPath(p.filePath))
+    }
+
+    cmd
+      .outputOptions([
+        '-filter_complex', filterComplex,
+        '-map', '0:v',
+        '-map', '[outa]',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-movflags', '+faststart',
+        '-y',
+      ])
+      .on('start', (cmdLine: string) => {
+        console.log(`[SegmentRender] SFX mix command: ${cmdLine}`)
+      })
+      .on('stderr', (line: string) => { stderrOutput += line + '\n' })
+      .on('end', () => resolve())
+      .on('error', (err: Error) => {
+        console.error(`[SegmentRender] SFX mix stderr:\n${stderrOutput}`)
+        reject(new Error(`Transition SFX mix failed: ${err.message}`))
+      })
+      .save(toFFmpegPath(outputPath))
   })
 }
 
@@ -683,19 +1354,33 @@ export async function renderSegmentedClip(
   const tempFiles: string[] = []
   const { width: tw, height: th, editStyle } = config
 
-  // Progress allocation: 80% segments, 5% concat, 15% post-concat
-  const hasPostConcat = !!(config.progressBarConfig?.enabled || config.brandKit?.logoPath)
+  // Track transitions (indexed by segment, transitions[0] is for first segment = ignored)
+  const transitions: TransitionType[] = config.segments.map((s) => s.transitionIn)
+
+  // Check if we need xfade (any non-hard-cut transition after first segment)
+  const needsXfade = transitions.slice(1).some((t) => t !== 'hard-cut' && t !== 'none')
+
+  // Pre-compute SFX placements for non-hard-cut transitions (empty when no xfade)
+  const transitionSfxPlacements: SoundPlacementData[] = needsXfade
+    ? computeTransitionSfxPlacements(config.segments, transitions, config.fps, config.editStyle.transitionDuration)
+    : []
+
+  // Merge transition SFX with AI-suggested SFX for a single mix pass
+  const allSfxPlacements: SoundPlacementData[] = [
+    ...transitionSfxPlacements,
+    ...(config.soundPlacements ?? [])
+  ]
+
+  const hasSfxTransitions = allSfxPlacements.length > 0
+
+  // Progress allocation: 80% segments, 5% concat, 5% SFX mix (if any), 10% post-concat
+  const hasPostConcat = !!(config.progressBarConfig?.enabled || config.brandKit?.logoPath || hasSfxTransitions)
   const segmentWeight = hasPostConcat ? 75 : 85
   const concatBase = segmentWeight
   const postConcatBase = concatBase + 5
 
   // Track segment output files
   const segmentOutputFiles: string[] = []
-  // Track transitions (indexed by segment, transitions[0] is for first segment = ignored)
-  const transitions: TransitionType[] = config.segments.map((s) => s.transitionIn)
-
-  // Check if we need xfade (any non-hard-cut transition after first segment)
-  const needsXfade = transitions.slice(1).some((t) => t !== 'hard-cut' && t !== 'none')
 
   try {
     // ── Phase 1: Encode each segment ──────────────────────────────────────────
@@ -733,7 +1418,9 @@ export async function renderSegmentedClip(
         segmentOutputFiles,
         transitions,
         concatOutputPath,
-        (percent) => onProgress(concatBase + (percent - concatBase) * 0.05)
+        (percent) => onProgress(concatBase + (percent - concatBase) * 0.05),
+        config.editStyle.flashColor,
+        config.editStyle.transitionDuration
       )
     } else {
       console.log(`[SegmentRender] Using concat demuxer for ${config.segments.length} segments`)
@@ -750,6 +1437,24 @@ export async function renderSegmentedClip(
 
     let currentPath = concatOutputPath
 
+    // SFX mix — transition SFX + AI-suggested SFX mixed into the concatenated audio
+    if (hasSfxTransitions) {
+      console.log(
+        `[SegmentRender] Mixing ${allSfxPlacements.length} SFX ` +
+        `(${transitionSfxPlacements.length} transition, ${(config.soundPlacements ?? []).length} AI)`
+      )
+      const sfxMixPath = join(tempDir, `batchcontent-seg-sfxmix-${Date.now()}.mp4`)
+      tempFiles.push(sfxMixPath)
+      try {
+        await mixTransitionSfx(currentPath, sfxMixPath, allSfxPlacements)
+        currentPath = sfxMixPath
+      } catch (err) {
+        // SFX mix failure is non-fatal — skip and continue with unmixed audio
+        console.warn(`[SegmentRender] SFX mix failed, skipping:`, err)
+      }
+      onProgress(postConcatBase + 5)
+    }
+
     // Progress bar overlay
     if (config.progressBarConfig?.enabled) {
       const totalDuration = config.segments.reduce((sum, s) => sum + (s.endTime - s.startTime), 0)
@@ -759,7 +1464,7 @@ export async function renderSegmentedClip(
         const barTempPath = join(tempDir, `batchcontent-seg-bar-${Date.now()}.mp4`)
         if (currentPath !== concatOutputPath) tempFiles.push(currentPath)
         tempFiles.push(barTempPath)
-        await applyFilterComplexPass(currentPath, barTempPath, barFilter)
+        await applyFilterPass(currentPath, barTempPath, barFilter)
         currentPath = barTempPath
         onProgress(92)
       }
@@ -775,6 +1480,26 @@ export async function renderSegmentedClip(
       await runLogoOverlay(currentPath, config.brandKit.logoPath, logoTempPath, config.brandKit, tw)
       currentPath = logoTempPath
       onProgress(95)
+    }
+
+    // Hook title overlay — ASS subtitle burned into first N seconds of the final clip
+    if (config.hookTitleText && config.hookTitleConfig?.enabled) {
+      console.log(`[SegmentRender] Applying hook title overlay`)
+      const yPositionPx = config.templateLayout?.titleText
+        ? Math.round((config.templateLayout.titleText.y / 100) * th)
+        : undefined
+      const assPath = generateHookTitleASSFile(config.hookTitleText, config.hookTitleConfig, tw, th, yPositionPx)
+      const hookTempPath = join(tempDir, `batchcontent-seg-hooktitle-${Date.now()}.mp4`)
+      if (currentPath !== concatOutputPath) tempFiles.push(currentPath)
+      tempFiles.push(assPath)
+      tempFiles.push(hookTempPath)
+      try {
+        await applyFilterPass(currentPath, hookTempPath, buildASSFilter(assPath))
+        currentPath = hookTempPath
+      } catch (err) {
+        console.warn(`[SegmentRender] Hook title overlay failed, skipping:`, err)
+      }
+      onProgress(97)
     }
 
     // Move final result to output path
