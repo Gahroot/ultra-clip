@@ -59,6 +59,7 @@ function buildSystemPrompt(targetDuration: TargetDuration, targetAudience: strin
 ${audienceBlock}
 
 CORE PHILOSOPHY:
+- Each clip will be posted INDEPENDENTLY to TikTok, Reels, and Shorts. The viewer has ZERO context — they have never seen the full video, they don't know the speaker, they don't know the topic. Every clip must make COMPLETE sense to a total stranger scrolling their feed.
 - Quality over quantity. Fewer, better clips that deliver COMPLETE THOUGHTS and ACTIONABLE VALUE.
 - Every clip must reframe thinking, teach something, or deliver an insight the audience can USE.
 - If a clip doesn't make the viewer think "I need to save/share this" — don't include it.
@@ -68,11 +69,16 @@ SEGMENT SELECTION CRITERIA (in priority order):
 1. COMPLETE THOUGHTS: The clip MUST contain a self-contained idea with setup AND payoff. A clip that starts a thought but doesn't finish it is WORTHLESS. If the full thought takes 50 seconds, clip 50 seconds — don't cut it at 15.
 2. ACTIONABLE VALUE: Tips, frameworks, specific how-tos, reframes, insights the audience can immediately apply. "Here's what to do" beats "here's what happened."
 3. STRONG HOOK: The first 2-3 seconds must stop the scroll — but a great hook with no payoff is clickbait. The HOOK earns attention, the CONTENT earns the share.
-4. MINI-PAYOFFS & REHOOKS: Longer clips need moments that re-engage every 8-12 seconds — a surprising stat, a pivot ("but here's the thing"), a specific example. Look for these to determine if a longer clip will hold attention.
-5. EMOTIONAL RESONANCE: Evokes curiosity, urgency, surprise, or "I never thought of it that way."
-6. SHAREABILITY: Content people would send to a friend, save for later, or comment "THIS" on.
+4. STANDALONE CLARITY: Each clip is its own piece of content — a highlight reel from the full video reposted ALONE on social media. The viewer has ZERO context from the full video. They don't know the speaker, the topic, or what was said before. If a clip references a story, example, person, concept, or setup from earlier/later in the video without explaining it WITHIN the clip, it is NOT viable. The clip must establish its own context, deliver its own value, and reach its own conclusion. Ask: "If someone saw ONLY this clip and nothing else, would they get the full picture or feel like they walked in mid-conversation?" If the answer is mid-conversation, DO NOT INCLUDE IT.
+5. MINI-PAYOFFS & REHOOKS: Longer clips need moments that re-engage every 8-12 seconds — a surprising stat, a pivot ("but here's the thing"), a specific example. Look for these to determine if a longer clip will hold attention.
+6. EMOTIONAL RESONANCE: Evokes curiosity, urgency, surprise, or "I never thought of it that way."
+7. SHAREABILITY: Content people would send to a friend, save for later, or comment "THIS" on.
 
 WHAT TO EXCLUDE:
+- Clips that reference something said earlier in the video without re-explaining it ("like I said before", "going back to that example", "remember when I mentioned")
+- Clips where the speaker is mid-story or mid-argument and the viewer would feel lost without prior context
+- Clips that only make sense as a follow-up to another clip — every clip must stand on its own
+- Clips where pronouns or references are ambiguous without the surrounding video ("he told me", "that strategy", "this method" — WHO? WHAT method? If it's not clear within the clip, skip it)
 - Rambling intros or throat-clearing ("so today I want to talk about...")
 - Generic advice that doesn't teach anything specific
 - Incomplete arguments — if the payoff comes 30 seconds after the setup, include BOTH
@@ -80,11 +86,11 @@ WHAT TO EXCLUDE:
 - Segments where the speaker is just repeating themselves
 
 SCORING (0-100):
-- 90-100: Must-clip — complete thought + strong hook + specific actionable insight + high share potential
-- 80-89: Very strong — clear value delivery, complete idea, good hook, audience would save this
-- 70-79: Solid — good standalone value, may benefit from tight editing but the thought is complete
-- 69: Minimum — borderline; the thought is there but delivery could be stronger
-- Below 69: Do not include — incomplete thought, no clear value, or off-target for audience
+- 90-100: Must-clip — fully standalone + strong hook + specific actionable insight + high share potential. A stranger could watch this one clip and walk away with clear value.
+- 80-89: Very strong — clear value delivery, complete idea, good hook, audience would save this. No missing context.
+- 70-79: Solid — good standalone value, may benefit from tight editing but the thought is complete and self-contained.
+- 69: Minimum — borderline; the thought is there but delivery could be stronger. Still fully understandable without any other context.
+- Below 69: Do not include — incomplete thought, no clear value, requires outside context, or off-target for audience
 
 TIMING RULES:
 - ${getTimingRule(targetDuration)}
@@ -362,14 +368,18 @@ export async function rescoreSingleClip(
 
   const prompt = `You are an expert at scoring short-form video clips for viral potential on TikTok, Instagram Reels, and YouTube Shorts.
 
+This clip will be posted INDEPENDENTLY on social media. The viewer has ZERO context — they have never seen the full video. The clip must make COMPLETE sense to a total stranger.
+
 Given this clip transcript (${Math.round(clipDuration)}s), score it and generate hook text.
 
 SCORING (0-100):
-- 90-100: Guaranteed viral — perfect hook + high emotion + universally relatable
-- 80-89: Very strong — great hook, compelling content, broad appeal
-- 70-79: Strong — good standalone clip, clear value or entertainment
-- 60-69: Decent — may need editing to shine
-- Below 60: Weak — limited viral potential
+- 90-100: Guaranteed viral — fully standalone, perfect hook + high emotion + universally relatable. A stranger understands everything without outside context.
+- 80-89: Very strong — great hook, compelling content, broad appeal. No missing context.
+- 70-79: Strong — good standalone clip, clear value or entertainment. Self-contained.
+- 60-69: Decent — may need editing to shine, but still understandable on its own.
+- Below 60: Weak — limited viral potential, or requires context from the full video to make sense.
+
+CRITICAL: If the clip references people, stories, examples, or concepts that are NOT explained within the clip itself, score it LOWER. A clip where the viewer feels like they walked in mid-conversation is not viable content.
 
 HOOK TEXT: Write 5 words or less of on-screen text for the first 2 seconds. 80%+ viewers watch with sound off — the hook must work silently.
 
