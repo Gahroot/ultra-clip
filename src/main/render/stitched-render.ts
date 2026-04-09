@@ -10,7 +10,7 @@
 import { join } from 'path'
 import { unlinkSync, writeFileSync, renameSync } from 'fs'
 import { tmpdir } from 'os'
-import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, getVideoMetadata } from '../ffmpeg'
+import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, isGpuEncoderDisabled, disableGpuEncoderForSession, getVideoMetadata } from '../ffmpeg'
 import type { RenderStitchedClipJob } from './types'
 import type { HookTitleConfig } from '../hook-title'
 import type { RehookConfig, OverlayVisualSettings } from '../overlays/rehook'
@@ -246,7 +246,7 @@ export async function renderStitchedClip(
 ): Promise<string> {
   const tempDir = tmpdir()
   const tempFiles: string[] = []
-  const { encoder, presetFlag } = getEncoder()
+  const { encoder, presetFlag } = isGpuEncoderDisabled() ? getSoftwareEncoder() : getEncoder()
   const fontsDir = resolveFontsDir()
 
   // Get source video metadata for crop/scale
@@ -405,6 +405,7 @@ export async function renderStitchedClip(
         let fallbackAttempted = false
         function runSegmentEncode(enc: string, flags: string[], useHwAccel = true): void {
           const cmd = ffmpeg(toFFmpegPath(job.sourceVideoPath))
+          let stderrOutput = ''
 
           // Enable hardware-accelerated decoding (NVDEC, DXVA2, VAAPI, etc.)
           // Skipped on software fallback — broken GPU drivers can cause -hwaccel auto to crash
@@ -427,17 +428,21 @@ export async function renderStitchedClip(
             .on('progress', (progress) => {
               segProgress(Math.min(99, progress.percent ?? 0))
             })
+            .on('stderr', (line: string) => { stderrOutput += line + '\n' })
             .on('end', () => {
               segProgress(100)
               resolve()
             })
             .on('error', (err: Error) => {
-              if (!fallbackAttempted && isGpuSessionError(err.message)) {
+              if (!fallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
                 fallbackAttempted = true
+                disableGpuEncoderForSession()
+                console.warn(`[StitchedRender] GPU error in segment encode, falling back to software encoder: ${err.message}`)
                 const sw = getSoftwareEncoder()
                 runSegmentEncode(sw.encoder, sw.presetFlag, false)
               } else {
-                reject(err)
+                const stderrTail = stderrOutput.split('\n').slice(-10).join('\n')
+                reject(new Error(`${err.message}\n[stderr tail] ${stderrTail}`))
               }
             })
             .save(toFFmpegPath(tempPath))

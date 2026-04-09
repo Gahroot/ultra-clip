@@ -21,7 +21,7 @@ import { detectFillers } from '../../filler-detection'
 import { buildKeepSegments, remapWordTimestamps, type KeepSegment } from '../../filler-cuts'
 import { generateCaptions } from '../../captions'
 import { ASPECT_RATIO_CONFIGS } from '../../aspect-ratios'
-import { ffmpeg as createFfmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError } from '../../ffmpeg'
+import { ffmpeg as createFfmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, isGpuEncoderDisabled, disableGpuEncoderForSession } from '../../ffmpeg'
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -38,9 +38,10 @@ function trimSegment(
   duration: number,
   outputPath: string
 ): Promise<void> {
-  const { encoder, presetFlag } = getEncoder()
+  const { encoder, presetFlag } = isGpuEncoderDisabled() ? getSoftwareEncoder() : getEncoder()
 
   return new Promise<void>((resolve, reject) => {
+    let stderrOutput = ''
     const cmd = createFfmpeg(sourcePath)
       .setStartTime(startTime)
       .setDuration(duration)
@@ -49,10 +50,12 @@ function trimSegment(
         `afade=t=out:st=${Math.max(0, duration - 0.015)}:d=0.015`
       ])
       .outputOptions(['-y', '-c:v', encoder, ...presetFlag, '-c:a', 'aac', '-b:a', '192k'])
+      .on('stderr', (line: string) => { stderrOutput += line + '\n' })
       .on('end', () => resolve())
       .on('error', (err: Error) => {
         // GPU session exhaustion → retry with software encoder
-        if (isGpuSessionError(err.message)) {
+        if (isGpuSessionError(err.message + '\n' + stderrOutput)) {
+          disableGpuEncoderForSession()
           const sw = getSoftwareEncoder()
           createFfmpeg(sourcePath)
             .setStartTime(startTime)

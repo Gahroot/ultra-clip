@@ -5,7 +5,7 @@
 import { existsSync, writeFileSync, unlinkSync, copyFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, getVideoMetadata } from '../ffmpeg'
+import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, isGpuEncoderDisabled, disableGpuEncoderForSession, getVideoMetadata } from '../ffmpeg'
 import { toFFmpegPath } from './helpers'
 
 /**
@@ -139,6 +139,7 @@ export async function concatWithBumpers(
     let fallbackAttempted = false
     function runConcatWithEncoder(enc: string, flags: string[]): void {
       const cmd = ffmpeg()
+      let stderrOutput = ''
 
       for (const seg of segments) {
         cmd.input(toFFmpegPath(seg.path))
@@ -158,20 +159,23 @@ export async function concatWithBumpers(
           '-movflags', '+faststart',
           '-y'
         ])
+        .on('stderr', (line: string) => { stderrOutput += line + '\n' })
         .on('end', () => resolve())
         .on('error', (err: Error) => {
-          if (!fallbackAttempted && isGpuSessionError(err.message)) {
+          if (!fallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
             fallbackAttempted = true
+            disableGpuEncoderForSession()
             const sw = getSoftwareEncoder()
             runConcatWithEncoder(sw.encoder, sw.presetFlag)
           } else {
-            reject(err)
+            const stderrTail = stderrOutput.split('\n').slice(-10).join('\n')
+            reject(new Error(`${err.message}\n[stderr tail] ${stderrTail}`))
           }
         })
         .save(toFFmpegPath(finalOutputPath))
     }
 
-    const { encoder, presetFlag } = getEncoder()
+    const { encoder, presetFlag } = isGpuEncoderDisabled() ? getSoftwareEncoder() : getEncoder()
     runConcatWithEncoder(encoder, presetFlag)
   })
 }

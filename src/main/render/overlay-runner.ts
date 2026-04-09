@@ -11,7 +11,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { unlinkSync, renameSync } from 'fs'
 import type { FfmpegCommand } from 'fluent-ffmpeg'
-import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError } from '../ffmpeg'
+import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, isGpuEncoderDisabled, disableGpuEncoderForSession } from '../ffmpeg'
 import { toFFmpegPath } from './helpers'
 import type { OverlayPassResult } from './features/feature'
 
@@ -43,7 +43,8 @@ export function applyFilterPass(
   videoFilter: string
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const { encoder, presetFlag } = getEncoder({ crf: 15, preset: 'ultrafast' })
+    const gpuDisabled = isGpuEncoderDisabled()
+    const { encoder, presetFlag } = gpuDisabled ? getSoftwareEncoder({ crf: 15, preset: 'ultrafast' }) : getEncoder({ crf: 15, preset: 'ultrafast' })
     let fallbackAttempted = false
 
     function runPass(enc: string, flags: string[], useHwAccel = true): void {
@@ -77,6 +78,7 @@ export function applyFilterPass(
           console.error(`[Overlay] FFmpeg stderr:\n${stderrOutput}`)
           if (!fallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
             fallbackAttempted = true
+            disableGpuEncoderForSession()
             const sw = getSoftwareEncoder({ crf: 15, preset: 'ultrafast' })
             runPass(sw.encoder, sw.presetFlag, false)
           } else {
@@ -110,7 +112,8 @@ export function applyFilterComplexPass(
   filterComplex: string
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const { encoder, presetFlag } = getEncoder({ crf: 15, preset: 'ultrafast' })
+    const gpuDisabled2 = isGpuEncoderDisabled()
+    const { encoder, presetFlag } = gpuDisabled2 ? getSoftwareEncoder({ crf: 15, preset: 'ultrafast' }) : getEncoder({ crf: 15, preset: 'ultrafast' })
     let fallbackAttempted = false
 
     function runPass(enc: string, flags: string[], useHwAccel = true): void {
@@ -143,6 +146,7 @@ export function applyFilterComplexPass(
           console.error(`[Overlay] FFmpeg filter_complex stderr:\n${stderrOutput}`)
           if (!fallbackAttempted && isGpuSessionError(err.message + '\n' + stderrOutput)) {
             fallbackAttempted = true
+            disableGpuEncoderForSession()
             const sw = getSoftwareEncoder({ crf: 15, preset: 'ultrafast' })
             runPass(sw.encoder, sw.presetFlag, false)
           } else {
