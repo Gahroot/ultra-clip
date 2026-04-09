@@ -34,7 +34,8 @@ import {
   RefreshCw,
   GitCompare,
   CheckSquare,
-  ShieldAlert
+  ShieldAlert,
+  MoreHorizontal
 } from 'lucide-react'
 import {
   DndContext,
@@ -91,10 +92,12 @@ import { ClipCardSkeleton } from './ClipCardSkeleton'
 import { ClipTimeline } from './ClipTimeline'
 import { StitchedClipCard } from './StitchedClipCard'
 import { ClipStats } from './ClipStats'
-import { cn, estimateClipSize, formatFileSize, getScoreDescription } from '@/lib/utils'
+import { cn, estimateClipSize, formatFileSize, getScoreDescription, isAIEditClip } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useETA } from '../hooks/useETA'
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard'
+import { BasicEditSettings } from './BasicEditSettings'
+import { AiEditSettings } from './AiEditSettings'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -248,6 +251,7 @@ export function ClipGrid() {
 
   const clipViewMode = useStore((s) => s.clipViewMode)
   const setClipViewMode = useStore((s) => s.setClipViewMode)
+  const editMode = useStore((s) => s.editMode)
 
   const searchQuery = useStore((s) => s.searchQuery)
   const setSearchQuery = useStore((s) => s.setSearchQuery)
@@ -307,6 +311,7 @@ export function ClipGrid() {
 
   // Compare mode state
   const [compareModeActive, setCompareModeActive] = useState(false)
+  const [secondaryToolbarOpen, setSecondaryToolbarOpen] = useState(false)
   const [compareSelectedId, setCompareSelectedId] = useState<string | null>(null)
   const [compareDialogClips, setCompareDialogClips] = useState<[string, string] | null>(null)
 
@@ -581,10 +586,22 @@ export function ClipGrid() {
       cropRegion: clip.cropRegion
         ? { x: clip.cropRegion.x, y: clip.cropRegion.y, width: clip.cropRegion.width, height: clip.cropRegion.height }
         : undefined,
+      faceTimeline: clip.faceTimeline,
       wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
       hookTitleText: clip.hookText || undefined,
-      // Pass per-clip render overrides so the main process can respect them
-      clipOverrides: clip.overrides && Object.keys(clip.overrides).length > 0 ? clip.overrides : undefined,
+      // AI Edit mode isolation: prevent global settings-panel values (autoZoom,
+      // hookTitle, rehook, progressBar, captionStyle) from bleeding into AI edit
+      // clips. The edit style owns the full visual output — basic mode overlays
+      // are irrelevant and potentially visually contradictory (e.g. a Hormozi Bold
+      // caption style overriding Impact's dark-bar caption style).
+      clipOverrides: (() => {
+        const aiEditOff = isAIEditClip(clip, segments[clip.id])
+          ? { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const }
+          : undefined
+        const existing = clip.overrides && Object.keys(clip.overrides).length > 0 ? clip.overrides : undefined
+        const merged = { ...aiEditOff, ...existing }
+        return Object.keys(merged).length > 0 ? merged : undefined
+      })(),
       // Manifest metadata for export report generation
       manifestMeta: {
         score: clip.score,
@@ -614,7 +631,7 @@ export function ClipGrid() {
             emphasis: e.level as 'emphasis' | 'supersize'
           }))
         : undefined,
-      // AI Edit Plan B-Roll suggestions — seeds Pexels keyword search and placement
+      // AI Edit Plan B-Roll suggestions — seeds AI image generation and placement
       brollSuggestions: clip.aiEditPlan?.brollSuggestions?.length
         ? clip.aiEditPlan.brollSuggestions.map((b) => ({
             timestamp: b.timestamp,
@@ -631,7 +648,7 @@ export function ClipGrid() {
             .map((e) => ({ time: e.start, end: e.end, level: e.level as 'emphasis' | 'supersize' }))
         : undefined,
       // Active style preset ID — informational, recorded in manifest
-      stylePresetId: clip.aiEditPlan?.stylePresetId ?? selectedEditStyleId ?? undefined,
+      stylePresetId: selectedEditStyleId ?? clip.aiEditPlan?.stylePresetId ?? undefined,
       // Per-shot style assignments — when present, the render pipeline applies
       // different style presets to different shot segments within this clip
       shotStyles: clip.shotStyles && clip.shotStyles.length > 0 ? clip.shotStyles : undefined,
@@ -687,9 +704,10 @@ export function ClipGrid() {
       }
     }
 
-    // Add stitched clip render jobs — include ALL segments so the pipeline
-    // routes them through renderStitchedClip() for proper concatenation.
-    // Get full transcription words for stitched clips (they span multiple segments)
+    // Add stitched clip render jobs.
+    // When the stitched clip has AI Edit segments (from segment splitting),
+    // route through the segmented render path for full EditStyle support.
+    // Otherwise fall back to the legacy stitched render path.
     const transcriptionWords = activeSourceId && transcriptions[activeSourceId]
       ? transcriptions[activeSourceId].words.map((w) => ({ text: w.text, start: w.start, end: w.end }))
       : undefined
@@ -697,25 +715,86 @@ export function ClipGrid() {
     for (const sc of approvedStitchedClips) {
       const firstSeg = sc.segments[0]
       if (!firstSeg) continue
-      jobs.push({
-        clipId: sc.id,
-        sourceVideoPath: sourcePath,
-        // startTime/endTime set to first segment for compatibility (ignored by stitched path)
-        startTime: firstSeg.startTime,
-        endTime: firstSeg.endTime,
-        cropRegion: sc.cropRegion
-          ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
-          : undefined,
-        hookTitleText: sc.hookText || undefined,
-        wordTimestamps: transcriptionWords,
-        outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
-        stitchedSegments: sc.segments.map((seg) => ({
-          startTime: seg.startTime,
-          endTime: seg.endTime,
-          overlayText: seg.overlayText ?? (seg.role === 'hook' ? sc.hookText : undefined),
-          role: seg.role
-        }))
-      })
+
+      const scSegments = segments[sc.id]
+      const hasAIEditSegments = scSegments && scSegments.length > 0
+
+      if (hasAIEditSegments) {
+        // AI Edit path — same as regular clips with segmentedSegments
+        jobs.push({
+          clipId: sc.id,
+          sourceVideoPath: sourcePath,
+          startTime: Math.min(...sc.segments.map((s) => s.startTime)),
+          endTime: Math.max(...sc.segments.map((s) => s.endTime)),
+          cropRegion: sc.cropRegion
+            ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
+            : undefined,
+          hookTitleText: sc.hookText || undefined,
+          wordTimestamps: transcriptionWords,
+          outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
+          // AI Edit Plan fields
+          wordEmphasisOverride: sc.aiEditPlan?.wordEmphasis?.length
+            ? sc.aiEditPlan.wordEmphasis.map((e) => ({
+                text: e.text, start: e.start, end: e.end,
+                emphasis: e.level as 'emphasis' | 'supersize'
+              }))
+            : undefined,
+          aiSfxSuggestions: sc.aiEditPlan?.sfxSuggestions?.length
+            ? sc.aiEditPlan.sfxSuggestions.map((s) => ({ timestamp: s.timestamp, type: s.type }))
+            : undefined,
+          wordEmphasis: sc.aiEditPlan?.wordEmphasis?.length
+            ? sc.aiEditPlan.wordEmphasis.map((e) => ({
+                text: e.text, start: e.start, end: e.end,
+                emphasis: e.level as 'emphasis' | 'supersize'
+              }))
+            : undefined,
+          brollSuggestions: sc.aiEditPlan?.brollSuggestions?.length
+            ? sc.aiEditPlan.brollSuggestions.map((b) => ({
+                timestamp: b.timestamp, duration: b.duration, keyword: b.keyword,
+                displayMode: b.displayMode, transition: b.transition
+              }))
+            : undefined,
+          emphasisKeyframesInput: sc.aiEditPlan?.wordEmphasis?.length
+            ? sc.aiEditPlan.wordEmphasis
+                .filter((e) => e.level === 'emphasis' || e.level === 'supersize')
+                .map((e) => ({ time: e.start, end: e.end, level: e.level as 'emphasis' | 'supersize' }))
+            : undefined,
+          stylePresetId: selectedEditStyleId ?? sc.aiEditPlan?.stylePresetId ?? undefined,
+          clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const },
+          segmentedSegments: scSegments.map((seg) => ({
+            startTime: seg.startTime,
+            endTime: seg.endTime,
+            styleVariantId: seg.segmentStyleId,
+            zoomStyle: seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image' ? 'none' : 'drift' as const,
+            zoomIntensity: 1.05,
+            transitionIn: seg.transitionIn,
+            captionBgOpacity: undefined,
+            cropRect: sc.cropRegion
+              ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
+              : undefined,
+          }))
+        })
+      } else {
+        // Legacy stitched render path — no AI Edit segments available
+        jobs.push({
+          clipId: sc.id,
+          sourceVideoPath: sourcePath,
+          startTime: firstSeg.startTime,
+          endTime: firstSeg.endTime,
+          cropRegion: sc.cropRegion
+            ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
+            : undefined,
+          hookTitleText: sc.hookText || undefined,
+          wordTimestamps: transcriptionWords,
+          outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
+          stitchedSegments: sc.segments.map((seg) => ({
+            startTime: seg.startTime,
+            endTime: seg.endTime,
+            overlayText: seg.overlayText ?? (seg.role === 'hook' ? sc.hookText : undefined),
+            role: seg.role
+          }))
+        })
+      }
     }
 
     // Initialize per-clip render progress
@@ -888,6 +967,11 @@ export function ClipGrid() {
         },
         broll: settings.broll.enabled ? settings.broll : undefined,
         geminiApiKey: settings.geminiApiKey || undefined,
+        primeAI: settings.primeAI?.enabled ? settings.primeAI : undefined,
+        pulseAI: settings.pulseAI?.enabled ? settings.pulseAI : undefined,
+        editMode: editMode ?? undefined,
+        stylePresetId: editMode === 'ai-edit' ? useStore.getState().selectedEditStyleId ?? undefined : undefined,
+        aiEditAccentColor: editMode === 'ai-edit' ? useStore.getState().aiEditAccentColor : undefined,
       })
     } catch (err) {
       setIsRendering(false)
@@ -896,7 +980,7 @@ export function ClipGrid() {
     }
   }, [
     activeSourceId, activeSource, approved, approvedClips, approvedVariants, approvedStitchedClips,
-    stitchedClips, updateStitchedClipStatus, sourcePath, settings, templateLayout,
+    stitchedClips, updateStitchedClipStatus, sourcePath, settings, templateLayout, editMode,
     setRenderProgress, setIsRendering, detachListeners, addError, setRenderError
   ])
 
@@ -939,6 +1023,7 @@ export function ClipGrid() {
           cropRegion: clip.cropRegion
             ? { x: clip.cropRegion.x, y: clip.cropRegion.y, width: clip.cropRegion.width, height: clip.cropRegion.height }
             : undefined,
+          faceTimeline: clip.faceTimeline,
           wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
           hookTitleText: clip.hookText || undefined,
           clipOverrides: clip.overrides && Object.keys(clip.overrides).length > 0 ? clip.overrides : undefined,
@@ -969,15 +1054,47 @@ export function ClipGrid() {
       }
     }
 
-    // Check stitched clip IDs — include ALL segments for proper concatenation
+    // Check stitched clip IDs — route through AI Edit path when segments exist
     const retryTranscriptionWords = activeSourceId && transcriptions[activeSourceId]
       ? transcriptions[activeSourceId].words.map((w) => ({ text: w.text, start: w.start, end: w.end }))
       : undefined
     const approvedStitched = stitchedClips.filter((c) => c.status === 'approved')
     for (const sc of approvedStitched) {
-      if (failedClipIds.has(sc.id)) {
-        const firstSeg = sc.segments[0]
-        if (!firstSeg) continue
+      if (!failedClipIds.has(sc.id)) continue
+      const firstSeg = sc.segments[0]
+      if (!firstSeg) continue
+
+      const scSegments = segments[sc.id]
+      const hasAIEditSegments = scSegments && scSegments.length > 0
+
+      if (hasAIEditSegments) {
+        jobs.push({
+          clipId: sc.id,
+          sourceVideoPath: sourcePath,
+          startTime: Math.min(...sc.segments.map((s) => s.startTime)),
+          endTime: Math.max(...sc.segments.map((s) => s.endTime)),
+          cropRegion: sc.cropRegion
+            ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
+            : undefined,
+          hookTitleText: sc.hookText || undefined,
+          wordTimestamps: retryTranscriptionWords,
+          outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
+          stylePresetId: selectedEditStyleId ?? sc.aiEditPlan?.stylePresetId ?? undefined,
+          clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const },
+          segmentedSegments: scSegments.map((seg) => ({
+            startTime: seg.startTime,
+            endTime: seg.endTime,
+            styleVariantId: seg.segmentStyleId,
+            zoomStyle: seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image' ? 'none' : 'drift' as const,
+            zoomIntensity: 1.05,
+            transitionIn: seg.transitionIn,
+            captionBgOpacity: undefined,
+            cropRect: sc.cropRegion
+              ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
+              : undefined,
+          }))
+        })
+      } else {
         jobs.push({
           clipId: sc.id,
           sourceVideoPath: sourcePath,
@@ -1130,6 +1247,11 @@ export function ClipGrid() {
         },
         broll: settings.broll.enabled ? settings.broll : undefined,
         geminiApiKey: settings.geminiApiKey || undefined,
+        primeAI: settings.primeAI?.enabled ? settings.primeAI : undefined,
+        pulseAI: settings.pulseAI?.enabled ? settings.pulseAI : undefined,
+        editMode: editMode ?? undefined,
+        stylePresetId: editMode === 'ai-edit' ? useStore.getState().selectedEditStyleId ?? undefined : undefined,
+        aiEditAccentColor: editMode === 'ai-edit' ? useStore.getState().aiEditAccentColor : undefined,
       })
     } catch (err) {
       setIsRendering(false)
@@ -1137,7 +1259,7 @@ export function ClipGrid() {
       addError({ source: 'render', message: `Failed to start retry render: ${err instanceof Error ? err.message : String(err)}` })
     }
   }, [
-    isRendering, activeSource, approvedClips, stitchedClips, sourcePath, settings, templateLayout,
+    isRendering, activeSource, approvedClips, stitchedClips, sourcePath, settings, templateLayout, editMode,
     setRenderProgress, setIsRendering, detachListeners, addError, setRenderError, segments
   ])
 
@@ -1446,7 +1568,9 @@ export function ClipGrid() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden">
+      {/* Main content area */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
       {/* Header bar */}
       <div className="shrink-0 px-4 py-3 border-b border-border bg-card/50 backdrop-blur-sm space-y-3">
         {/* Top row: counts + actions */}
@@ -1577,176 +1701,6 @@ export function ClipGrid() {
               Reject All
             </Button>
 
-            {/* Batch copy dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={cn(
-                    'gap-1.5 text-xs',
-                    batchCopied ? 'text-green-500 border-green-500/40' : 'text-muted-foreground'
-                  )}
-                  title="Copy clip metadata to clipboard"
-                  disabled={allClips.length === 0}
-                >
-                  {batchCopied ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <ClipboardList className="w-3.5 h-3.5" />
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem
-                  onClick={() => {
-                    const hooks = approvedClips.length > 0
-                      ? approvedClips
-                      : allClips
-                    const text = hooks
-                      .filter((c) => c.hookText)
-                      .map((c, i) => `${i + 1}. ${c.hookText}`)
-                      .join('\n')
-                    if (text) copyBatch(text)
-                  }}
-                  className="text-xs gap-2"
-                  disabled={allClips.every((c) => !c.hookText)}
-                >
-                  <ClipboardList className="w-3.5 h-3.5 text-muted-foreground" />
-                  Copy all hook texts
-                  <span className="ml-auto text-muted-foreground tabular-nums text-[10px]">
-                    ({(approvedClips.length > 0 ? approvedClips : allClips).filter((c) => c.hookText).length})
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    const clips = approvedClips.length > 0 ? approvedClips : allClips
-                    const text = clips
-                      .filter((c) => c.hookText || c.text)
-                      .map((c, i) => {
-                        const parts: string[] = [`${i + 1}.`]
-                        if (c.hookText) parts.push(c.hookText)
-                        if (c.text) parts.push(c.text)
-                        return parts.join(' — ')
-                      })
-                      .join('\n\n')
-                    if (text) copyBatch(text)
-                  }}
-                  className="text-xs gap-2"
-                  disabled={allClips.length === 0}
-                >
-                  <ClipboardList className="w-3.5 h-3.5 text-muted-foreground" />
-                  Copy hooks + transcripts
-                  <span className="ml-auto text-muted-foreground tabular-nums text-[10px]">
-                    ({(approvedClips.length > 0 ? approvedClips : allClips).length})
-                  </span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Export descriptions dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={cn(
-                    'gap-1.5 text-xs',
-                    exportNotification ? 'text-green-500 border-green-500/40' : 'text-muted-foreground'
-                  )}
-                  disabled={allClips.length === 0 || isGeneratingDescriptions || isExportingDescriptions}
-                  title="Export AI descriptions for social media scheduling"
-                >
-                  {isGeneratingDescriptions || isExportingDescriptions ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : exportNotification ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <Download className="w-3.5 h-3.5" />
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Export Descriptions
-                </div>
-                <DropdownMenuItem
-                  onClick={() => handleGenerateAndExport('csv')}
-                  className="text-xs gap-2"
-                  disabled={isGeneratingDescriptions || isExportingDescriptions}
-                >
-                  <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-                  <div className="flex flex-col">
-                    <span>Export as CSV</span>
-                    <span className="text-[10px] text-muted-foreground font-normal">For Later, Buffer, Hootsuite</span>
-                  </div>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleGenerateAndExport('json')}
-                  className="text-xs gap-2"
-                  disabled={isGeneratingDescriptions || isExportingDescriptions}
-                >
-                  <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-                  <div className="flex flex-col">
-                    <span>Export as JSON</span>
-                    <span className="text-[10px] text-muted-foreground font-normal">For custom integrations</span>
-                  </div>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleGenerateAndExport('txt')}
-                  className="text-xs gap-2"
-                  disabled={isGeneratingDescriptions || isExportingDescriptions}
-                >
-                  <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-                  <div className="flex flex-col">
-                    <span>Export as Text</span>
-                    <span className="text-[10px] text-muted-foreground font-normal">For manual posting</span>
-                  </div>
-                </DropdownMenuItem>
-                {clipDescriptions.size > 0 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      Quick Export (cached)
-                    </div>
-                    <DropdownMenuItem
-                      onClick={() => handleExportDescriptions('csv')}
-                      className="text-xs gap-2"
-                      disabled={isExportingDescriptions}
-                    >
-                      <Check className="w-3.5 h-3.5 text-green-500" />
-                      CSV (no AI call)
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleExportDescriptions('json')}
-                      className="text-xs gap-2"
-                      disabled={isExportingDescriptions}
-                    >
-                      <Check className="w-3.5 h-3.5 text-green-500" />
-                      JSON (no AI call)
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleExportDescriptions('txt')}
-                      className="text-xs gap-2"
-                      disabled={isExportingDescriptions}
-                    >
-                      <Check className="w-3.5 h-3.5 text-green-500" />
-                      Text (no AI call)
-                    </DropdownMenuItem>
-                  </>
-                )}
-                {exportNotification && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <div className="px-2 py-1.5 text-[10px] text-green-400 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      {exportNotification}
-                    </div>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
             {/* Render button */}
             {isRendering ? (
               <Button
@@ -1790,43 +1744,31 @@ export function ClipGrid() {
           </div>
         </div>
 
-        {/* Bottom row: filter tabs + sort + score slider */}
-        <div className="flex items-center gap-3 flex-wrap">
+        {/* Primary filter row */}
+        <div className="flex items-center gap-2 flex-wrap">
           <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterTab)}>
             <TabsList className="h-7">
               <TabsTrigger value="all" className="text-xs px-2 h-5">All</TabsTrigger>
-              <TabsTrigger value="approved" className="text-xs px-2 h-5">Approved</TabsTrigger>
-              <TabsTrigger value="rejected" className="text-xs px-2 h-5">Rejected</TabsTrigger>
+              <TabsTrigger value="approved" className="text-xs px-2 h-5">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1 inline-block" />
+                Approved
+              </TabsTrigger>
+              <TabsTrigger value="rejected" className="text-xs px-2 h-5">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1 inline-block" />
+                Rejected
+              </TabsTrigger>
               <TabsTrigger value="pending" className="text-xs px-2 h-5">Pending</TabsTrigger>
             </TabsList>
           </Tabs>
 
-          <Select value={sortMode} onValueChange={(v) => {
-            const mode = v as SortMode
-            setSortMode(mode)
-            if (mode !== 'custom') setCustomOrder(false)
-          }}>
-            <SelectTrigger className="h-7 w-36 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="score" className="text-xs">By Score</SelectItem>
-              <SelectItem value="time" className="text-xs">By Time</SelectItem>
-              <SelectItem value="duration" className="text-xs">By Duration</SelectItem>
-              <SelectItem value="custom" className="text-xs" disabled={!customOrder && clipOrder.length === 0}>
-                Custom
-              </SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Transcript search */}
+          {/* Search */}
           <div className="relative flex items-center">
             <Search className="absolute left-2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
             <Input
               value={localSearch}
               onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Search transcript…"
-              className="h-7 w-44 text-xs pl-7 pr-7"
+              placeholder="Search…"
+              className="h-7 w-36 text-xs pl-7 pr-7"
             />
             {localSearch && (
               <button
@@ -1840,110 +1782,290 @@ export function ClipGrid() {
           </div>
           {searchQuery.trim() && (
             <span className="text-xs text-muted-foreground whitespace-nowrap">
-              {displayedClips.length} clip{displayedClips.length !== 1 ? 's' : ''} match{displayedClips.length === 1 ? 'es' : ''} &lsquo;{searchQuery.trim()}&rsquo;
+              {displayedClips.length} match{displayedClips.length !== 1 ? 'es' : ''}
             </span>
           )}
 
-          {/* Undo / Redo */}
-          <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={undo}
-              disabled={!canUndo}
-              title="Undo (Ctrl+Z)"
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={redo}
-              disabled={!canRedo}
-              title="Redo (Ctrl+Shift+Z)"
-            >
-              <Redo2 className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-2 ml-auto px-2 py-1 rounded-md bg-muted/50 border border-border/50">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <label className="text-xs text-muted-foreground whitespace-nowrap cursor-default flex items-center gap-1">
-                  Min score: <span className="font-semibold text-foreground tabular-nums">{localMinScore}</span>
-                  <Info className="w-3 h-3 text-muted-foreground/40" />
-                </label>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs max-w-52">
-                <div className="space-y-1">
-                  <p>Hides clips scoring below this threshold. Only clips scoring ≥ <span className="font-semibold tabular-nums">{localMinScore}</span> are shown.</p>
-                  {localMinScore > 0 && (
-                    <p className="text-muted-foreground">{allClips.filter((c) => c.score < localMinScore).length} clip{allClips.filter((c) => c.score < localMinScore).length !== 1 ? 's' : ''} hidden by this filter.</p>
-                  )}
-                </div>
-              </TooltipContent>
-            </Tooltip>
-            <Slider
-              min={0}
-              max={100}
-              step={1}
-              value={[localMinScore]}
-              onValueChange={([v]) => setLocalMinScore(v)}
-              className={cn('w-28')}
-            />
-          </div>
-
-          {/* Compare mode toggle */}
+          {/* Expand / collapse secondary row */}
           <Button
-            variant={compareModeActive ? 'default' : 'outline'}
+            variant="ghost"
             size="icon"
             className={cn(
-              'h-7 w-7',
-              compareModeActive
-                ? 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600'
-                : 'text-muted-foreground hover:text-foreground'
+              'h-7 w-7 ml-1 transition-colors',
+              secondaryToolbarOpen && 'bg-muted text-foreground'
             )}
-            onClick={() => {
-              setCompareModeActive((v) => !v)
-              setCompareSelectedId(null)
-            }}
-            title={compareModeActive ? 'Exit compare mode' : 'Compare two clips side-by-side'}
-            disabled={allClips.length < 2}
+            onClick={() => setSecondaryToolbarOpen((v) => !v)}
+            title="More options"
           >
-            <GitCompare className="w-3.5 h-3.5" />
+            <MoreHorizontal className="w-3.5 h-3.5" />
           </Button>
-
-          {/* View toggle: Grid / Timeline */}
-          <div className="flex items-center rounded-md border border-border/50 overflow-hidden">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'h-7 w-7 rounded-none',
-                clipViewMode === 'grid' && 'bg-muted text-foreground'
-              )}
-              onClick={() => setClipViewMode('grid')}
-              title="Grid view"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'h-7 w-7 rounded-none',
-                clipViewMode === 'timeline' && 'bg-muted text-foreground'
-              )}
-              onClick={() => setClipViewMode('timeline')}
-              title="Timeline view"
-            >
-              <GanttChart className="w-3.5 h-3.5" />
-            </Button>
-          </div>
         </div>
+
+        {/* Secondary row — sort, score filter, compare, export, undo/redo */}
+        <AnimatePresence initial={false}>
+          {secondaryToolbarOpen && (
+            <motion.div
+              key="secondary-toolbar"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-border/50">
+                {/* Sort */}
+                <Select value={sortMode} onValueChange={(v) => {
+                  const mode = v as SortMode
+                  setSortMode(mode)
+                  if (mode !== 'custom') setCustomOrder(false)
+                }}>
+                  <SelectTrigger className="h-7 w-32 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="score" className="text-xs">Best first</SelectItem>
+                    <SelectItem value="time" className="text-xs">Chronological</SelectItem>
+                    <SelectItem value="duration" className="text-xs">By Duration</SelectItem>
+                    <SelectItem value="custom" className="text-xs" disabled={!customOrder && clipOrder.length === 0}>
+                      Custom
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Score threshold */}
+                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-muted/50 border border-border/50">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <label className="text-xs text-muted-foreground whitespace-nowrap cursor-default flex items-center gap-1">
+                        Score ≥ <span className="font-semibold text-foreground tabular-nums">{localMinScore}</span>
+                        <Info className="w-3 h-3 text-muted-foreground/40" />
+                      </label>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs max-w-52">
+                      <div className="space-y-1">
+                        <p>Hides clips scoring below this threshold.</p>
+                        {localMinScore > 0 && (
+                          <p className="text-muted-foreground">{allClips.filter((c) => c.score < localMinScore).length} clip{allClips.filter((c) => c.score < localMinScore).length !== 1 ? 's' : ''} hidden.</p>
+                        )}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Slider
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={[localMinScore]}
+                    onValueChange={([v]) => setLocalMinScore(v)}
+                    className={cn('w-24')}
+                  />
+                </div>
+
+                {/* Compare mode */}
+                <Button
+                  variant={compareModeActive ? 'default' : 'outline'}
+                  size="sm"
+                  className={cn(
+                    'h-7 gap-1.5 text-xs',
+                    compareModeActive
+                      ? 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  onClick={() => {
+                    setCompareModeActive((v) => !v)
+                    setCompareSelectedId(null)
+                  }}
+                  title={compareModeActive ? 'Exit compare mode' : 'Compare two clips side-by-side'}
+                  disabled={allClips.length < 2}
+                >
+                  <GitCompare className="w-3.5 h-3.5" />
+                  Compare
+                </Button>
+
+                {/* Undo / Redo */}
+                <div className="flex items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={undo}
+                    disabled={!canUndo}
+                    title="Undo (Ctrl+Z)"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={redo}
+                    disabled={!canRedo}
+                    title="Redo (Ctrl+Shift+Z)"
+                  >
+                    <Redo2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+
+                {/* Batch copy */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className={cn(
+                        'h-7 gap-1.5 text-xs',
+                        batchCopied ? 'text-green-500 border-green-500/40' : 'text-muted-foreground'
+                      )}
+                      title="Copy clip metadata to clipboard"
+                      disabled={allClips.length === 0}
+                    >
+                      {batchCopied ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : (
+                        <ClipboardList className="w-3.5 h-3.5" />
+                      )}
+                      Copy
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        const hooks = approvedClips.length > 0 ? approvedClips : allClips
+                        const text = hooks.filter((c) => c.hookText).map((c, i) => `${i + 1}. ${c.hookText}`).join('\n')
+                        if (text) copyBatch(text)
+                      }}
+                      className="text-xs gap-2"
+                      disabled={allClips.every((c) => !c.hookText)}
+                    >
+                      <ClipboardList className="w-3.5 h-3.5 text-muted-foreground" />
+                      Copy all hook texts
+                      <span className="ml-auto text-muted-foreground tabular-nums text-[10px]">
+                        ({(approvedClips.length > 0 ? approvedClips : allClips).filter((c) => c.hookText).length})
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        const clips = approvedClips.length > 0 ? approvedClips : allClips
+                        const text = clips.filter((c) => c.hookText || c.text).map((c, i) => {
+                          const parts: string[] = [`${i + 1}.`]
+                          if (c.hookText) parts.push(c.hookText)
+                          if (c.text) parts.push(c.text)
+                          return parts.join(' — ')
+                        }).join('\n\n')
+                        if (text) copyBatch(text)
+                      }}
+                      className="text-xs gap-2"
+                      disabled={allClips.length === 0}
+                    >
+                      <ClipboardList className="w-3.5 h-3.5 text-muted-foreground" />
+                      Copy hooks + transcripts
+                      <span className="ml-auto text-muted-foreground tabular-nums text-[10px]">
+                        ({(approvedClips.length > 0 ? approvedClips : allClips).length})
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Export descriptions */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className={cn(
+                        'h-7 gap-1.5 text-xs',
+                        exportNotification ? 'text-green-500 border-green-500/40' : 'text-muted-foreground'
+                      )}
+                      disabled={allClips.length === 0 || isGeneratingDescriptions || isExportingDescriptions}
+                      title="Export AI descriptions for social media scheduling"
+                    >
+                      {isGeneratingDescriptions || isExportingDescriptions ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : exportNotification ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      Export
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-64">
+                    <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      Export Descriptions
+                    </div>
+                    <DropdownMenuItem onClick={() => handleGenerateAndExport('csv')} className="text-xs gap-2" disabled={isGeneratingDescriptions || isExportingDescriptions}>
+                      <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                      <div className="flex flex-col">
+                        <span>Export as CSV</span>
+                        <span className="text-[10px] text-muted-foreground font-normal">For Later, Buffer, Hootsuite</span>
+                      </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleGenerateAndExport('json')} className="text-xs gap-2" disabled={isGeneratingDescriptions || isExportingDescriptions}>
+                      <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                      <div className="flex flex-col">
+                        <span>Export as JSON</span>
+                        <span className="text-[10px] text-muted-foreground font-normal">For custom integrations</span>
+                      </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleGenerateAndExport('txt')} className="text-xs gap-2" disabled={isGeneratingDescriptions || isExportingDescriptions}>
+                      <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                      <div className="flex flex-col">
+                        <span>Export as Text</span>
+                        <span className="text-[10px] text-muted-foreground font-normal">Plain text, one per line</span>
+                      </div>
+                    </DropdownMenuItem>
+                    {allClips.some((c) => c.description) && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Re-export (no AI)</div>
+                        <DropdownMenuItem onClick={() => handleExportDescriptions('csv')} className="text-xs gap-2" disabled={isExportingDescriptions}>
+                          <Check className="w-3.5 h-3.5 text-green-500" /> CSV (no AI call)
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExportDescriptions('json')} className="text-xs gap-2" disabled={isExportingDescriptions}>
+                          <Check className="w-3.5 h-3.5 text-green-500" /> JSON (no AI call)
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExportDescriptions('txt')} className="text-xs gap-2" disabled={isExportingDescriptions}>
+                          <Check className="w-3.5 h-3.5 text-green-500" /> Text (no AI call)
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {exportNotification && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <div className="px-2 py-1.5 text-[10px] text-green-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          {exportNotification}
+                        </div>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* View toggle in secondary row */}
+                <div className="flex items-center rounded-md border border-border/50 overflow-hidden ml-auto">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn('h-7 w-7 rounded-none', clipViewMode === 'grid' && 'bg-muted text-foreground')}
+                    onClick={() => setClipViewMode('grid')}
+                    title="Grid view"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn('h-7 w-7 rounded-none', clipViewMode === 'timeline' && 'bg-muted text-foreground')}
+                    onClick={() => setClipViewMode('timeline')}
+                    title="Timeline view"
+                  >
+                    <GanttChart className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Clip distribution stats */}
@@ -2723,6 +2845,10 @@ export function ClipGrid() {
           />
         )
       })()}
+      </div>
+      {/* Settings sidebar — conditionally rendered by edit mode */}
+      {editMode === 'basic' && <BasicEditSettings />}
+      {editMode === 'ai-edit' && <AiEditSettings />}
     </div>
   )
 }

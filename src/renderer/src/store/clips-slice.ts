@@ -78,6 +78,7 @@ export interface ClipsSlice {
 
   setStitchedClips: (sourceId: string, clips: StitchedClipCandidate[]) => void
   updateStitchedClipStatus: (sourceId: string, clipId: string, status: 'pending' | 'approved' | 'rejected') => void
+  setStitchedClipAIEditPlan: (sourceId: string, clipId: string, plan: AIEditPlan) => void
 
   setStoryArcs: (sourceId: string, arcs: StoryArcUI[]) => void
 
@@ -471,6 +472,13 @@ export const createClipsSlice: StateCreator<
       state.stitchedClips[sourceId] = updateItemById(sourceClips, clipId, { status })
     })
   },
+
+  setStitchedClipAIEditPlan: (sourceId, clipId, plan) =>
+    set((state) => {
+      const sourceClips = state.stitchedClips[sourceId]
+      if (!sourceClips) return
+      state.stitchedClips[sourceId] = updateItemById(sourceClips, clipId, { aiEditPlan: plan })
+    }),
 
   // --- Story Arcs ---
 

@@ -45,6 +45,7 @@ export function usePipeline() {
   const setStoryArcs = useStore((s) => s.setStoryArcs)
   const setClipPartInfo = useStore((s) => s.setClipPartInfo)
   const setClipAIEditPlan = useStore((s) => s.setClipAIEditPlan)
+  const setStitchedClipAIEditPlan = useStore((s) => s.setStitchedClipAIEditPlan)
   const setClipFillers = useStore((s) => s.setClipFillers)
   const setSegments = useStore((s) => s.setSegments)
   const updateSegment = useStore((s) => s.updateSegment)
@@ -126,6 +127,7 @@ export function usePipeline() {
           setClipPartInfo,
           setCachedSourcePath,
           setClipAIEditPlan,
+          setStitchedClipAIEditPlan,
           setClipFillers,
           setSegments,
           updateSegment
@@ -261,7 +263,7 @@ export function usePipeline() {
       updateClipTrim, updateClipThumbnail, addError, setClipVariants,
       setStitchedClips, setStoryArcs, setClipPartInfo, markStageCompleted,
       setFailedPipelineStage, setCachedSourcePath, clearPipelineCache,
-      snapshotSettings, setClipAIEditPlan, setClipFillers, setSegments, updateSegment
+      snapshotSettings, setClipAIEditPlan, setStitchedClipAIEditPlan, setClipFillers, setSegments, updateSegment
     ]
   )
 

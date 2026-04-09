@@ -35,22 +35,31 @@ export async function stitchGenerationStage(
     check()
 
     if (stitchResult.clips.length > 0) {
-      const stitchedCandidates = stitchResult.clips.map((clip) => ({
-        id: clip.id,
-        sourceId: source.id,
-        segments: clip.segments.map((s) => ({
+      const allWords = transcription.transcriptionResult.words
+      const stitchedCandidates = stitchResult.clips.map((clip) => {
+        const segs = clip.segments.map((s) => ({
           startTime: s.startTime,
           endTime: s.endTime,
           text: s.text,
           role: s.role as 'hook' | 'context' | 'payoff' | 'rehook' | 'bridge'
-        })),
-        totalDuration: clip.totalDuration,
-        narrative: clip.narrative,
-        hookText: clip.hookText,
-        score: clip.score,
-        reasoning: clip.reasoning,
-        status: 'pending' as const
-      }))
+        }))
+        // Collect word timestamps spanning all stitch segments so AI Edit can process this clip
+        const wordTimestamps = allWords.filter((w) =>
+          segs.some((s) => w.start >= s.startTime && w.end <= s.endTime)
+        )
+        return {
+          id: clip.id,
+          sourceId: source.id,
+          segments: segs,
+          totalDuration: clip.totalDuration,
+          narrative: clip.narrative,
+          hookText: clip.hookText,
+          score: clip.score,
+          reasoning: clip.reasoning,
+          status: 'pending' as const,
+          wordTimestamps
+        }
+      })
       store.setStitchedClips(source.id, stitchedCandidates)
     }
 

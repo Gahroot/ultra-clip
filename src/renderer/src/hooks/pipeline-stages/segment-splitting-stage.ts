@@ -13,7 +13,7 @@
 // Promise.allSettled so one failure never blocks the rest.
 // ---------------------------------------------------------------------------
 
-import type { ClipCandidate, EditStyle, VideoSegment } from '../../store'
+import type { ClipCandidate, EditStyle, VideoSegment, StitchedClipCandidate } from '../../store'
 import { createStageReporter } from '../../lib/progress-reporter'
 import type { PipelineContext } from './types'
 import { handleStageError } from './types'
@@ -91,7 +91,12 @@ export async function segmentSplittingStage(
 
   const selectedEditStyleId = ctx.getState().selectedEditStyleId
 
-  if (clips.length === 0) return
+  // Gather stitched clips from the store
+  const stitchedClips: StitchedClipCandidate[] =
+    Object.values(ctx.getState().stitchedClips).flat()
+      .filter((sc) => sc.wordTimestamps && sc.wordTimestamps.length > 0)
+
+  if (clips.length === 0 && stitchedClips.length === 0) return
 
   // Look up the edit style's default transition and accent color
   const editStyles = ctx.getState().editStyles
@@ -141,10 +146,11 @@ export async function segmentSplittingStage(
 
     try {
       // Step 1: Split words into segments
+      const targetDuration = selectedEditStyle?.segmentDurationTarget?.ideal
       const segments: VideoSegment[] = await window.api.splitSegmentsForEditor(
         clip.id,
         clipWords,
-        undefined, // use default target duration (~5s)
+        targetDuration,
         defaultTransition
       )
 
@@ -176,6 +182,51 @@ export async function segmentSplittingStage(
     }
 
     processedCount++
+  }
+
+  // ── Step 3b: Split & style stitched clips ──────────────────────────────
+  // Each stitch segment becomes one or more VideoSegments. We split words
+  // per stitch segment individually, then concatenate and style as a unit.
+
+  for (const sc of stitchedClips) {
+    check()
+
+    try {
+      const allSegments: VideoSegment[] = []
+
+      for (const stitchSeg of sc.segments) {
+        const segWords = (sc.wordTimestamps ?? []).filter(
+          (w) => w.start >= stitchSeg.startTime && w.end <= stitchSeg.endTime
+        )
+        if (segWords.length === 0) continue
+
+        const targetDuration = selectedEditStyle?.segmentDurationTarget?.ideal
+        const subSegments = await window.api.splitSegmentsForEditor(
+          sc.id,
+          segWords,
+          targetDuration,
+          defaultTransition
+        )
+        allSegments.push(...subSegments)
+      }
+
+      if (allSegments.length === 0) continue
+
+      // Assign visual styles
+      const styledSegments: VideoSegment[] = await window.api.assignSegmentStyles(
+        allSegments,
+        selectedEditStyleId,
+        geminiApiKey || undefined
+      )
+
+      store.setSegments(sc.id, styledSegments)
+      totalSegments += styledSegments.length
+      processedCount++
+
+      allStyledSegmentsByClip.push({ clipId: sc.id, segments: styledSegments })
+    } catch (err) {
+      handleStageError(err, `Segment splitting for stitched clip ${sc.id}`, addError)
+    }
   }
 
   // ── Step 4: Generate fal.ai B-roll images (optional) ────────────────────
