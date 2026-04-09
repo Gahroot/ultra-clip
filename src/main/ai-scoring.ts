@@ -92,16 +92,28 @@ SCORING (0-100):
 - 69: Minimum — borderline; the thought is there but delivery could be stronger. Still fully understandable without any other context.
 - Below 69: Do not include — incomplete thought, no clear value, requires outside context, or off-target for audience
 
+DURATION & SCORING RELATIONSHIP:
+- Clips under 25 seconds should RARELY score above 80. In 15-20 seconds you can deliver a punchy one-liner, but you almost never have time for setup + context + payoff + actionable value. If you're scoring a short clip 85+, ask yourself: "Is this TRULY a complete, high-value thought, or am I just rewarding tightness?" Most real value needs breathing room.
+- The 30-50 second range is where the best clips live. A clip that hooks, builds context, delivers the insight, and lands the takeaway in 35-45 seconds should score HIGHER than a 17-second fragment at the same perceived quality. Prefer these clips.
+- Clips 50-90 seconds are great IF every second earns its place — no dead air, no repetition, multiple mini-payoffs keeping the viewer engaged.
+- Clips over 90 seconds are rare but valid when the speaker is on a genuine run of back-to-back value.
+- If you find yourself about to create a 15-20 second clip, STOP and look at the surrounding transcript. Is there more context before or more payoff after that would make this a stronger 30-40 second clip? Almost always, the answer is yes. Extend first, then judge.
+
+PAYOFF CHECK (do this for EVERY clip before finalizing end_time):
+- Read the 15-20 seconds of transcript AFTER your proposed end_time. Does the speaker deliver a conclusion, punchline, key insight, actionable step, or emotional payoff in that window? If YES, you MUST extend end_time to include it. You are cutting before the value lands.
+- Read the 5-10 seconds of transcript AFTER your proposed end_time. Does the speaker finish the current sentence? If NO, extend to at least the end of the sentence. Clips must NEVER end mid-sentence.
+- Ask: "If I were a viewer, would I feel satisfied at this ending, or would I feel like the rug was pulled?" If the rug is pulled, extend.
+
 TIMING RULES:
 - ${getTimingRule(targetDuration)}
 - MINIMUM 15 seconds — anything shorter cannot deliver a complete thought
-- ~40 seconds is the SWEET SPOT for most valuable clips
+- ~40 seconds is the TARGET for most clips — not a suggestion, a target. Actively aim for it.
 - Clips CAN be 1-3 minutes IF every single second delivers value with no dead air or repetition. Long clips are rare but possible — do not artificially cut a great segment short.
 - NEVER cut a clip short just to hit a time target. Complete the thought, THEN end.
 - start_time MUST be LESS than end_time
 - Segments must not overlap
 - Use EXACT timestamps from the transcript
-- Start at natural hook points, end AFTER the payoff/conclusion
+- Start at natural hook points, end AFTER the payoff/conclusion — not before it, not during it, AFTER it
 
 HOOK TEXT:
 For each segment, write 1-5 words of on-screen hook text that appears in the first 2 seconds. 80%+ viewers watch with sound off — the hook must work silently.
