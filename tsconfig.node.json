@@ -7,6 +7,10 @@
     "esModuleInterop": true,
     "outDir": "./out",
     "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["./src/shared/*"]
+    },
     "strict": true,
     "skipLibCheck": true,
     "types": ["node"]
