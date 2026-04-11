@@ -15,21 +15,7 @@
 import type { RenderFeature, PrepareResult, PostProcessContext } from './feature'
 import type { RenderClipJob, RenderBatchOptions } from '../types'
 import type { CaptionStyleInput } from '../../captions'
-
-/**
- * Derive a lighter tint from a hex color for the supersize word color.
- * Blends the input color 40% toward white.
- */
-function lightenColor(hex: string, amount = 0.4): string {
-  const clean = hex.replace('#', '')
-  const r = parseInt(clean.substring(0, 2), 16)
-  const g = parseInt(clean.substring(2, 4), 16)
-  const b = parseInt(clean.substring(4, 6), 16)
-  const lr = Math.round(r + (255 - r) * amount)
-  const lg = Math.round(g + (255 - g) * amount)
-  const lb = Math.round(b + (255 - b) * amount)
-  return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`
-}
+import { lightenColor } from '../color-utils'
 
 /** Snapshot of batch-level options before accent color mutation (for restore). */
 interface BatchSnapshot {
