@@ -21,6 +21,7 @@ import { createHookTitleFeature } from './features/hook-title.feature'
 import { progressBarFeature } from './features/progress-bar.feature'
 import type { RenderFeature, FilterContext, OverlayContext, OverlayPassResult } from './features/feature'
 import type { RenderClipJob, RenderBatchOptions, CaptionStyleInput, HookTitleConfig, ProgressBarConfig, ZoomSettings } from './types'
+import { lightenColor } from './color-utils'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -29,22 +30,6 @@ import type { RenderClipJob, RenderBatchOptions, CaptionStyleInput, HookTitleCon
 /** Preview output resolution (half of 1080×1920) */
 const PREVIEW_WIDTH = 540
 const PREVIEW_HEIGHT = 960
-
-/**
- * Derive a lighter tint from a hex color for the supersize word color.
- * Blends the input color toward white by the given amount.
- * (Mirrored from accent-color.feature.ts to avoid import coupling.)
- */
-function lightenColor(hex: string, amount = 0.4): string {
-  const clean = hex.replace('#', '')
-  const r = parseInt(clean.substring(0, 2), 16)
-  const g = parseInt(clean.substring(2, 4), 16)
-  const b = parseInt(clean.substring(4, 6), 16)
-  const lr = Math.round(r + (255 - r) * amount)
-  const lg = Math.round(g + (255 - g) * amount)
-  const lb = Math.round(b + (255 - b) * amount)
-  return `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`
-}
 
 // ---------------------------------------------------------------------------
 // Public types
