@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { v4 as uuidv4 } from 'uuid'
 import type { AppState, QueueResult, SourceVideo, TranscriptionData, RenderProgress, TemplateLayout, PipelineStage } from './types'
 import {
   persistSettings,
@@ -11,9 +12,7 @@ import {
 import { createClipsSlice } from './clips-slice'
 import { createSettingsSlice } from './settings-slice'
 import { createPipelineSlice } from './pipeline-slice'
-import { createProjectSlice } from './project-slice'
 import { createHistorySlice } from './history-slice'
-import { createErrorsSlice } from './errors-slice'
 
 /** Maximum number of AI usage history entries to keep in memory. */
 const MAX_AI_USAGE_HISTORY = 200
@@ -29,9 +28,42 @@ export const useStore = create<AppState>()(immer((...a) => {
     ...createClipsSlice(...a),
     ...createSettingsSlice(...a),
     ...createPipelineSlice(...a),
-    ...createProjectSlice(...a),
     ...createHistorySlice(...a),
-    ...createErrorsSlice(...a),
+
+    // --- Project ---
+    isDirty: false,
+    lastSavedAt: null,
+
+    reset: () =>
+      set({
+        sources: [],
+        activeSourceId: null,
+        transcriptions: {},
+        clips: {},
+        pipeline: DEFAULT_PIPELINE,
+        renderProgress: [],
+        isRendering: false,
+        renderStartedAt: null,
+        renderCompletedAt: null,
+        clipRenderTimes: {},
+        errorLog: [],
+        settingsSnapshot: null,
+        settingsChanged: false,
+        _undoStack: [],
+        _redoStack: [],
+        canUndo: false,
+        canRedo: false,
+      }),
+
+    // --- Errors ---
+    errorLog: [],
+
+    addError: (entry) =>
+      set((state) => ({
+        errorLog: [...state.errorLog, { ...entry, id: uuidv4(), timestamp: Date.now() }]
+      })),
+
+    clearErrors: () => set({ errorLog: [] }),
 
     // --- Sources ---
     sources: [],
