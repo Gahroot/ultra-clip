@@ -21,7 +21,7 @@ import { formatASSTimestamp, cssHexToASS, buildASSFilter } from '../helpers'
  *
  * @returns Path to the generated .ass file in the temp directory.
  */
-function generateHookTitleASSFile(
+export function generateHookTitleASSFile(
   text: string,
   config: HookTitleConfig,
   frameWidth = 1080,
