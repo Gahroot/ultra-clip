@@ -42,3 +42,7 @@ image.png
 # GG agent files
 .gg/
 python/__pycache__/
+
+# Large local assets — keep local, not in git
+captionsai_research/
+sample_video/
