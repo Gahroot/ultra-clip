@@ -719,53 +719,19 @@ export function ClipGrid() {
       const scSegments = segments[sc.id]
       const hasAIEditSegments = scSegments && scSegments.length > 0
 
-      if (hasAIEditSegments) {
-        // AI Edit path — same as regular clips with segmentedSegments
-        jobs.push({
-          clipId: sc.id,
-          sourceVideoPath: sourcePath,
-          startTime: Math.min(...sc.segments.map((s) => s.startTime)),
-          endTime: Math.max(...sc.segments.map((s) => s.endTime)),
-          cropRegion: sc.cropRegion
-            ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
-            : undefined,
-          hookTitleText: sc.hookText || undefined,
-          wordTimestamps: transcriptionWords,
-          outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
-          // AI Edit Plan fields
-          wordEmphasisOverride: sc.aiEditPlan?.wordEmphasis?.length
-            ? sc.aiEditPlan.wordEmphasis.map((e) => ({
-                text: e.text, start: e.start, end: e.end,
-                emphasis: e.level as 'emphasis' | 'supersize'
-              }))
-            : undefined,
-          aiSfxSuggestions: sc.aiEditPlan?.sfxSuggestions?.length
-            ? sc.aiEditPlan.sfxSuggestions.map((s) => ({ timestamp: s.timestamp, type: s.type }))
-            : undefined,
-          wordEmphasis: sc.aiEditPlan?.wordEmphasis?.length
-            ? sc.aiEditPlan.wordEmphasis.map((e) => ({
-                text: e.text, start: e.start, end: e.end,
-                emphasis: e.level as 'emphasis' | 'supersize'
-              }))
-            : undefined,
-          brollSuggestions: sc.aiEditPlan?.brollSuggestions?.length
-            ? sc.aiEditPlan.brollSuggestions.map((b) => ({
-                timestamp: b.timestamp, duration: b.duration, keyword: b.keyword,
-                displayMode: b.displayMode, transition: b.transition
-              }))
-            : undefined,
-          emphasisKeyframesInput: sc.aiEditPlan?.wordEmphasis?.length
-            ? sc.aiEditPlan.wordEmphasis
-                .filter((e) => e.level === 'emphasis' || e.level === 'supersize')
-                .map((e) => ({ time: e.start, end: e.end, level: e.level as 'emphasis' | 'supersize' }))
-            : undefined,
-          stylePresetId: selectedEditStyleId ?? sc.aiEditPlan?.stylePresetId ?? undefined,
-          clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const },
-          segmentedSegments: scSegments.map((seg) => ({
+      // Always route stitched clips through the AI edit style render path.
+      // When the user hasn't run AI segment styling yet, synthesize a minimal
+      // segmentedSegments list from sc.segments using `main-video-normal` so
+      // stitched clips still get the full EditStyle treatment (captions,
+      // emphasis, zoom, transitions, edit-event SFX).
+      const segmentedSegments = hasAIEditSegments
+        ? scSegments.map((seg) => ({
             startTime: seg.startTime,
             endTime: seg.endTime,
             styleVariantId: seg.segmentStyleId,
-            zoomStyle: seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image' ? 'none' : 'drift' as const,
+            zoomStyle: (seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image'
+              ? 'none'
+              : 'drift') as 'none' | 'drift',
             zoomIntensity: 1.05,
             transitionIn: seg.transitionIn,
             captionBgOpacity: undefined,
@@ -773,28 +739,61 @@ export function ClipGrid() {
               ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
               : undefined,
           }))
-        })
-      } else {
-        // Legacy stitched render path — no AI Edit segments available
-        jobs.push({
-          clipId: sc.id,
-          sourceVideoPath: sourcePath,
-          startTime: firstSeg.startTime,
-          endTime: firstSeg.endTime,
-          cropRegion: sc.cropRegion
-            ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
-            : undefined,
-          hookTitleText: sc.hookText || undefined,
-          wordTimestamps: transcriptionWords,
-          outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
-          stitchedSegments: sc.segments.map((seg) => ({
+        : sc.segments.map((seg) => ({
             startTime: seg.startTime,
             endTime: seg.endTime,
-            overlayText: seg.overlayText ?? (seg.role === 'hook' ? sc.hookText : undefined),
-            role: seg.role
+            styleVariantId: 'main-video-normal',
+            zoomStyle: 'drift' as const,
+            zoomIntensity: 1.05,
+            transitionIn: 'hard-cut' as const,
+            captionBgOpacity: undefined,
+            cropRect: sc.cropRegion
+              ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
+              : undefined,
           }))
-        })
-      }
+
+      jobs.push({
+        clipId: sc.id,
+        sourceVideoPath: sourcePath,
+        startTime: Math.min(...sc.segments.map((s) => s.startTime)),
+        endTime: Math.max(...sc.segments.map((s) => s.endTime)),
+        cropRegion: sc.cropRegion
+          ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
+          : undefined,
+        hookTitleText: sc.hookText || undefined,
+        wordTimestamps: transcriptionWords,
+        outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
+        // AI Edit Plan fields (only present when user ran AI Edit Plan on this stitched clip)
+        wordEmphasisOverride: sc.aiEditPlan?.wordEmphasis?.length
+          ? sc.aiEditPlan.wordEmphasis.map((e) => ({
+              text: e.text, start: e.start, end: e.end,
+              emphasis: e.level as 'emphasis' | 'supersize'
+            }))
+          : undefined,
+        aiSfxSuggestions: sc.aiEditPlan?.sfxSuggestions?.length
+          ? sc.aiEditPlan.sfxSuggestions.map((s) => ({ timestamp: s.timestamp, type: s.type }))
+          : undefined,
+        wordEmphasis: sc.aiEditPlan?.wordEmphasis?.length
+          ? sc.aiEditPlan.wordEmphasis.map((e) => ({
+              text: e.text, start: e.start, end: e.end,
+              emphasis: e.level as 'emphasis' | 'supersize'
+            }))
+          : undefined,
+        brollSuggestions: sc.aiEditPlan?.brollSuggestions?.length
+          ? sc.aiEditPlan.brollSuggestions.map((b) => ({
+              timestamp: b.timestamp, duration: b.duration, keyword: b.keyword,
+              displayMode: b.displayMode, transition: b.transition
+            }))
+          : undefined,
+        emphasisKeyframesInput: sc.aiEditPlan?.wordEmphasis?.length
+          ? sc.aiEditPlan.wordEmphasis
+              .filter((e) => e.level === 'emphasis' || e.level === 'supersize')
+              .map((e) => ({ time: e.start, end: e.end, level: e.level as 'emphasis' | 'supersize' }))
+          : undefined,
+        stylePresetId: selectedEditStyleId ?? sc.aiEditPlan?.stylePresetId ?? undefined,
+        clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const },
+        segmentedSegments
+      })
     }
 
     // Initialize per-clip render progress

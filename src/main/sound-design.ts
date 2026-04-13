@@ -1,7 +1,7 @@
 import { join } from 'path'
 import { app } from 'electron'
 import { existsSync } from 'fs'
-import type { MusicTrack, WordTimestamp, EmphasizedWord, ShotStyleConfig } from '@shared/types'
+import type { MusicTrack, WordTimestamp, ShotStyleConfig } from '@shared/types'
 
 // ---------------------------------------------------------------------------
 // Types (MusicTrack canonical definition lives in @shared/types)
@@ -48,17 +48,6 @@ export type SFXStyle = 'minimal' | 'standard' | 'energetic'
  * user-controlled sfxVolume before being written into SoundPlacementData.
  */
 export interface SFXStyleConfig {
-  // Supersize word impacts
-  supersizeMinGap: number
-  supersizeVolScale: number
-  risingTensionEnabled: boolean
-  maxSupersizeHits: number | null  // null = unlimited
-
-  // Emphasis word pops
-  emphasisEnabled: boolean
-  emphasisMinGap: number
-  emphasisVolScale: number
-
   // Edit event sync (B-Roll transitions, jump-cuts)
   editSyncEnabled: boolean
   editBrollMinGap: number
@@ -76,15 +65,8 @@ export interface SFXStyleConfig {
 
 /** Preset configs indexed by SFXStyle. */
 export const SFX_STYLE_CONFIGS: Record<SFXStyle, SFXStyleConfig> = {
-  /** Barely-there: at most 2 quiet impacts and a single subtle whoosh. */
+  /** Barely-there: a single subtle whoosh, no edit-event SFX. */
   minimal: {
-    supersizeMinGap: 10.0,
-    supersizeVolScale: 0.65,
-    risingTensionEnabled: false,
-    maxSupersizeHits: 2,
-    emphasisEnabled: false,
-    emphasisMinGap: 9999,
-    emphasisVolScale: 0.5,
     editSyncEnabled: false,
     editBrollMinGap: 9999,
     editBrollVolScale: 0.65,
@@ -97,15 +79,8 @@ export const SFX_STYLE_CONFIGS: Record<SFXStyle, SFXStyleConfig> = {
     whooshVolScale: 0.3,
   },
 
-  /** Balanced: emphasis-driven placement at moderate density. Current default behaviour. */
+  /** Balanced: edit-event SFX at moderate density. Current default behaviour. */
   standard: {
-    supersizeMinGap: 3.0,
-    supersizeVolScale: 1.0,
-    risingTensionEnabled: true,
-    maxSupersizeHits: null,
-    emphasisEnabled: true,
-    emphasisMinGap: 2.5,
-    emphasisVolScale: 0.5,
     editSyncEnabled: true,
     editBrollMinGap: 1.0,
     editBrollVolScale: 0.65,
@@ -118,16 +93,8 @@ export const SFX_STYLE_CONFIGS: Record<SFXStyle, SFXStyleConfig> = {
     whooshVolScale: 0.7,
   },
 
-  /** Maximum density: pops on every emphasis word, impacts on every supersize word,
-   *  whooshes on every edit event and eligible pause. */
+  /** Maximum density: whooshes on every edit event and eligible pause. */
   energetic: {
-    supersizeMinGap: 1.0,
-    supersizeVolScale: 1.0,
-    risingTensionEnabled: true,
-    maxSupersizeHits: null,
-    emphasisEnabled: true,
-    emphasisMinGap: 0.5,
-    emphasisVolScale: 0.75,
     editSyncEnabled: true,
     editBrollMinGap: 0.4,
     editBrollVolScale: 0.85,
@@ -522,14 +489,15 @@ function buildPerShotMusicVolExpr(
 /**
  * Generate emphasis-aware sound placements for a clip.
  *
- * Placement strategy (feels like a professional editor placed each sound by hand):
+ * Placement strategy:
  *
  * 1. **Background music** — continuous ambient bed under the whole clip
- * 2. **Emphasis word pops** — subtle `word-pop` on every `emphasis` word (rate-limited)
- * 3. **Supersize impacts** — full `impact-high` or `bass-drop` on `supersize` words
- * 4. **Rising tension** — short `rise-tension-short` placed 0.3s before each supersize word
- * 5. **Edit event sync** — `swipe-transition` on B-Roll entries, `camera-shutter` on jump-cut zooms
- * 6. **Pause whooshes** — soft whoosh at natural speech pauses (topic shifts)
+ * 2. **Edit event sync** — `swipe-transition` on B-Roll entries, `camera-shutter` on jump-cut zooms
+ * 3. **Pause whooshes** — soft whoosh at natural speech pauses (topic shifts)
+ *
+ * Supersize and emphasis words are intentionally NOT sonified. Per-word SFX
+ * on every emphasis felt overwhelming and fought the speaker's voice — sound
+ * design now reacts to structural beats (edits and pauses) instead.
  *
  * All SFX are rate-limited by minimum gap enforcement so the density feels intentional.
  * Missing audio files are silently skipped with a console warning.
@@ -537,8 +505,6 @@ function buildPerShotMusicVolExpr(
  * @param clipDuration    Duration of the clip in seconds
  * @param wordTimestamps   Word timestamps (0-based, relative to clip start)
  * @param options          Sound design configuration
- * @param emphasizedWords  Optional pre-computed emphasis data (normal/emphasis/supersize).
- *                         When omitted, a simple heuristic is used internally.
  * @param editEvents       Optional edit events (B-Roll transitions, jump-cuts) for sync SFX.
  * @param shotStyleConfigs Optional per-shot style configs with music track overrides.
  *                         When shots specify different music tracks, each shot gets its
@@ -549,7 +515,6 @@ export function generateSoundPlacements(
   clipDuration: number,
   wordTimestamps: WordTimestampInput[],
   options: SoundDesignOptions,
-  emphasizedWords?: EmphasizedWord[],
   editEvents?: EditEvent[],
   shotStyleConfigs?: ShotStyleConfig[]
 ): SoundPlacementData[] {
@@ -561,10 +526,7 @@ export function generateSoundPlacements(
 
   // Resolve all available SFX files up-front
   const sfxPaths = {
-    wordPop:          tryResolve('word-pop'),
     impactHigh:       tryResolve('impact-high'),
-    bassDrop:         tryResolve('bass-drop'),
-    riseTensionShort: tryResolve('rise-tension-short'),
     swipeTransition:  tryResolve('swipe-transition'),
     cameraShutter:    tryResolve('camera-shutter'),
     whooshSoft:       tryResolve('whoosh-soft'),
@@ -651,85 +613,14 @@ export function generateSoundPlacements(
     return placements
   }
 
-  // Track the last time any SFX was placed to enforce minimum gaps
+  // Track the last time any SFX was placed to enforce minimum gaps.
+  // Supersize and emphasis words are intentionally NOT sonified — SFX on every
+  // big word grew overwhelming and distracted from the speaker's voice. Sound
+  // design now only reacts to edit events (b-roll/jump-cut/shot transitions)
+  // and meaningful pauses.
   let lastSfxTime = -Infinity
 
-  // ── 2. Supersize impacts + rising tension ──────────────────────────────────
-  // Process supersize FIRST (highest priority), then emphasis words, then
-  // edit events. This ensures the biggest moments always get their sound.
-  const supersizeWords = (emphasizedWords ?? []).filter(w => w.emphasis === 'supersize')
-  const hasImpact = sfxPaths.impactHigh || sfxPaths.bassDrop || sfxPaths.impactLow
-
-  if (hasImpact && supersizeWords.length > 0) {
-    // Alternating between impact-high and bass-drop for variety
-    let useBassDrop = false
-    let supersizeHitCount = 0
-
-    for (const word of supersizeWords) {
-      if (cfg.maxSupersizeHits !== null && supersizeHitCount >= cfg.maxSupersizeHits) break
-      if (word.start - lastSfxTime < cfg.supersizeMinGap) continue
-      if (word.start < 0.2) continue // too close to clip start
-
-      // Pick the impact SFX — alternate for variety, fall back to whatever exists
-      let sfxPath: string | null
-      if (useBassDrop) {
-        sfxPath = sfxPaths.bassDrop ?? sfxPaths.impactHigh ?? sfxPaths.impactLow
-      } else {
-        sfxPath = sfxPaths.impactHigh ?? sfxPaths.impactLow
-      }
-
-      if (sfxPath) {
-        // ── Rising tension: 0.3s before the supersize word ──────────────
-        if (cfg.risingTensionEnabled && sfxPaths.riseTensionShort) {
-          const riseTime = word.start - 0.3
-          if (riseTime > 0.1 && riseTime - lastSfxTime >= 0.5) {
-            placements.push({
-              type: 'sfx',
-              filePath: sfxPaths.riseTensionShort,
-              startTime: riseTime,
-              duration: 0.35,
-              volume: sfxVolume * 0.6 // subtle — builds anticipation
-            })
-          }
-        }
-
-        // ── Full impact on the supersize word ───────────────────────────
-        placements.push({
-          type: 'sfx',
-          filePath: sfxPath,
-          startTime: word.start,
-          duration: 0.6,
-          volume: sfxVolume * cfg.supersizeVolScale
-        })
-
-        lastSfxTime = word.start
-        useBassDrop = !useBassDrop
-        supersizeHitCount++
-      }
-    }
-  }
-
-  // ── 3. Emphasis word pops ──────────────────────────────────────────────────
-  const emphasisWords = (emphasizedWords ?? []).filter(w => w.emphasis === 'emphasis')
-
-  if (cfg.emphasisEnabled && sfxPaths.wordPop && emphasisWords.length > 0) {
-    for (const word of emphasisWords) {
-      if (word.start - lastSfxTime < cfg.emphasisMinGap) continue
-      if (word.start < 0.2) continue
-
-      placements.push({
-        type: 'sfx',
-        filePath: sfxPaths.wordPop,
-        startTime: word.start,
-        duration: 0.3,
-        volume: sfxVolume * cfg.emphasisVolScale
-      })
-
-      lastSfxTime = word.start
-    }
-  }
-
-  // ── 4. Edit event synced SFX ───────────────────────────────────────────────
+  // ── Edit event synced SFX ──────────────────────────────────────────────────
   // B-Roll transitions → swipe sound; jump-cut zooms → quiet camera shutter;
   // shot transitions → type-specific SFX that matches the visual transition.
   // These sync to the visual edit rhythm so audio and video feel connected.

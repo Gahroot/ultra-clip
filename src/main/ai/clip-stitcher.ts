@@ -335,20 +335,43 @@ PAYOFF ORDERING
 Deliver the second-best concrete payoff FIRST (mini-payoff), then the best (main-payoff). The mini-payoff must be a real reward on its own — not a warmup act. The main-payoff must be MORE specific, MORE surprising, or MORE actionable than the mini. If the main-payoff isn't clearly better than the mini, you have the wrong segments — keep looking.
 
 ═══════════════════════════════════════════════════════
+FULL THOUGHTS — THE #1 BOUNDARY RULE
+═══════════════════════════════════════════════════════
+
+EVERY segment MUST begin and end on a complete thought. This is the single most important rule for stitched clips — a mid-sentence cut anywhere in the composite breaks the illusion of a single unbroken take and the viewer bounces.
+
+HARD BOUNDARY RULES (apply to EVERY segment, no exceptions):
+- START at the first word of a complete sentence or self-contained clause. Never mid-phrase, never after a conjunction that depends on what came before ("and", "but", "so", "because", "which", "that", "then"), never with a pronoun whose antecedent lives in an earlier sentence the viewer will not hear.
+- END at a natural sentence terminator — a period, question mark, exclamation, or a decisive falling-tone clause break. Never clip a sentence short. Never end on "and…", "but…", "so the…", "which means…". If the sentence needs three more words to land, INCLUDE those words or move the end boundary earlier to the previous sentence.
+- NEVER split a subject from its verb, a verb from its object, or a setup from its punchline across segments. If the speaker says "the number that changed everything… was four percent", both halves live in the same segment or the segment doesn't exist.
+- The transcript text you output for each segment must READ as a standalone sentence or paragraph. If you removed all the other segments, would this one still make grammatical sense? If not, the boundary is wrong.
+
+PRONOUN + REFERENT RULE:
+- If a segment contains "it", "this", "that", "they", "he", "she", "them", "those", the thing being referred to must either (a) exist earlier in the SAME segment, or (b) be established by the IMMEDIATELY preceding segment in the composite. If the referent lives in a part of the video that got cut, the pronoun becomes an orphan and the cohesion score collapses.
+- Same rule for demonstratives ("the problem", "the number", "the method") — if the viewer hasn't been told WHICH problem/number/method, the segment is broken.
+
+MICRO-SEGMENT EXCEPTION:
+- 1-2 second hook/rehook fragments may be a single bold phrase rather than a full sentence (e.g. "Nobody talks about this.", "But here's the thing."). They still must be complete phrases — never half-phrases like "and that's why" or "which is the".
+
+═══════════════════════════════════════════════════════
 COHESION CHECK
 ═══════════════════════════════════════════════════════
 
-Run each of these five checks before finalizing a clip. If ANY check fails, adjust segment selection or boundaries — do not assign a score until all five pass.
+Run each of these SIX checks before finalizing a clip. If ANY check fails, adjust segment selection or boundaries — do not assign a score until all six pass.
 
-1. ENTRY CHECK — Does each segment (except the first) open in a way that connects to what just happened? If a segment starts mid-thought with no apparent link to the previous segment's close, either trim the boundary or insert a bridge.
+1. ENTRY CHECK — Does each segment (including the first) open on a complete-thought boundary? Read the segment's first 8 words aloud. If they only make sense because of a sentence that isn't in the clip, the boundary is wrong — move the start earlier or later until the opening stands on its own. If a segment depends on connective tissue to the previous segment, the continuity must be grammatical ("So when that happens" only works if what "that" refers to was just said on screen).
 
-2. EXIT CHECK — Does the clip end on resolution, not mid-thought? The final segment should land cleanly — a conclusion, a revelation, a memorable line. Not a sentence that trails off, not a setup without a payoff.
+2. EXIT CHECK — Does each segment (and the clip as a whole) end on a completed thought? Read the last 8 words aloud. Do they land? A segment ending on "…and then" or "…which is why the" is broken — extend the boundary to include the completion, or cut earlier to the previous sentence terminator. The final segment of the clip must additionally deliver resolution — a conclusion, a revelation, or a memorable line — not trail off.
 
 3. TOPIC CONSISTENCY — Do all segments serve the same central point? If you have to stretch to explain how a segment connects to the clip's narrative, it doesn't belong.
 
-4. REPETITION CHECK — Does any segment say something the viewer already heard in an earlier segment? Repetition kills pace. Each segment must add new information, new stakes, or new perspective — never re-state.
+4. REFERENT CHECK — For every pronoun and demonstrative ("it", "this", "they", "the thing", "that number"), is the referent established earlier in the same composite (not just the full video)? If a segment says "that's why it works" and "it" was introduced 12 minutes earlier in a part of the video the viewer won't see, the segment is orphaned. Fix by either including the earlier antecedent or re-selecting a segment where the referent is local.
 
-5. ARC CHECK — Reading all segments in order: is there a clear direction of travel? The clip should move somewhere — from problem to solution, from question to answer, from setup to payoff. If the segments could be reordered without losing anything, the arc is broken.
+5. REPETITION CHECK — Does any segment say something the viewer already heard in an earlier segment? Repetition kills pace. Each segment must add new information, new stakes, or new perspective — never re-state.
+
+6. ARC CHECK — Reading all segments in order: is there a clear direction of travel? The clip should move somewhere — from problem to solution, from question to answer, from setup to payoff. If the segments could be reordered without losing anything, the arc is broken.
+
+FINAL READ-ALOUD TEST: Read the concatenated segment text out loud as if it were a single take. Does it sound like one person speaking fluidly, or does it sound like someone hit the stop button mid-sentence? If you stumble at any cut, the boundaries are wrong — fix them before scoring.
 
 If ANY of these checks fail, adjust the segment selection or boundaries before assigning a score.
 
@@ -537,7 +560,7 @@ RULES
 
 - Each composite MUST have at least 2 segments from DIFFERENT parts of the video
 - Segments within a composite must NOT overlap with each other
-- Use EXACT timestamps from the transcript — start at natural sentence beginnings, end at natural conclusions
+- Use EXACT timestamps from the transcript. EVERY segment must start at the first word of a complete sentence or self-contained phrase AND end at a sentence terminator (period, question mark, exclamation). NEVER start a segment mid-clause or end one before the sentence resolves. If the nearest sentence boundary adds or drops a second of runtime, take the hit — full thoughts win over exact timing every single time.
 - Prioritize composites where combining segments creates a STRONGER narrative than any individual contiguous segment
 - There is NO maximum number of segments or duration limit — the only constraint is it must stay engaging throughout
 - Score each composite using the SCORING RUBRIC above (four dimensions × 25 pts = 100 total); discard any clip scoring below 70
