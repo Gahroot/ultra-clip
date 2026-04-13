@@ -22,8 +22,8 @@ import { createHash } from 'crypto'
 import * as https from 'https'
 import * as http from 'http'
 import { URL } from 'url'
-import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
-import { emitUsageFromResponse } from '../ai-usage'
+import { callGeminiWithRetry, type GeminiCall } from './gemini-client'
+import { GoogleGenAI } from '@google/genai'
 import type { VideoSegment, SegmentStyleCategory } from '@shared/types'
 
 // ---------------------------------------------------------------------------
@@ -258,7 +258,7 @@ async function downloadPexelsImage(
 // ---------------------------------------------------------------------------
 
 const GEMINI_IMAGE_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent'
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent'
 
 const STYLE_IMAGE_GUIDANCE: Record<string, string> = {
   viral: 'Vibrant, high-contrast, bold colors, dynamic composition, eye-catching',
@@ -369,49 +369,6 @@ async function generateGeminiImage(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Gemini search query generation
-// ---------------------------------------------------------------------------
-
-function classifyGeminiError(err: unknown): never {
-  const msg = err instanceof Error ? err.message : String(err)
-  const status = (err as { status?: number })?.status
-
-  if (status === 401 || status === 403 || /api.key/i.test(msg)) {
-    throw new Error('Invalid Gemini API key.')
-  }
-  if (status === 429 || /resource.exhausted|rate.limit|quota/i.test(msg)) {
-    throw new Error('Gemini rate limit exceeded.')
-  }
-  throw err
-}
-
-async function callGeminiWithRetry(model: GenerativeModel, prompt: string, usageSource: string): Promise<string> {
-  try {
-    const result = await model.generateContent(prompt)
-    emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-    return result.response.text().trim()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const status = (err as { status?: number })?.status
-    const isTransient =
-      status === 429 ||
-      /resource.exhausted|rate.limit|quota/i.test(msg) ||
-      /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)
-
-    if (isTransient) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const result = await model.generateContent(prompt)
-        emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-        return result.response.text().trim()
-      } catch (retryErr) {
-        classifyGeminiError(retryErr)
-      }
-    }
-    classifyGeminiError(err)
-  }
-}
 
 /**
  * Use Gemini to generate a focused 2-4 word stock photo search query from
@@ -422,11 +379,11 @@ async function getImageSearchQuery(
   captionText: string,
   geminiApiKey: string
 ): Promise<string> {
-  const genAI = new GoogleGenerativeAI(geminiApiKey)
-  const model = genAI.getGenerativeModel({
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey })
+  const call: GeminiCall = {
     model: 'gemini-2.5-flash-lite',
-    generationConfig: { responseMimeType: 'application/json' }
-  })
+    config: { responseMimeType: 'application/json' }
+  }
 
   const prompt = `Given this video segment transcript: "${captionText}"
 
@@ -440,7 +397,7 @@ Rules:
 
 Return JSON: {"query": "your search query here"}`
 
-  const text = await callGeminiWithRetry(model, prompt, 'segment-images')
+  const text = await callGeminiWithRetry(ai, call, prompt, 'segment-images')
 
   try {
     const parsed = JSON.parse(text) as { query?: unknown }

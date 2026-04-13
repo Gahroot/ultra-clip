@@ -1,6 +1,6 @@
-import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
+import { callGeminiWithRetry, type GeminiCall } from './gemini-client'
+import { GoogleGenAI } from '@google/genai'
 import type { TranscriptionResult } from '../transcription'
-import { emitUsageFromResponse } from '../ai-usage'
 import type { CuriosityGap, ClipBoundary, CuriosityClipCandidate, ClipEndMode } from '@shared/types'
 
 // Re-export shared types for existing consumers + backward-compat alias
@@ -69,55 +69,6 @@ function parseTimestamp(ts: string): number {
   return NaN
 }
 
-/**
- * Classify a Gemini API error and throw a user-friendly message.
- */
-function classifyGeminiError(err: unknown): never {
-  const msg = err instanceof Error ? err.message : String(err)
-  const status = (err as { status?: number })?.status
-
-  if (status === 401 || status === 403 || /api.key/i.test(msg)) {
-    throw new Error('Invalid Gemini API key. Check your key in Settings.')
-  }
-  if (status === 429 || /resource.exhausted|rate.limit|quota/i.test(msg)) {
-    throw new Error('Gemini API rate limit exceeded. Please wait and try again.')
-  }
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)) {
-    throw new Error('Network error: cannot reach Gemini API. Check your internet connection.')
-  }
-  throw err
-}
-
-/**
- * Call Gemini with a single retry on transient errors (429, network).
- * Emits token usage via the ai-usage module after each successful call.
- */
-async function callGeminiWithRetry(model: GenerativeModel, prompt: string, usageSource: string): Promise<string> {
-  try {
-    const result = await model.generateContent(prompt)
-    emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-    return result.response.text().trim()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const status = (err as { status?: number })?.status
-    const isTransient =
-      status === 429 ||
-      /resource.exhausted|rate.limit|quota/i.test(msg) ||
-      /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)
-
-    if (isTransient) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const result = await model.generateContent(prompt)
-        emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-        return result.response.text().trim()
-      } catch (retryErr) {
-        classifyGeminiError(retryErr)
-      }
-    }
-    classifyGeminiError(err)
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Raw response shapes
@@ -202,11 +153,11 @@ export async function detectCuriosityGaps(
     return []
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({
+  const ai = new GoogleGenAI({ apiKey })
+  const call: GeminiCall = {
     model: 'gemini-2.5-flash-lite',
-    generationConfig: { responseMimeType: 'application/json' }
-  })
+    config: { responseMimeType: 'application/json' }
+  }
 
   const prompt = `${CURIOSITY_GAP_SYSTEM_PROMPT}
 
@@ -215,7 +166,7 @@ Analyze this video transcript and identify all curiosity gap moments.
 Transcript:
 ${formattedTranscript}`
 
-  const text = await callGeminiWithRetry(model, prompt, 'curiosity-gaps')
+  const text = await callGeminiWithRetry(ai, call, prompt, 'curiosity-gaps')
 
   let rawResponse: RawGapResponse
   try {

@@ -1,6 +1,6 @@
-import { GoogleGenerativeAI, SchemaType, type GenerativeModel } from '@google/generative-ai'
+import { callGeminiWithRetry, type GeminiCall } from './gemini-client'
+import { GoogleGenAI, Type } from '@google/genai'
 import type { TranscriptionResult, WordTimestamp } from '../transcription'
-import { emitUsageFromResponse } from '../ai-usage'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,59 +38,25 @@ export interface LoopOptimizedClip {
   crossfadeDuration?: number
 }
 
+const LOOP_ANALYSIS_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    loopScore: { type: Type.NUMBER, description: 'Loop quality score 0-100' },
+    strategy: {
+      type: Type.STRING,
+      description: 'Loop strategy',
+      enum: ['hard-cut', 'thematic', 'audio-match', 'crossfade', 'none']
+    },
+    suggestedEndAdjust: { type: Type.NUMBER, description: 'Seconds to adjust clip end (-5 to 5)' },
+    suggestedStartAdjust: { type: Type.NUMBER, description: 'Seconds to adjust clip start (-5 to 5)' },
+    reason: { type: Type.STRING, description: '1-2 sentence explanation' }
+  },
+  required: ['loopScore', 'strategy', 'suggestedEndAdjust', 'suggestedStartAdjust', 'reason']
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Classify a Gemini API error and throw a user-friendly message.
- */
-function classifyGeminiError(err: unknown): never {
-  const msg = err instanceof Error ? err.message : String(err)
-  const status = (err as { status?: number })?.status
-
-  if (status === 401 || status === 403 || /api.key/i.test(msg)) {
-    throw new Error('Invalid Gemini API key. Check your key in Settings.')
-  }
-  if (status === 429 || /resource.exhausted|rate.limit|quota/i.test(msg)) {
-    throw new Error('Gemini API rate limit exceeded. Please wait and try again.')
-  }
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)) {
-    throw new Error('Network error: cannot reach Gemini API. Check your internet connection.')
-  }
-  throw err
-}
-
-/**
- * Call Gemini with a single retry on transient errors.
- * Emits token usage via the ai-usage module after each successful call.
- */
-async function callGeminiWithRetry(model: GenerativeModel, prompt: string, usageSource: string): Promise<string> {
-  try {
-    const result = await model.generateContent(prompt)
-    emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-    return result.response.text().trim()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const status = (err as { status?: number })?.status
-    const isTransient =
-      status === 429 ||
-      /resource.exhausted|rate.limit|quota/i.test(msg) ||
-      /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)
-
-    if (isTransient) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const result = await model.generateContent(prompt)
-        emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-        return result.response.text().trim()
-      } catch (retryErr) {
-        classifyGeminiError(retryErr)
-      }
-    }
-    classifyGeminiError(err)
-  }
-}
 
 /**
  * Extract the words that fall within the clip window (clipStart..clipEnd).
@@ -257,32 +223,18 @@ Analyze this clip for loop potential. Consider:
 4. Could trimming the end (suggestedEndAdjust) make the loop tighter?
 5. Is there a repeated phrase or callback structure?`
 
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({
+  const ai = new GoogleGenAI({ apiKey })
+  const call: GeminiCall = {
     model: 'gemini-2.5-flash-lite',
-    generationConfig: {
+    config: {
       responseMimeType: 'application/json',
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          loopScore: { type: SchemaType.NUMBER, description: 'Loop quality score 0-100' },
-          strategy: {
-            type: SchemaType.STRING,
-            description: 'Loop strategy',
-            enum: ['hard-cut', 'thematic', 'audio-match', 'crossfade', 'none']
-          },
-          suggestedEndAdjust: { type: SchemaType.NUMBER, description: 'Seconds to adjust clip end (-5 to 5)' },
-          suggestedStartAdjust: { type: SchemaType.NUMBER, description: 'Seconds to adjust clip start (-5 to 5)' },
-          reason: { type: SchemaType.STRING, description: '1-2 sentence explanation' }
-        },
-        required: ['loopScore', 'strategy', 'suggestedEndAdjust', 'suggestedStartAdjust', 'reason']
-      }
+      responseSchema: LOOP_ANALYSIS_SCHEMA
     }
-  })
+  }
 
   let rawText: string
   try {
-    rawText = await callGeminiWithRetry(model, prompt, 'loop-optimizer')
+    rawText = await callGeminiWithRetry(ai, call, prompt, 'loop-optimizer')
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.warn(`Loop analysis AI call failed, returning default: ${msg}`)

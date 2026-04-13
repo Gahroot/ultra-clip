@@ -1,7 +1,7 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 import { writeFileSync } from 'fs'
 import { join, basename, extname } from 'path'
-import { emitUsageFromResponse } from '../ai-usage'
+import { callGeminiWithRetry } from './gemini-client'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,58 +38,14 @@ export interface DescriptionClipInput {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Classify a Gemini API error and throw a user-friendly message.
- * Mirrors the pattern from ai-scoring.ts.
- */
-function classifyGeminiError(err: unknown): never {
-  const msg = err instanceof Error ? err.message : String(err)
-  const status = (err as { status?: number })?.status
-
-  if (status === 401 || status === 403 || /api.key/i.test(msg)) {
-    throw new Error('Invalid Gemini API key. Check your key in Settings.')
-  }
-  if (status === 429 || /resource.exhausted|rate.limit|quota/i.test(msg)) {
-    throw new Error('Gemini API rate limit exceeded. Please wait and try again.')
-  }
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)) {
-    throw new Error('Network error: cannot reach Gemini API. Check your internet connection.')
-  }
-  throw err
-}
-
 async function callGeminiJSON<T>(apiKey: string, prompt: string, usageSource: string): Promise<T> {
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash-lite',
-    generationConfig: { responseMimeType: 'application/json' }
-  })
-
-  let text: string
-  try {
-    const result = await model.generateContent(prompt)
-    emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-    text = result.response.text().trim()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const status = (err as { status?: number })?.status
-    const isTransient =
-      status === 429 ||
-      /resource.exhausted|rate.limit|quota/i.test(msg) ||
-      /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)
-
-    if (isTransient) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const retryResult = await model.generateContent(prompt)
-        emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', retryResult.response)
-        text = retryResult.response.text().trim()
-      } catch (retryErr) {
-        classifyGeminiError(retryErr)
-      }
-    }
-    classifyGeminiError(err)
-  }
+  const ai = new GoogleGenAI({ apiKey })
+  const text = await callGeminiWithRetry(
+    ai,
+    { model: 'gemini-2.5-flash-lite', config: { responseMimeType: 'application/json' } },
+    prompt,
+    usageSource
+  )
 
   try {
     return JSON.parse(text) as T

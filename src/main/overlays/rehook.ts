@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 import { escapeDrawtext, resolveHookFont } from '../hook-title'
 import { emitUsageFromResponse } from '../ai-usage'
 
@@ -211,8 +211,7 @@ export async function generateRehookText(
   if (!apiKey) return getDefaultRehookPhrase(transcript)
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    const ai = new GoogleGenAI({ apiKey })
 
     const clipDuration = Math.round(clipEnd - clipStart)
 
@@ -256,9 +255,12 @@ ${contextBlock}Transcript: "${transcript.slice(0, 600)}"
 
 Return ONLY the re-hook text, nothing else.`
 
-    const result = await model.generateContent(prompt)
-    emitUsageFromResponse('rehook', 'gemini-2.5-flash', result.response)
-    const raw = result.response.text().trim()
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt
+    })
+    emitUsageFromResponse('rehook', 'gemini-2.5-flash', result)
+    const raw = (result.text ?? '').trim()
     const firstLine = raw.split('\n')[0].replace(/^["']|["']$/g, '').trim()
     return firstLine.length > 0 ? firstLine : getDefaultRehookPhrase(transcript)
   } catch {

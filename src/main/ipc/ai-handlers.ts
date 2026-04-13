@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { Ch } from '@shared/ipc-channels'
 import { wrapHandler } from '../ipc-error-handler'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 import { scoreTranscript, generateHookText, rescoreSingleClip } from '../ai-scoring'
 import type { TargetDuration } from '../ai-scoring'
 import { generateRehookText } from '../overlays/rehook'
@@ -88,9 +88,11 @@ export function registerAiHandlers(): void {
         return { valid: false, error: 'API key is empty' }
       }
       try {
-        const genAI = new GoogleGenerativeAI(apiKey.trim())
-        const model = genAI.getGenerativeModel({ model: AI_VALIDATION_MODEL })
-        await model.generateContent('Hi')
+        const ai = new GoogleGenAI({ apiKey: apiKey.trim() })
+        await ai.models.generateContent({
+          model: AI_VALIDATION_MODEL,
+          contents: 'Hi'
+        })
         return { valid: true }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)

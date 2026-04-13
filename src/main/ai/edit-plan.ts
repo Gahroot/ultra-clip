@@ -12,7 +12,7 @@
 // This module replicates that holistic judgment in one structured AI call.
 // ---------------------------------------------------------------------------
 
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 import { emitUsageFromResponse } from '../ai-usage'
 import {
   buildEditPlanCacheKey,
@@ -349,20 +349,19 @@ export async function generateEditPlan(options: GenerateEditPlanOptions): Promis
     clippedWords.length
   )
 
-  const genAI = new GoogleGenerativeAI(apiKey)
+  const ai = new GoogleGenAI({ apiKey })
   // Use full Flash for the quality of reasoning this complex multi-layer analysis requires
-  const model = genAI.getGenerativeModel({
+  const result = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
-    generationConfig: {
+    contents: prompt,
+    config: {
       responseMimeType: 'application/json',
       temperature: 0.3  // lower temperature for consistent, structured output
     }
   })
+  emitUsageFromResponse('edit-plan', 'gemini-2.5-flash', result)
 
-  const result = await model.generateContent(prompt)
-  emitUsageFromResponse('edit-plan', 'gemini-2.5-flash', result.response)
-
-  const raw = result.response.text().trim()
+  const raw = (result.text ?? '').trim()
 
   const { wordEmphasis, brollSuggestions, sfxSuggestions, reasoning } =
     parseEditPlanResponse(raw, clippedWords, clipDuration)
