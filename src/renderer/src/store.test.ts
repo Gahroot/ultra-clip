@@ -438,9 +438,22 @@ describe('useStore', () => {
       expect(useStore.getState().settings.geminiApiKey).toBe('my-api-key')
     })
 
-    it('persists geminiApiKey to localStorage', () => {
+    it('persists geminiApiKey via encrypted secrets IPC', () => {
+      const setSpy = vi.fn().mockResolvedValue(undefined)
+      vi.stubGlobal('window', {
+        ...window,
+        api: {
+          secrets: {
+            get: vi.fn().mockResolvedValue(null),
+            set: setSpy,
+            has: vi.fn().mockResolvedValue(false),
+            clear: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+      })
       useStore.getState().setGeminiApiKey('persisted-key')
-      expect(localStorage.getItem('batchcontent-gemini-key')).toBe('persisted-key')
+      expect(setSpy).toHaveBeenCalledWith('gemini', 'persisted-key')
+      vi.unstubAllGlobals()
     })
 
     it('preserves other settings when updating key', () => {

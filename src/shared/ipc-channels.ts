@@ -186,6 +186,12 @@ export const InvokeChannels = {
   SETTINGS_WINDOW_OPEN: 'settings-window:open',
   SETTINGS_WINDOW_CLOSE: 'settings-window:close',
   SETTINGS_WINDOW_IS_OPEN: 'settings-window:is-open',
+
+  // Secrets (encrypted API key storage via Electron safeStorage)
+  SECRETS_GET: 'secrets:get',
+  SECRETS_SET: 'secrets:set',
+  SECRETS_HAS: 'secrets:has',
+  SECRETS_CLEAR: 'secrets:clear',
 } as const
 
 // ---- Send channels (main → renderer, fire-and-forget) ---------------------

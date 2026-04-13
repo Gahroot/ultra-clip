@@ -292,7 +292,7 @@ export function getVideoMetadata(
       const audio = metadata.streams.find((s) => s.codec_type === 'audio')
       // Parse r_frame_rate (e.g. "30/1", "30000/1001")
       let fps = 0
-      const rateStr = (video as any).r_frame_rate || (video as any).avg_frame_rate || ''
+      const rateStr = video.r_frame_rate || video.avg_frame_rate || ''
       if (rateStr) {
         const parts = rateStr.split('/')
         if (parts.length === 2) {

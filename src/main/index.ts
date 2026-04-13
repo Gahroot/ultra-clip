@@ -14,6 +14,7 @@ import { registerProjectHandlers } from './ipc/project-handlers'
 import { registerSystemHandlers, getAutoCleanupOnExit, setAutoCleanupOnExit, deleteBatchContentTempFiles } from './ipc/system-handlers'
 import { registerMediaHandlers } from './ipc/media-handlers'
 import { registerExportHandlers } from './ipc/export-handlers'
+import { registerSecretsHandlers } from './ipc/secrets-handlers'
 import { registerSettingsWindowHandlers, closeSettingsWindow } from './settings-window'
 
 process.on('uncaughtException', (error) => {
@@ -46,7 +47,8 @@ function createWindow(): BrowserWindow {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true,
+      contextIsolation: true
     }
   })
 
@@ -54,15 +56,17 @@ function createWindow(): BrowserWindow {
     mainWindow.show()
   })
 
-  // Allow F12 / Ctrl+Shift+I to open DevTools in production
-  mainWindow.webContents.on('before-input-event', (_event, input) => {
-    if (
-      input.key === 'F12' ||
-      (input.control && input.shift && input.key.toLowerCase() === 'i')
-    ) {
-      mainWindow.webContents.toggleDevTools()
-    }
-  })
+  // Allow F12 / Ctrl+Shift+I to open DevTools in development only
+  if (is.dev) {
+    mainWindow.webContents.on('before-input-event', (_event, input) => {
+      if (
+        input.key === 'F12' ||
+        (input.control && input.shift && input.key.toLowerCase() === 'i')
+      ) {
+        mainWindow.webContents.toggleDevTools()
+      }
+    })
+  }
 
   // Forward renderer console messages to main process log
   mainWindow.webContents.on('console-message', (_event, level, message) => {
@@ -116,6 +120,7 @@ app.whenReady().then(() => {
   registerSystemHandlers()
   registerMediaHandlers()
   registerExportHandlers()
+  registerSecretsHandlers()
 
   createWindow()
 

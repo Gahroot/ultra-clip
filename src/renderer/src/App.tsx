@@ -41,6 +41,7 @@ import { useTheme } from './hooks/useTheme'
 import { useAutosave } from './hooks/useAutosave'
 import { useFontLoader } from './hooks/useFontLoader'
 import { useStore } from './store'
+import type { AppState } from './store/types'
 import {
   saveProject,
   loadProject,
@@ -224,32 +225,34 @@ function App() {
   function handleRestoreRecovery() {
     if (!recoveryData) return
     const { project } = recoveryData
-    const sources = (project.sources ?? []) as ReturnType<typeof useStore.getState>['sources']
-    const clips = (project.clips ?? {}) as ReturnType<typeof useStore.getState>['clips']
+    const currentState = useStore.getState()
+    const sources = (project.sources ?? []) as AppState['sources']
+    const clips = (project.clips ?? {}) as AppState['clips']
     const hasClips = Object.values(clips).some((arr) => arr.length > 0)
 
     // If the project has clips, jump straight to the clip grid
     const activeSourceId = hasClips && sources.length > 0 ? sources[0].id : null
     const pipeline = hasClips
       ? { stage: 'ready' as const, message: '', percent: 100 }
-      : useStore.getState().pipeline
+      : currentState.pipeline
 
-    useStore.setState({
+    const nextState: Partial<AppState> = {
       sources,
-      transcriptions: (project.transcriptions ?? {}) as ReturnType<typeof useStore.getState>['transcriptions'],
+      transcriptions: (project.transcriptions ?? {}) as AppState['transcriptions'],
       clips,
-      settings: { ...useStore.getState().settings, ...((project.settings ?? {}) as object) },
-      stitchedClips: (project.stitchedClips ?? {}) as ReturnType<typeof useStore.getState>['stitchedClips'],
-      templateLayout: (project.templateLayout ?? useStore.getState().templateLayout) as ReturnType<typeof useStore.getState>['templateLayout'],
-      targetPlatform: (project.targetPlatform ?? 'universal') as ReturnType<typeof useStore.getState>['targetPlatform'],
-      storyArcs: (project.storyArcs ?? {}) as ReturnType<typeof useStore.getState>['storyArcs'],
-      clipOrder: (project.clipOrder ?? {}) as ReturnType<typeof useStore.getState>['clipOrder'],
-      customOrder: (project.customOrder ?? false) as boolean,
-      processingConfig: { ...useStore.getState().processingConfig, ...((project.processingConfig ?? {}) as object) },
+      settings: { ...currentState.settings, ...((project.settings ?? {}) as Partial<AppState['settings']>) },
+      stitchedClips: (project.stitchedClips ?? {}) as AppState['stitchedClips'],
+      templateLayout: (project.templateLayout ?? currentState.templateLayout) as AppState['templateLayout'],
+      targetPlatform: (project.targetPlatform ?? 'universal') as AppState['targetPlatform'],
+      storyArcs: (project.storyArcs ?? {}) as AppState['storyArcs'],
+      clipOrder: (project.clipOrder ?? {}) as AppState['clipOrder'],
+      customOrder: project.customOrder ?? false,
+      processingConfig: { ...currentState.processingConfig, ...((project.processingConfig ?? {}) as Partial<AppState['processingConfig']>) },
       activeSourceId,
       pipeline,
       isDirty: true
-    } as any)
+    }
+    useStore.setState(nextState)
     clearRecovery()
     setRecoveryData(null)
   }

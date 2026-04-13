@@ -60,6 +60,10 @@ export interface SettingsSlice {
   settingsSnapshot: SettingsProfile | null
   settingsChanged: boolean
 
+  // Hydrate API keys from main-process encrypted store (safeStorage).
+  // Also performs a one-time migration from any legacy localStorage values.
+  hydrateSecretsFromMain: () => Promise<void>
+
   // Settings setters
   setGeminiApiKey: (key: string) => void
   setOutputDirectory: (dir: string) => void
@@ -172,10 +176,51 @@ export const createSettingsSlice: StateCreator<
   settingsSnapshot: null,
   settingsChanged: false,
 
+  // --- Secrets hydration (migration + async load) ---
+
+  hydrateSecretsFromMain: async () => {
+    const secrets = window.api?.secrets
+    if (!secrets) return
+
+    // One-time migration from legacy plaintext localStorage entries into
+    // safeStorage. After migration the plaintext copy is removed.
+    const migrations: Array<[secretName: string, legacyKey: string]> = [
+      ['gemini', 'batchcontent-gemini-key'],
+      ['pexels', 'batchcontent-pexels-key'],
+    ]
+    await Promise.all(
+      migrations.map(async ([name, legacyKey]) => {
+        const legacy = localStorage.getItem(legacyKey)
+        if (!legacy) return
+        try {
+          await secrets.set(name, legacy)
+          localStorage.removeItem(legacyKey)
+        } catch (err) {
+          console.warn(`[secrets] Failed to migrate legacy ${name} key:`, err)
+        }
+      })
+    )
+
+    try {
+      const [gemini, pexels] = await Promise.all([
+        secrets.get('gemini'),
+        secrets.get('pexels'),
+      ])
+      set((state) => {
+        if (gemini) state.settings.geminiApiKey = gemini
+        if (pexels) state.settings.broll.pexelsApiKey = pexels
+      })
+    } catch (err) {
+      console.warn('[secrets] Failed to hydrate secrets from main:', err)
+    }
+  },
+
   // --- Settings ---
 
   setGeminiApiKey: (key) => {
-    localStorage.setItem('batchcontent-gemini-key', key)
+    // Persist encrypted via Electron safeStorage (falls back to plain base64
+    // in tests / non-electron environments where window.api is unavailable).
+    void window.api?.secrets?.set('gemini', key)
     set((state) => { state.settings.geminiApiKey = key })
   },
 
@@ -318,7 +363,7 @@ export const createSettingsSlice: StateCreator<
     set((state) => { state.settings.broll.enabled = enabled }),
 
   setBRollPexelsApiKey: (key) => {
-    localStorage.setItem('batchcontent-pexels-key', key)
+    void window.api?.secrets?.set('pexels', key)
     set((state) => { state.settings.broll.pexelsApiKey = key })
   },
 

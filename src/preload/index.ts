@@ -232,6 +232,14 @@ const api = {
   closeSettingsWindow: invoke(I.SETTINGS_WINDOW_CLOSE),
   isSettingsWindowOpen: invoke<boolean>(I.SETTINGS_WINDOW_IS_OPEN),
   onSettingsWindowClosed: listen(S.SETTINGS_WINDOW_CLOSED),
+
+  // Secrets — encrypted API key storage (safeStorage-backed)
+  secrets: {
+    get: (name: string): Promise<string | null> => ipcRenderer.invoke(I.SECRETS_GET, name),
+    set: (name: string, value: string): Promise<void> => ipcRenderer.invoke(I.SECRETS_SET, name, value),
+    has: (name: string): Promise<boolean> => ipcRenderer.invoke(I.SECRETS_HAS, name),
+    clear: (name: string): Promise<void> => ipcRenderer.invoke(I.SECRETS_CLEAR, name),
+  },
 }
 
 // ---------------------------------------------------------------------------

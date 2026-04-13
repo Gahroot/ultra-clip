@@ -1421,7 +1421,10 @@ export const DEFAULT_PULSE_AI: PulseAIOptions = {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  geminiApiKey: localStorage.getItem('batchcontent-gemini-key') || '',
+  // API keys are loaded asynchronously from Electron safeStorage via
+  // `hydrateSecretsFromMain()`. They default to empty strings here so the
+  // store has a valid synchronous initial shape.
+  geminiApiKey: '',
   falApiKey: localStorage.getItem('batchcontent-fal-key') || '',
   outputDirectory: null,
   minScore: DEFAULT_MIN_SCORE,
@@ -1547,7 +1550,8 @@ export function loadPersistedSettings(): AppSettings {
       return {
         ...DEFAULT_SETTINGS,
         ...saved,
-        geminiApiKey: localStorage.getItem('batchcontent-gemini-key') || '',
+        // Gemini key is hydrated asynchronously from safeStorage.
+        geminiApiKey: '',
         falApiKey: localStorage.getItem('batchcontent-fal-key') || '',
         soundDesign: { ...DEFAULT_SOUND_DESIGN, ...(saved.soundDesign ?? {}) },
         autoZoom: { ...DEFAULT_AUTO_ZOOM, ...(saved.autoZoom ?? {}) },

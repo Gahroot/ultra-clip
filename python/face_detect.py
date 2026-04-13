@@ -23,7 +23,6 @@ import argparse
 import json
 import sys
 import os
-from typing import List, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +66,7 @@ def center_crop(frame_width: int, frame_height: int) -> dict:
 
 
 def face_centered_crop(
-    face_centers: List[Tuple[int, int, int, float]],
+    face_centers: list[tuple[int, int, int, float]],
     frame_width: int,
     frame_height: int,
 ) -> dict:
@@ -115,8 +114,8 @@ def face_centered_crop(
 # ---------------------------------------------------------------------------
 
 def filter_face_outliers(
-    face_centers: List[Tuple[int, int, int, float]],
-) -> List[Tuple[int, int, int, float]]:
+    face_centers: list[tuple[int, int, int, float]],
+) -> list[tuple[int, int, int, float]]:
     """Remove detections that are > 2 std deviations from the median position."""
     if len(face_centers) < 3:
         return face_centers
@@ -154,7 +153,7 @@ def detect_faces_in_segment(
     mp_detector,
     haar_cascade,
     num_samples: int = 6,
-) -> List[Tuple[int, int, int, float]]:
+) -> list[tuple[int, int, int, float]]:
     """
     Sample `num_samples` frames from [start_sec, end_sec] and collect
     (center_x, center_y, area, confidence) face measurements in absolute pixels.
@@ -169,7 +168,7 @@ def detect_faces_in_segment(
     else:
         sample_times = [start_sec]
 
-    face_centers: List[Tuple[int, int, int, float]] = []
+    face_centers: list[tuple[int, int, int, float]] = []
     frame_area = frame_width * frame_height
 
     for t in sample_times:
@@ -179,7 +178,7 @@ def detect_faces_in_segment(
         if not ret:
             continue
 
-        detected_in_frame: List[Tuple[int, int, int, int, float]] = []  # (x, y, w, h, conf)
+        detected_in_frame: list[tuple[int, int, int, int, float]] = []  # (x, y, w, h, conf)
 
         # --- MediaPipe (primary) ---
         if mp_detector is not None:
@@ -310,7 +309,7 @@ def main() -> None:
     except Exception as exc:
         eprint(f"[face_detect] Haar cascade load error: {exc}")
 
-    crops: List[dict] = []
+    crops: list[dict] = []
 
     mp_ctx = (
         mp_face_module.FaceDetection(model_selection=1, min_detection_confidence=0.5)

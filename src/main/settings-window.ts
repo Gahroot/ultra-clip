@@ -75,7 +75,8 @@ export function registerSettingsWindowHandlers(mainWindow: BrowserWindow): void 
       title: 'Settings — BatchContent',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
-        sandbox: false
+        sandbox: true,
+        contextIsolation: true
       }
     })
 
@@ -97,15 +98,17 @@ export function registerSettingsWindowHandlers(mainWindow: BrowserWindow): void 
       }
     })
 
-    // Allow DevTools in settings window
-    settingsWindow.webContents.on('before-input-event', (_event, input) => {
-      if (
-        input.key === 'F12' ||
-        (input.control && input.shift && input.key.toLowerCase() === 'i')
-      ) {
-        settingsWindow?.webContents.toggleDevTools()
-      }
-    })
+    // Allow DevTools in settings window (development only)
+    if (is.dev) {
+      settingsWindow.webContents.on('before-input-event', (_event, input) => {
+        if (
+          input.key === 'F12' ||
+          (input.control && input.shift && input.key.toLowerCase() === 'i')
+        ) {
+          settingsWindow?.webContents.toggleDevTools()
+        }
+      })
+    }
 
     // Load same renderer bundle with #settings hash
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

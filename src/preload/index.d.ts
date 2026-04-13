@@ -1603,6 +1603,14 @@ interface Api {
   isSettingsWindowOpen: () => Promise<boolean>
   onSettingsWindowClosed: (callback: (data: Record<string, never>) => void) => () => void
 
+  // Secrets — encrypted API key storage (safeStorage-backed)
+  secrets: {
+    get: (name: string) => Promise<string | null>
+    set: (name: string, value: string) => Promise<void>
+    has: (name: string) => Promise<boolean>
+    clear: (name: string) => Promise<void>
+  }
+
   // Segment Editor — split clip into styled segments for Captions.ai-style editing
   splitSegmentsForEditor: (
     clipId: string,
