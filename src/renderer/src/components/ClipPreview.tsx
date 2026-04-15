@@ -45,8 +45,8 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { useStore, DEFAULT_HOOK_TEMPLATES, applyHookTemplate, CAPTION_PRESETS } from '../store'
-import type { ClipCandidate, ClipRenderSettings, CaptionStyle } from '../store'
+import { useStore, DEFAULT_HOOK_TEMPLATES, applyHookTemplate } from '../store'
+import type { ClipCandidate, ClipRenderSettings } from '../store'
 
 import { EditableTime, formatTime } from './EditableTime'
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard'
@@ -245,94 +245,6 @@ function isTypingInField(): boolean {
 }
 
 
-// ---------------------------------------------------------------------------
-// CaptionStyleMiniThumb — compact thumbnail for basic caption styles
-// ---------------------------------------------------------------------------
-
-const MINI_W = 68
-const MINI_H = 54
-const MINI_PREVIEW_H = MINI_H - 16
-const MINI_SCALE = MINI_W / 1080
-
-function CaptionStyleMiniThumb({
-  style,
-  isSelected,
-  onClick
-}: {
-  style: CaptionStyle
-  isSelected: boolean
-  onClick: () => void
-}) {
-  const scaledFontSize = Math.max(5, Math.round(style.fontSize * 1920 * MINI_SCALE))
-  const isWordBox = style.animation === 'word-box'
-  const hasBox = style.borderStyle === 3 && !isWordBox
-  const outlineWidth = Math.max(1, Math.round(style.outline * MINI_SCALE))
-
-  const baseTextStyle: React.CSSProperties = {
-    fontFamily: `"${style.fontName}", sans-serif`,
-    fontSize: `${scaledFontSize}px`,
-    fontWeight: 700,
-    lineHeight: 1.2,
-    textAlign: 'center',
-    WebkitTextStroke: hasBox ? undefined : `${outlineWidth}px ${style.outlineColor}`,
-    textShadow: hasBox ? undefined : `1px 1px 1px ${style.outlineColor}`
-  }
-
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'flex flex-col items-center rounded-md overflow-hidden transition-all cursor-pointer',
-        'hover:ring-2 hover:ring-primary/50 active:scale-95',
-        isSelected ? 'ring-2 ring-primary shadow-md shadow-primary/20' : 'ring-1 ring-border/50'
-      )}
-      style={{ width: MINI_W }}
-      title={style.label}
-    >
-      <div
-        className="flex items-center justify-center w-full"
-        style={{
-          width: MINI_W,
-          height: MINI_PREVIEW_H,
-          background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
-        }}
-      >
-        <div
-          className="flex flex-col items-center gap-0"
-          style={hasBox ? { padding: '1px 2px', backgroundColor: style.backColor, borderRadius: '2px' } : {}}
-        >
-          {isWordBox ? (
-            <span style={{
-              fontFamily: `"${style.fontName}", sans-serif`,
-              fontSize: `${scaledFontSize}px`,
-              fontWeight: 700,
-              color: style.primaryColor,
-              backgroundColor: style.outlineColor,
-              borderRadius: '2px',
-              padding: '0px 2px',
-              lineHeight: 1.3,
-            }}>
-              Abc
-            </span>
-          ) : (
-            <span style={{
-              ...baseTextStyle,
-              color: style.highlightColor
-            }}>
-              Abc
-            </span>
-          )}
-        </div>
-      </div>
-      <div
-        className="w-full text-center truncate px-0.5 py-0.5 text-[8px] text-muted-foreground bg-card leading-tight"
-        title={style.label}
-      >
-        {style.label}
-      </div>
-    </button>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // ClipPreview dialog
@@ -863,10 +775,11 @@ export function ClipPreview({
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
-        captionsEnabled: settings.captionsEnabled,
-        captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
+        captionsEnabled: true,
+        captionStyle: activeEditStyle?.captionStyle,
         broll: settings.broll.enabled ? settings.broll : undefined,
         geminiApiKey: settings.geminiApiKey || undefined,
+        stylePresetId: selectedEditStyleId ?? undefined,
       })
     } catch (err) {
       if (renderTimeoutRef.current) { clearTimeout(renderTimeoutRef.current); renderTimeoutRef.current = null }
@@ -934,7 +847,7 @@ export function ClipPreview({
   const effectiveCaptionsEnabled =
     clip.overrides?.enableCaptions !== undefined
       ? clip.overrides.enableCaptions
-      : settings.captionsEnabled
+      : true
   const effectiveHookTitleEnabled =
     clip.overrides?.enableHookTitle !== undefined
       ? clip.overrides.enableHookTitle
@@ -984,7 +897,7 @@ export function ClipPreview({
         wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
         hookTitleText: localHook || undefined,
         captionsEnabled: effectiveCaptionsEnabled,
-        captionStyle: effectiveCaptionsEnabled ? settings.captionStyle : undefined,
+        captionStyle: effectiveCaptionsEnabled ? activeEditStyle?.captionStyle : undefined,
         hookTitleOverlay: effectiveHookTitleEnabled ? settings.hookTitleOverlay : undefined,
         progressBarOverlay: effectiveProgressBarEnabled ? settings.progressBarOverlay : undefined,
         autoZoom: effectiveAutoZoomEnabled
@@ -2404,7 +2317,7 @@ export function ClipPreview({
                   <div className="relative">
                     <input
                       type="color"
-                      value={clip.overrides?.accentColor ?? settings.captionStyle.highlightColor}
+                      value={clip.overrides?.accentColor ?? activeEditStyle?.captionStyle.highlightColor ?? '#FFFFFF'}
                       onChange={(e) => setClipOverride(sourceId, clip.id, 'accentColor', e.target.value)}
                       className="w-10 h-10 rounded-lg cursor-pointer border-2 border-border bg-transparent p-0.5 transition-shadow hover:shadow-[0_0_12px_var(--accent-glow)] focus:shadow-[0_0_16px_var(--accent-glow)]"
                       style={{ '--accent-glow': clip.overrides?.accentColor ?? 'transparent' } as React.CSSProperties}
@@ -2467,7 +2380,7 @@ export function ClipPreview({
                 <OverrideRow
                   label="Captions"
                   overrideKey="enableCaptions"
-                  globalValue={settings.captionsEnabled}
+                  globalValue={true}
                   overrides={clip.overrides}
                   onChange={handleOverrideChange}
                 />

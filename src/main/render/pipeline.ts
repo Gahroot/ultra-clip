@@ -254,7 +254,7 @@ export async function startBatchRender(
           rehookConfig: options.rehookOverlay,
           rehookText: job.rehookText,
           progressBarConfig: options.progressBarOverlay,
-          captionsEnabled: options.captionsEnabled,
+          captionsEnabled: true,
           captionStyle: options.captionStyle,
           wordTimestamps: job.wordTimestamps,
           wordEmphasis: job.wordEmphasis,
@@ -349,7 +349,7 @@ export async function startBatchRender(
           wordTimestamps: job.wordTimestamps,
           wordEmphasis: job.wordEmphasis,
           captionStyle: options.captionStyle,
-          captionsEnabled: options.captionsEnabled,
+          captionsEnabled: true,
           brandKit: options.brandKit?.enabled ? {
             logoPath: options.brandKit.logoPath,
             logoPosition: options.brandKit.logoPosition,

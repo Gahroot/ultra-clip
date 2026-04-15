@@ -123,6 +123,15 @@ function App() {
     return unsubscribe
   }, [trackTokenUsage])
 
+  // Load edit styles from main once at startup so every render call site
+  // can resolve the selected edit style without waiting on IPC.
+  useEffect(() => {
+    if (!window.api?.getEditStyles) return
+    window.api.getEditStyles().then((styles) => {
+      useStore.getState().setEditStyles(styles)
+    }).catch(() => {})
+  }, [])
+
   // Undo/Redo keyboard shortcuts — per-clip when editing, global fallback
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {

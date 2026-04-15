@@ -51,12 +51,15 @@ export function createCaptionsFeature(): RenderFeature {
     name: 'captions',
 
     async prepare(job: RenderClipJob, batchOptions: RenderBatchOptions, _onProgress?: (message: string, percent: number) => void): Promise<PrepareResult> {
-      // Check global captions toggle
-      if (!batchOptions.captionsEnabled || !batchOptions.captionStyle) {
+      // Caption style flows from the selected AI edit style, resolved by the
+      // renderer and passed in as batchOptions.captionStyle. captionsEnabled
+      // is always true post-refactor (the basic caption path has been
+      // removed) — we only honour the per-clip opt-out below.
+      if (!batchOptions.captionStyle) {
         return { tempFiles: [], modified: false }
       }
 
-      // Check per-clip override
+      // Per-clip opt-out (e.g. clean clip with no burn-in)
       const captionOv = job.clipOverrides?.enableCaptions
       const captionsEnabled = captionOv === undefined ? true : captionOv
       if (!captionsEnabled) {

@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   useStore,
   selectActiveClips,
-  CAPTION_PRESETS,
   type SourceVideo,
   type ClipCandidate,
   type CropRegion,
@@ -477,21 +476,6 @@ describe('useStore', () => {
     })
   })
 
-  describe('setCaptionStyle', () => {
-    it('updates captionStyle in settings', () => {
-      const style = CAPTION_PRESETS['tiktok-glow']
-      useStore.getState().setCaptionStyle(style)
-      expect(useStore.getState().settings.captionStyle).toEqual(style)
-    })
-  })
-
-  describe('setCaptionsEnabled', () => {
-    it('updates captionsEnabled in settings', () => {
-      useStore.getState().setCaptionsEnabled(false)
-      expect(useStore.getState().settings.captionsEnabled).toBe(false)
-    })
-  })
-
   // -------------------------------------------------------------------------
   // Pipeline
   // -------------------------------------------------------------------------
@@ -608,29 +592,6 @@ describe('useStore', () => {
   })
 
   // -------------------------------------------------------------------------
-  // CAPTION_PRESETS
-  // -------------------------------------------------------------------------
-  describe('CAPTION_PRESETS', () => {
-    it('includes hormozi-bold preset', () => {
-      expect(CAPTION_PRESETS['hormozi-bold']).toBeDefined()
-      expect(CAPTION_PRESETS['hormozi-bold'].id).toBe('hormozi-bold')
-    })
-
-    it('includes tiktok-glow preset', () => {
-      expect(CAPTION_PRESETS['tiktok-glow']).toBeDefined()
-    })
-
-    it('includes reels-clean preset', () => {
-      expect(CAPTION_PRESETS['reels-clean']).toBeDefined()
-    })
-
-    it('includes captions-ai preset', () => {
-      expect(CAPTION_PRESETS['captions-ai']).toBeDefined()
-      expect(CAPTION_PRESETS['captions-ai'].animation).toBe('captions-ai')
-    })
-  })
-
-  // -------------------------------------------------------------------------
   // Initial state
   // -------------------------------------------------------------------------
   describe('initial state', () => {
@@ -650,11 +611,6 @@ describe('useStore', () => {
       // Explicitly set to verify setter works and check default
       useStore.getState().setMinScore(69)
       expect(useStore.getState().settings.minScore).toBe(69)
-    })
-
-    it('has captions enabled by default', () => {
-      useStore.getState().setCaptionsEnabled(true)
-      expect(useStore.getState().settings.captionsEnabled).toBe(true)
     })
 
     it('has null outputDirectory by default on fresh state', () => {

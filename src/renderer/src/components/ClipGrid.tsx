@@ -96,8 +96,6 @@ import { cn, estimateClipSize, formatFileSize, getScoreDescription, isAIEditClip
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useETA } from '../hooks/useETA'
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard'
-import { BasicEditSettings } from './BasicEditSettings'
-import { AiEditSettings } from './AiEditSettings'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -251,7 +249,6 @@ export function ClipGrid() {
 
   const clipViewMode = useStore((s) => s.clipViewMode)
   const setClipViewMode = useStore((s) => s.setClipViewMode)
-  const editMode = useStore((s) => s.editMode)
 
   const searchQuery = useStore((s) => s.searchQuery)
   const setSearchQuery = useStore((s) => s.setSearchQuery)
@@ -262,6 +259,11 @@ export function ClipGrid() {
   const setRenderError = useStore((s) => s.setRenderError)
   const transcriptions = useStore((s) => s.transcriptions)
   const selectedEditStyleId = useStore((s) => s.selectedEditStyleId)
+  const editStyles = useStore((s) => s.editStyles)
+  const activeEditStyle =
+    editStyles.find((s) => s.id === selectedEditStyleId) ??
+    editStyles.find((s) => s.id === 'cinematic') ??
+    editStyles[0]
 
   // Batch multi-select
   const selectedClipIds = useStore((s) => s.selectedClipIds)
@@ -947,8 +949,8 @@ export function ClipGrid() {
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
-        captionsEnabled: settings.captionsEnabled,
-        captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
+        captionsEnabled: true,
+        captionStyle: activeEditStyle?.captionStyle,
         fillerRemoval: settings.fillerRemoval.enabled ? settings.fillerRemoval : undefined,
         renderConcurrency: settings.renderConcurrency,
         // Source metadata enables auto-manifest generation at batch end
@@ -968,9 +970,7 @@ export function ClipGrid() {
         geminiApiKey: settings.geminiApiKey || undefined,
         primeAI: settings.primeAI?.enabled ? settings.primeAI : undefined,
         pulseAI: settings.pulseAI?.enabled ? settings.pulseAI : undefined,
-        editMode: editMode ?? undefined,
-        stylePresetId: editMode === 'ai-edit' ? useStore.getState().selectedEditStyleId ?? undefined : undefined,
-        aiEditAccentColor: editMode === 'ai-edit' ? useStore.getState().aiEditAccentColor : undefined,
+        stylePresetId: selectedEditStyleId ?? undefined,
       })
     } catch (err) {
       setIsRendering(false)
@@ -979,7 +979,8 @@ export function ClipGrid() {
     }
   }, [
     activeSourceId, activeSource, approved, approvedClips, approvedVariants, approvedStitchedClips,
-    stitchedClips, updateStitchedClipStatus, sourcePath, settings, templateLayout, editMode,
+    stitchedClips, updateStitchedClipStatus, sourcePath, settings, templateLayout,
+    activeEditStyle, selectedEditStyleId,
     setRenderProgress, setIsRendering, detachListeners, addError, setRenderError
   ])
 
@@ -1228,8 +1229,8 @@ export function ClipGrid() {
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
-        captionsEnabled: settings.captionsEnabled,
-        captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
+        captionsEnabled: true,
+        captionStyle: activeEditStyle?.captionStyle,
         fillerRemoval: settings.fillerRemoval.enabled ? settings.fillerRemoval : undefined,
         renderConcurrency: settings.renderConcurrency,
         sourceMeta: activeSource
@@ -1248,9 +1249,7 @@ export function ClipGrid() {
         geminiApiKey: settings.geminiApiKey || undefined,
         primeAI: settings.primeAI?.enabled ? settings.primeAI : undefined,
         pulseAI: settings.pulseAI?.enabled ? settings.pulseAI : undefined,
-        editMode: editMode ?? undefined,
-        stylePresetId: editMode === 'ai-edit' ? useStore.getState().selectedEditStyleId ?? undefined : undefined,
-        aiEditAccentColor: editMode === 'ai-edit' ? useStore.getState().aiEditAccentColor : undefined,
+        stylePresetId: selectedEditStyleId ?? undefined,
       })
     } catch (err) {
       setIsRendering(false)
@@ -1258,7 +1257,8 @@ export function ClipGrid() {
       addError({ source: 'render', message: `Failed to start retry render: ${err instanceof Error ? err.message : String(err)}` })
     }
   }, [
-    isRendering, activeSource, approvedClips, stitchedClips, sourcePath, settings, templateLayout, editMode,
+    isRendering, activeSource, approvedClips, stitchedClips, sourcePath, settings, templateLayout,
+    activeEditStyle, selectedEditStyleId,
     setRenderProgress, setIsRendering, detachListeners, addError, setRenderError, segments
   ])
 
@@ -2845,9 +2845,6 @@ export function ClipGrid() {
         )
       })()}
       </div>
-      {/* Settings sidebar — conditionally rendered by edit mode */}
-      {editMode === 'basic' && <BasicEditSettings />}
-      {editMode === 'ai-edit' && <AiEditSettings />}
     </div>
   )
 }

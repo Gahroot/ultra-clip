@@ -18,7 +18,7 @@ const DURATION_OPTIONS: { value: TargetDuration; label: string; description: str
 // ── Feature toggles ──────────────────────────────────────────────────────────
 
 const FEATURE_TOGGLES: {
-  key: 'enablePerfectLoop' | 'enableVariants' | 'enableMultiPart' | 'enableClipStitching' | 'enableAiEdit'
+  key: 'enablePerfectLoop' | 'enableVariants' | 'enableMultiPart' | 'enableClipStitching'
   label: string
   description: string
   icon: React.ReactNode
@@ -46,12 +46,6 @@ const FEATURE_TOGGLES: {
     label: 'Clip Stitching',
     description: 'Combine non-contiguous segments into composite clips',
     icon: <Scissors className="w-3.5 h-3.5" />
-  },
-  {
-    key: 'enableAiEdit',
-    label: 'AI Edit',
-    description: 'Auto-generate word emphasis, B-Roll & SFX for every clip',
-    icon: <Wand2 className="w-3.5 h-3.5" />
   }
 ]
 

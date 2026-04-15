@@ -300,27 +300,6 @@ export interface RenderProgress {
   prepareMessage?: string
 }
 
-export interface CaptionStyle {
-  id: string
-  label: string
-  fontName: string
-  fontFile: string
-  fontSize: number
-  primaryColor: string
-  highlightColor: string
-  outlineColor: string
-  backColor: string
-  outline: number
-  shadow: number
-  borderStyle: number
-  wordsPerLine: number
-  animation: CaptionAnimation
-  /** Color for emphasis-level words (bigger + this color). Defaults to highlightColor. */
-  emphasisColor?: string
-  /** Color for supersize-level words (huge + bold + this color). Defaults to '#FFD700' gold. */
-  supersizeColor?: string
-}
-
 /**
  * SFX placement density/aggressiveness preset.
  * - minimal    — 1–2 quiet impacts only; barely noticeable
@@ -641,8 +620,6 @@ export interface AppSettings {
   falApiKey: string
   outputDirectory: string | null
   minScore: number
-  captionStyle: CaptionStyle
-  captionsEnabled: boolean
   soundDesign: SoundDesignSettings
   autoZoom: ZoomSettings
   brandKit: BrandKit
@@ -689,8 +666,6 @@ export interface AppSettings {
  * API keys, output directory, and developer mode).
  */
 export interface SettingsProfile {
-  captionStyle: CaptionStyle
-  captionsEnabled: boolean
   soundDesign: SoundDesignSettings
   autoZoom: ZoomSettings
   brandKit: BrandKit
@@ -706,9 +681,6 @@ export interface SettingsProfile {
   minScore: number
   enableNotifications: boolean
 }
-
-/** Names of profiles that ship with the app and cannot be deleted. */
-export const BUILT_IN_PROFILE_NAMES = ['TikTok Optimized', 'Reels Clean', 'Minimal'] as const
 
 export interface ProcessingConfig {
   targetDuration: TargetDuration
@@ -769,13 +741,6 @@ export interface HookTextTemplate {
 }
 
 export type PythonSetupState = 'checking' | 'not-setup' | 'installing' | 'ready' | 'skipped' | 'error'
-
-// ---------------------------------------------------------------------------
-// Edit Mode (Two-Track Architecture)
-// ---------------------------------------------------------------------------
-
-/** Determines which render/UI track is active. */
-export type EditMode = 'basic' | 'ai-edit'
 
 // ---------------------------------------------------------------------------
 // Full AppState
@@ -982,8 +947,6 @@ export interface AppState {
   setFalApiKey: (key: string) => void
   setOutputDirectory: (dir: string) => void
   setMinScore: (score: number) => void
-  setCaptionStyle: (style: CaptionStyle) => void
-  setCaptionsEnabled: (enabled: boolean) => void
   setSoundDesignEnabled: (enabled: boolean) => void
   setSoundDesignTrack: (track: MusicTrack) => void
   setSoundDesignSfxVolume: (volume: number) => void
@@ -1209,14 +1172,4 @@ export interface AppState {
   updateSegmentTransition: (clipId: string, segmentIndex: number, transitionType: TransitionType) => void
   setEditStyles: (styles: EditStyle[]) => void
   setSelectedEditStyleId: (styleId: string | null) => void
-
-  // Edit Mode (Two-Track Architecture)
-  /** Which editing track is active. null = not yet chosen (show TrackSelector). */
-  editMode: EditMode | null
-  /** Accent color chosen by the user for the AI Edit track. */
-  aiEditAccentColor: string
-  /** Set the edit mode (basic or ai-edit). */
-  setEditMode: (mode: EditMode | null) => void
-  /** Set the AI Edit accent color override. */
-  setAiEditAccentColor: (color: string) => void
 }

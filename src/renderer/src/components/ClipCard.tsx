@@ -97,6 +97,11 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
   const setClipAIEditPlan = useStore((s) => s.setClipAIEditPlan)
   const clearClipAIEditPlan = useStore((s) => s.clearClipAIEditPlan)
   const selectedEditStyleId = useStore((s) => s.selectedEditStyleId)
+  const editStyles = useStore((s) => s.editStyles)
+  const activeEditStyle =
+    editStyles.find((s) => s.id === selectedEditStyleId) ??
+    editStyles.find((s) => s.id === 'cinematic') ??
+    editStyles[0]
   const setSingleRenderState = useStore((s) => s.setSingleRenderState)
   const addError = useStore((s) => s.addError)
   const isRendering = useStore((s) => s.isRendering)
@@ -221,17 +226,18 @@ export function ClipCard({ clip, sourceId, sourcePath, sourceDuration, compareMo
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
         progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
-        captionsEnabled: settings.captionsEnabled,
-        captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
+        captionsEnabled: true,
+        captionStyle: activeEditStyle?.captionStyle,
         broll: settings.broll.enabled ? settings.broll : undefined,
         geminiApiKey: settings.geminiApiKey || undefined,
+        stylePresetId: selectedEditStyleId ?? undefined,
       })
     } catch (err) {
       setSingleRenderState({ status: 'error', error: err instanceof Error ? err.message : String(err) })
       for (const cleanup of cleanups) cleanup()
       addError({ source: 'render', message: `Failed to render clip: ${err instanceof Error ? err.message : String(err)}` })
     }
-  }, [isRendering, isSingleRenderActive, settings, clip, sourcePath, setSingleRenderState, addError])
+  }, [isRendering, isSingleRenderActive, settings, clip, sourcePath, setSingleRenderState, addError, activeEditStyle, selectedEditStyleId])
 
   // Re-score this clip
   const handleRescore = useCallback(async () => {

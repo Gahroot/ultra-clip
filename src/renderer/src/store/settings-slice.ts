@@ -3,13 +3,11 @@ import { v4 as uuidv4 } from 'uuid'
 import type {
   AppState,
   AppSettings,
-  CaptionStyle,
   ProcessingConfig,
   AutoModeConfig,
   SettingsProfile,
   HookTextTemplate,
   RenderQualitySettings,
-  BUILT_IN_PROFILE_NAMES,
 } from './types'
 import type {
   MusicTrack,
@@ -37,7 +35,6 @@ import {
   loadActiveProfileName,
   persistProfiles,
   persistActiveProfileName,
-  BUILT_IN_PROFILES,
   loadHookTemplatesFromStorage,
   saveHookTemplatesToStorage,
   ACTIVE_HOOK_TEMPLATE_KEY,
@@ -68,8 +65,6 @@ export interface SettingsSlice {
   setGeminiApiKey: (key: string) => void
   setOutputDirectory: (dir: string) => void
   setMinScore: (score: number) => void
-  setCaptionStyle: (style: CaptionStyle) => void
-  setCaptionsEnabled: (enabled: boolean) => void
   setSoundDesignEnabled: (enabled: boolean) => void
   setSoundDesignTrack: (track: MusicTrack) => void
   setSoundDesignSfxVolume: (volume: number) => void
@@ -231,12 +226,6 @@ export const createSettingsSlice: StateCreator<
     _pushUndo(get(), set)
     set((state) => { state.settings.minScore = score })
   },
-
-  setCaptionStyle: (style) =>
-    set((state) => { state.settings.captionStyle = style }),
-
-  setCaptionsEnabled: (enabled) =>
-    set((state) => { state.settings.captionsEnabled = enabled }),
 
   setSoundDesignEnabled: (enabled) =>
     set((state) => { state.settings.soundDesign.enabled = enabled }),
@@ -457,10 +446,6 @@ export const createSettingsSlice: StateCreator<
         case 'aiSettings':
           state.settings.minScore = DEFAULT_SETTINGS.minScore
           break
-        case 'captions':
-          state.settings.captionsEnabled = DEFAULT_SETTINGS.captionsEnabled
-          state.settings.captionStyle = DEFAULT_SETTINGS.captionStyle
-          break
         case 'soundDesign':
           state.settings.soundDesign = DEFAULT_SETTINGS.soundDesign
           break
@@ -568,8 +553,6 @@ export const createSettingsSlice: StateCreator<
     const diff: string[] = []
 
     const labelMap: Record<string, string> = {
-      captionStyle: 'Caption Style',
-      captionsEnabled: 'Captions',
       soundDesign: 'Sound Design',
       autoZoom: 'Auto-Zoom',
       brandKit: 'Brand Kit',
@@ -617,7 +600,6 @@ export const createSettingsSlice: StateCreator<
   },
 
   deleteProfile: (name) => {
-    if ((['TikTok Optimized', 'Reels Clean', 'Minimal'] as readonly string[]).includes(name)) return
     const { settingsProfiles, activeProfileName } = get()
     const updated = { ...settingsProfiles }
     delete updated[name]
@@ -628,7 +610,6 @@ export const createSettingsSlice: StateCreator<
   },
 
   renameProfile: (oldName, newName) => {
-    if ((['TikTok Optimized', 'Reels Clean', 'Minimal'] as readonly string[]).includes(oldName)) return
     if (!newName.trim() || oldName === newName) return
     const { settingsProfiles, activeProfileName } = get()
     const profile = settingsProfiles[oldName]
