@@ -123,6 +123,18 @@ function App() {
     return unsubscribe
   }, [trackTokenUsage])
 
+  // Subscribe to per-segment fallback events emitted by the render pipeline.
+  // When a segment can't be rendered with its chosen archetype (e.g. fal.ai
+  // image missing), the pipeline sends SEGMENT_FALLBACK so the UI can show a
+  // "degraded" chip on the affected segment.
+  useEffect(() => {
+    if (!window.api?.onSegmentFallback) return
+    const unsubscribe = window.api.onSegmentFallback((data) => {
+      useStore.getState().setSegmentFallbackReason(data.clipId, data.segmentIndex, data.reason)
+    })
+    return unsubscribe
+  }, [])
+
   // Load edit styles from main once at startup so every render call site
   // can resolve the selected edit style without waiting on IPC.
   useEffect(() => {

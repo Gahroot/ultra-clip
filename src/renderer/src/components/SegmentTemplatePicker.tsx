@@ -1,7 +1,26 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { ChevronDown, Check, Video, Type, Image, LayoutGrid, Maximize2 } from 'lucide-react'
-import { useStore, type VideoSegment, type SegmentStyleCategory, type SegmentStyleVariant, type TransitionType, type ZoomKeyframe } from '@/store'
+import { ChevronDown, Check, Video, Type, Image, LayoutGrid, Maximize2, Loader2 } from 'lucide-react'
+import { useStore, type VideoSegment, type SegmentStyleCategory, type TransitionType, type ZoomKeyframe, type Archetype } from '@/store'
 import { cn } from '@/lib/utils'
+
+// ---------------------------------------------------------------------------
+// Archetypes whose layout draws a big on-screen "hero" text block. For these,
+// the picker offers an inline text input so the user can author the text
+// directly. The segment's caption text is still drawn alongside (except for
+// fullscreen-quote / fullscreen-headline, which stand alone).
+// ---------------------------------------------------------------------------
+
+const HERO_ARCHETYPES = new Set<Archetype>([
+  'fullscreen-headline',
+  'fullscreen-quote',
+  'quote-lower',
+])
+
+function deriveDefaultHero(captionText: string): string {
+  const cleaned = captionText.replace(/\s+/g, ' ').trim().replace(/[.!?…,;:–—-]+$/g, '')
+  const words = cleaned.split(' ')
+  return words.length <= 8 ? cleaned : words.slice(0, 8).join(' ')
+}
 
 // ---------------------------------------------------------------------------
 // Category metadata
@@ -48,196 +67,61 @@ const CATEGORY_ORDER: SegmentStyleCategory[] = [
 ]
 
 // ---------------------------------------------------------------------------
-// Module-level thumbnail cache (persists across re-renders)
+// Module-level caches
 // ---------------------------------------------------------------------------
 
+const templatesCache = new Map<string, EditStyleTemplateView[]>()
 const styleThumbCache = new Map<string, string>()
 
 // ---------------------------------------------------------------------------
-// Style preview with actual video frame thumbnail
+// Placeholder thumbnail per category
 // ---------------------------------------------------------------------------
 
-function StylePreviewThumbnail({ variant, thumbnailSrc }: { variant: SegmentStyleVariant; thumbnailSrc: string }) {
-  const cat = variant.category
-
-  // Main video: show frame with different crop levels
-  if (cat === 'main-video') {
-    const isWide = variant.zoomStyle === 'drift' && variant.zoomIntensity < 1
-    const isTight = variant.name.toLowerCase().includes('tight')
-    const scale = isTight ? 1.8 : isWide ? 1.0 : 1.3
-    return (
-      <div className="w-full h-full rounded-md overflow-hidden bg-black">
-        <img
-          src={thumbnailSrc}
-          alt={variant.name}
-          className="w-full h-full object-cover"
-          style={{ transform: `scale(${scale})` }}
-          draggable={false}
-        />
-      </div>
-    )
-  }
-
-  // Main video + text: frame with text bar at bottom
-  if (cat === 'main-video-text') {
-    return (
-      <div className="w-full h-full rounded-md overflow-hidden bg-black relative">
-        <img
-          src={thumbnailSrc}
-          alt={variant.name}
-          className="w-full h-full object-cover"
-          style={{ transform: 'scale(1.3)' }}
-          draggable={false}
-        />
-        <div className="absolute bottom-0 left-0 right-0 h-[30%] bg-gradient-to-t from-black/80 to-transparent flex items-end justify-center pb-1">
-          <div className="flex gap-0.5">
-            <div className="w-6 h-1 rounded-full bg-white/60" />
-            <div className="w-4 h-1 rounded-full bg-white/40" />
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Main video + images: frame with mock overlay
-  if (cat === 'main-video-images') {
-    const isPip = variant.imageLayout === 'pip'
-    const isBehind = variant.imageLayout === 'behind-speaker'
-    return (
-      <div className="w-full h-full rounded-md overflow-hidden bg-black relative">
-        <img
-          src={thumbnailSrc}
-          alt={variant.name}
-          className="w-full h-full object-cover"
-          style={{ transform: 'scale(1.2)' }}
-          draggable={false}
-        />
-        {isPip && (
-          <div
-            className="absolute rounded-sm border border-indigo-400/40"
-            style={{ top: 3, right: 3, width: 16, height: 16, background: 'rgba(99, 102, 241, 0.35)', backdropFilter: 'blur(2px)' }}
-          />
-        )}
-        {isBehind && (
-          <div className="absolute inset-0 bg-indigo-500/15 border border-indigo-400/20 rounded-md" />
-        )}
-        {!isPip && !isBehind && (
-          <div className="absolute right-0 top-0 bottom-0 w-[40%] bg-indigo-500/25 border-l border-indigo-400/20" />
-        )}
-      </div>
-    )
-  }
-
-  // Fullscreen image: gradient placeholder (no video frame useful here)
-  if (cat === 'fullscreen-image') {
-    const isDark = variant.id.includes('dark')
-    return (
-      <div className="w-full h-full rounded-md flex items-center justify-center" style={{ background: isDark ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.08)' }}>
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(148,163,184,0.35)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <circle cx="9" cy="9" r="1.5" />
-          <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-        </svg>
-      </div>
-    )
-  }
-
-  // Fullscreen text: text on darkened frame background
-  if (cat === 'fullscreen-text') {
-    return (
-      <div className="w-full h-full rounded-md overflow-hidden bg-black relative">
-        <img
-          src={thumbnailSrc}
-          alt={variant.name}
-          className="w-full h-full object-cover opacity-20"
-          style={{ transform: 'scale(1.1)', filter: 'blur(2px)' }}
-          draggable={false}
-        />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="font-black" style={{ fontSize: 20, color: 'rgba(255,255,255,0.7)', lineHeight: 1 }}>T</span>
-        </div>
-      </div>
-    )
-  }
-
-  return null
-}
-
-// ---------------------------------------------------------------------------
-// Fallback placeholder (used when no thumbnail available)
-// ---------------------------------------------------------------------------
-
-function VariantPlaceholder({ variant }: { variant: SegmentStyleVariant }) {
-  const cat = variant.category
+function TemplatePlaceholder({ template }: { template: EditStyleTemplateView }) {
   const baseClass = 'w-full h-full rounded-md flex items-center justify-center'
+  const cat = template.category
 
   if (cat === 'main-video') {
-    const isWide = variant.zoomStyle === 'drift' && variant.zoomIntensity < 1
+    const tight = template.archetype === 'tight-punch'
+    const wide = template.archetype === 'wide-breather'
     return (
       <div className={baseClass} style={{ background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' }}>
         <div
           className="rounded-full"
           style={{
-            width: isWide ? 20 : 28,
-            height: isWide ? 28 : 40,
-            background: 'rgba(148, 163, 184, 0.25)',
-            border: '1.5px solid rgba(148, 163, 184, 0.15)',
+            width: wide ? 20 : tight ? 34 : 28,
+            height: wide ? 28 : tight ? 46 : 40,
+            background: 'rgba(148, 163, 184, 0.28)',
+            border: '1.5px solid rgba(148, 163, 184, 0.18)',
           }}
         />
       </div>
     )
   }
-
   if (cat === 'main-video-text') {
     return (
       <div className={baseClass} style={{ background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' }}>
         <div className="flex flex-col items-center gap-1">
-          <div
-            className="rounded-full"
-            style={{ width: 18, height: 24, background: 'rgba(148, 163, 184, 0.2)', border: '1px solid rgba(148, 163, 184, 0.1)' }}
-          />
+          <div className="rounded-full" style={{ width: 18, height: 24, background: 'rgba(148, 163, 184, 0.2)', border: '1px solid rgba(148, 163, 184, 0.1)' }} />
           <span className="font-bold" style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 1 }}>T</span>
         </div>
       </div>
     )
   }
-
   if (cat === 'main-video-images') {
-    const isPip = variant.imageLayout === 'pip'
-    const isBehind = variant.imageLayout === 'behind-speaker'
-    if (isPip) {
-      return (
-        <div className={cn(baseClass, 'relative')} style={{ background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' }}>
-          <div className="flex items-center justify-center w-full h-full">
-            <div className="rounded-full" style={{ width: 22, height: 30, background: 'rgba(148, 163, 184, 0.2)', border: '1px solid rgba(148, 163, 184, 0.1)' }} />
-          </div>
-          <div className="absolute rounded-sm" style={{ top: 4, right: 4, width: 14, height: 14, background: 'rgba(99, 102, 241, 0.3)', border: '1px solid rgba(99, 102, 241, 0.2)' }} />
-        </div>
-      )
-    }
-    if (isBehind) {
-      return (
-        <div className={cn(baseClass, 'relative')} style={{ background: 'rgba(99, 102, 241, 0.15)' }}>
-          <div className="absolute rounded-sm" style={{ inset: 4, background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.15)' }} />
-          <div className="absolute rounded-full" style={{ bottom: 8, left: '50%', transform: 'translateX(-50%)', width: 22, height: 28, background: 'rgba(148, 163, 184, 0.25)', border: '1px solid rgba(148, 163, 184, 0.15)' }} />
-        </div>
-      )
-    }
     return (
       <div className={baseClass} style={{ background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' }}>
         <div className="flex gap-1 items-center justify-center w-full px-1">
-          <div className="rounded-sm flex-1" style={{ height: 32, background: 'rgba(148, 163, 184, 0.2)', border: '1px solid rgba(148, 163, 184, 0.1)' }} />
+          <div className="rounded-sm flex-1" style={{ height: 32, background: 'rgba(148, 163, 184, 0.22)', border: '1px solid rgba(148, 163, 184, 0.12)' }} />
           <div className="rounded-sm flex-1" style={{ height: 32, background: 'rgba(99, 102, 241, 0.25)', border: '1px solid rgba(99, 102, 241, 0.15)' }} />
         </div>
       </div>
     )
   }
-
   if (cat === 'fullscreen-image') {
-    const isDark = variant.id.includes('dark')
     return (
-      <div className={baseClass} style={{ background: isDark ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.08)' }}>
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(148,163,184,0.35)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <div className={baseClass} style={{ background: 'rgba(99, 102, 241, 0.15)' }}>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(148,163,184,0.4)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="18" height="18" rx="2" />
           <circle cx="9" cy="9" r="1.5" />
           <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
@@ -245,7 +129,6 @@ function VariantPlaceholder({ variant }: { variant: SegmentStyleVariant }) {
       </div>
     )
   }
-
   if (cat === 'fullscreen-text') {
     return (
       <div className={baseClass} style={{ background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)' }}>
@@ -253,22 +136,21 @@ function VariantPlaceholder({ variant }: { variant: SegmentStyleVariant }) {
       </div>
     )
   }
-
   return null
 }
 
 // ---------------------------------------------------------------------------
-// Variant thumbnail card
+// Template card
 // ---------------------------------------------------------------------------
 
-function VariantCard({
-  variant,
+function TemplateCard({
+  template,
   isSelected,
   accentColor,
   onClick,
   thumbnailSrc,
 }: {
-  variant: SegmentStyleVariant
+  template: EditStyleTemplateView
   isSelected: boolean
   accentColor: string
   onClick: () => void
@@ -282,21 +164,17 @@ function VariantCard({
         'hover:brightness-110 active:scale-[0.97]',
         isSelected ? 'ring-2 shadow-lg' : 'ring-1 ring-border/50 hover:ring-border'
       )}
-      style={{
-        ...(isSelected
-          ? { ringColor: accentColor, boxShadow: `0 0 0 2px ${accentColor}, 0 2px 8px ${accentColor}33` }
-          : {}),
-      }}
-      title={variant.description}
+      style={isSelected ? { boxShadow: `0 0 0 2px ${accentColor}, 0 2px 8px ${accentColor}33` } : {}}
+      title={template.description}
     >
-      {/* Thumbnail preview */}
       <div className="w-full relative" style={{ height: 60 }}>
-        {thumbnailSrc ? (
-          <StylePreviewThumbnail variant={variant} thumbnailSrc={thumbnailSrc} />
+        {thumbnailSrc && template.category !== 'fullscreen-image' && template.category !== 'fullscreen-text' ? (
+          <div className="w-full h-full rounded-md overflow-hidden bg-black">
+            <img src={thumbnailSrc} alt={template.name} className="w-full h-full object-cover" draggable={false} />
+          </div>
         ) : (
-          <VariantPlaceholder variant={variant} />
+          <TemplatePlaceholder template={template} />
         )}
-        {/* Selected checkmark badge */}
         {isSelected && (
           <div
             className="absolute top-1 right-1 rounded-full flex items-center justify-center"
@@ -306,9 +184,8 @@ function VariantCard({
           </div>
         )}
       </div>
-      {/* Label */}
       <div className="w-full text-center truncate px-1.5 py-1 text-[9px] font-medium text-muted-foreground bg-card">
-        {variant.name}
+        {template.name}
       </div>
     </button>
   )
@@ -320,19 +197,19 @@ function VariantCard({
 
 function CategorySection({
   category,
-  variants,
-  selectedStyleId,
+  templates,
+  selectedArchetype,
   accentColor,
-  onStyleChange,
+  onArchetypeChange,
   segmentId,
   defaultExpanded,
   thumbnailSrc,
 }: {
   category: SegmentStyleCategory
-  variants: SegmentStyleVariant[]
-  selectedStyleId: string
+  templates: EditStyleTemplateView[]
+  selectedArchetype: Archetype
   accentColor: string
-  onStyleChange: (segmentId: string, variantId: string) => void
+  onArchetypeChange: (segmentId: string, archetype: Archetype) => void
   segmentId: string
   defaultExpanded: boolean
   thumbnailSrc?: string
@@ -348,7 +225,7 @@ function CategorySection({
       >
         <span className="text-muted-foreground">{config.icon}</span>
         <span className="text-xs font-semibold text-foreground flex-1 text-left">{config.label}</span>
-        <span className="text-[9px] text-muted-foreground/70">{variants.length}</span>
+        <span className="text-[9px] text-muted-foreground/70">{templates.length}</span>
         <ChevronDown
           className={cn(
             'w-3.5 h-3.5 text-muted-foreground transition-transform duration-200',
@@ -359,13 +236,13 @@ function CategorySection({
       {expanded && (
         <div className="px-3 pb-3">
           <div className="grid grid-cols-3 gap-2">
-            {variants.map((variant) => (
-              <VariantCard
-                key={variant.id}
-                variant={variant}
-                isSelected={selectedStyleId === variant.id}
+            {templates.map((template) => (
+              <TemplateCard
+                key={template.archetype}
+                template={template}
+                isSelected={selectedArchetype === template.archetype}
                 accentColor={accentColor}
-                onClick={() => onStyleChange(segmentId, variant.id)}
+                onClick={() => onArchetypeChange(segmentId, template.archetype)}
                 thumbnailSrc={thumbnailSrc}
               />
             ))}
@@ -375,10 +252,6 @@ function CategorySection({
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Transition / Zoom option constants
@@ -399,10 +272,6 @@ const ZOOM_EASING_OPTIONS: { value: string; label: string }[] = [
   { value: 'ease-in-out', label: 'Ease In-Out' },
   { value: 'snap', label: 'Snap' },
 ]
-
-// ---------------------------------------------------------------------------
-// Inline select component (compact dropdown)
-// ---------------------------------------------------------------------------
 
 function InlineSelect<T extends string>({
   label,
@@ -435,110 +304,157 @@ function InlineSelect<T extends string>({
 // Main component
 // ---------------------------------------------------------------------------
 
-interface SegmentStylePickerProps {
+interface SegmentTemplatePickerProps {
   segment: VideoSegment
-  onStyleChange: (segmentId: string, variantId: string) => void
+  onArchetypeChange: (segmentId: string, archetype: Archetype) => void
   onSegmentSettingsChange?: (segmentId: string, updates: Partial<VideoSegment>) => void
   accentColor?: string
   sourcePath?: string
+  pending?: boolean
 }
 
-export function SegmentStylePicker({ segment, onStyleChange, onSegmentSettingsChange, accentColor, sourcePath }: SegmentStylePickerProps) {
+export function SegmentTemplatePicker({
+  segment,
+  onArchetypeChange,
+  onSegmentSettingsChange,
+  accentColor,
+  sourcePath,
+  pending = false,
+}: SegmentTemplatePickerProps) {
   const selectedEditStyleId = useStore((s) => s.selectedEditStyleId)
 
-  // Load all available segment style variants
-  const [allVariants, setAllVariants] = useState<SegmentStyleVariant[]>([])
+  const [templates, setTemplates] = useState<EditStyleTemplateView[]>(
+    () => (selectedEditStyleId ? templatesCache.get(selectedEditStyleId) ?? [] : [])
+  )
+
+  // Refetch when active edit style changes
   useEffect(() => {
-    window.api.getSegmentStyleVariants().then(setAllVariants).catch(() => {
-      setAllVariants([])
-    })
-  }, [])
+    if (!selectedEditStyleId) {
+      setTemplates([])
+      return
+    }
+    const cached = templatesCache.get(selectedEditStyleId)
+    if (cached) {
+      setTemplates(cached)
+      return
+    }
+    let cancelled = false
+    window.api
+      .getEditStyleTemplates(selectedEditStyleId)
+      .then((result: EditStyleTemplateView[]) => {
+        if (cancelled) return
+        templatesCache.set(selectedEditStyleId, result)
+        setTemplates(result)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setTemplates([])
+      })
+    return () => { cancelled = true }
+  }, [selectedEditStyleId])
 
   // Fetch thumbnail for this segment's midpoint
   const [thumbnailSrc, setThumbnailSrc] = useState<string | undefined>(undefined)
   const lastThumbKeyRef = useRef<string>('')
-
   useEffect(() => {
     if (!sourcePath) return
     const midTime = (segment.startTime + segment.endTime) / 2
     const cacheKey = `${sourcePath}:${midTime.toFixed(2)}`
-
-    // Skip if same key
     if (cacheKey === lastThumbKeyRef.current) return
     lastThumbKeyRef.current = cacheKey
-
-    // Check cache
     const cached = styleThumbCache.get(cacheKey)
     if (cached) {
       setThumbnailSrc(cached)
       return
     }
-
     let cancelled = false
     window.api.getThumbnail(sourcePath, midTime).then((base64) => {
       if (cancelled) return
       styleThumbCache.set(cacheKey, base64)
       setThumbnailSrc(base64)
-    }).catch(() => {
-      // Failed to generate thumbnail — leave as undefined
-    })
+    }).catch(() => { /* no thumb */ })
     return () => { cancelled = true }
   }, [sourcePath, segment.startTime, segment.endTime])
 
-  // Group variants by category
-  const groupedVariants = useMemo(() => {
-    const map = new Map<SegmentStyleCategory, SegmentStyleVariant[]>()
-    for (const cat of CATEGORY_ORDER) {
-      map.set(cat, [])
-    }
-    for (const v of allVariants) {
-      const arr = map.get(v.category)
-      if (arr) arr.push(v)
+  // Group templates by category
+  const groupedTemplates = useMemo(() => {
+    const map = new Map<SegmentStyleCategory, EditStyleTemplateView[]>()
+    for (const cat of CATEGORY_ORDER) map.set(cat, [])
+    for (const t of templates) {
+      const arr = map.get(t.category)
+      if (arr) arr.push(t)
     }
     return map
-  }, [allVariants])
+  }, [templates])
 
   const resolvedAccent = accentColor ?? '#6366f1'
 
   return (
-    <div className="flex flex-col h-full">
-      {/* ── Header ── */}
+    <div className="flex flex-col h-full relative">
+      {pending && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-sm pointer-events-none">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Re-styling…
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
       <div className="shrink-0 px-3 py-2.5 border-b border-border">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-foreground">Style</span>
+          <span className="text-xs font-semibold text-foreground">Template</span>
           {selectedEditStyleId && (
-            <span className="text-[10px] text-muted-foreground">
-              · {selectedEditStyleId}
-            </span>
+            <span className="text-[10px] text-muted-foreground">· {selectedEditStyleId}</span>
           )}
         </div>
         <p className="text-[10px] text-muted-foreground mt-1">
-          Segment {segment.index + 1} · {segment.segmentStyleCategory.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+          Segment {segment.index + 1} · {segment.archetype.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
         </p>
       </div>
 
-      {/* ── Category sections ── */}
-      <div className="flex-1 overflow-y-auto">
-        {CATEGORY_ORDER.map((cat) => {
-          const variants = groupedVariants.get(cat)
-          if (!variants || variants.length === 0) return null
-          return (
-            <CategorySection
-              key={cat}
-              category={cat}
-              variants={variants}
-              selectedStyleId={segment.segmentStyleId}
-              accentColor={resolvedAccent}
-              onStyleChange={onStyleChange}
-              segmentId={segment.id}
-              defaultExpanded={CATEGORY_CONFIG[cat].defaultExpanded}
-              thumbnailSrc={thumbnailSrc}
-            />
-          )
-        })}
+      {/* Body */}
+      <div className={cn('flex-1 overflow-y-auto', pending && 'opacity-50 pointer-events-none')}>
+        {/* Hero text input — only for archetypes that draw big on-screen text.
+            Edits go straight to the segment via onSegmentSettingsChange. */}
+        {HERO_ARCHETYPES.has(segment.archetype) && onSegmentSettingsChange && (
+          <HeroTextInput
+            segment={segment}
+            onChange={(v) => onSegmentSettingsChange(segment.id, { overlayText: v })}
+          />
+        )}
 
-        {/* ── Segment Settings (Transitions & Zoom) ── */}
-        {onSegmentSettingsChange && (
+        {segment.fallbackReason && (
+          <div className="mx-3 my-2 px-2 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400">
+            <span className="font-semibold">Last render fell back:</span> {segment.fallbackReason}
+          </div>
+        )}
+
+        {templates.length === 0 ? (
+          <div className="p-4 text-center text-[11px] text-muted-foreground">
+            No templates available for this edit style.
+          </div>
+        ) : (
+          CATEGORY_ORDER.map((cat) => {
+            const catTemplates = groupedTemplates.get(cat)
+            if (!catTemplates || catTemplates.length === 0) return null
+            return (
+              <CategorySection
+                key={cat}
+                category={cat}
+                templates={catTemplates}
+                selectedArchetype={segment.archetype}
+                accentColor={resolvedAccent}
+                onArchetypeChange={onArchetypeChange}
+                segmentId={segment.id}
+                defaultExpanded={CATEGORY_CONFIG[cat].defaultExpanded}
+                thumbnailSrc={thumbnailSrc}
+              />
+            )
+          })
+        )}
+
+        {onSegmentSettingsChange && templates.length > 0 && (
           <div className="border-t border-border/50 px-3 py-3">
             <span className="text-xs font-semibold text-foreground">Segment Settings</span>
             <div className="mt-2 flex flex-col gap-2">
@@ -566,7 +482,6 @@ export function SegmentStylePicker({ segment, onStyleChange, onSegmentSettingsCh
                   })
                 }}
               />
-              {/* Zoom Scale slider */}
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">Zoom Scale</span>
                 <div className="flex items-center gap-1.5 min-w-[90px]">
@@ -594,6 +509,75 @@ export function SegmentStylePicker({ segment, onStyleChange, onSegmentSettingsCh
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// HeroTextInput — inline textarea for authoring the big on-screen text of
+// headline / quote / lower-quote archetypes. Syncs with segment.overlayText,
+// seeding from segment.captionText when empty. Updates on blur to avoid
+// thrashing the preview re-render on every keystroke.
+// ---------------------------------------------------------------------------
+
+function HeroTextInput({
+  segment,
+  onChange,
+}: {
+  segment: VideoSegment
+  onChange: (text: string) => void
+}) {
+  const seed = segment.overlayText ?? deriveDefaultHero(segment.captionText)
+  const [draft, setDraft] = useState(seed)
+
+  // Reset draft when the underlying segment changes (e.g. user picks a
+  // different segment in the timeline).
+  useEffect(() => {
+    setDraft(segment.overlayText ?? deriveDefaultHero(segment.captionText))
+  }, [segment.id, segment.overlayText, segment.captionText])
+
+  const isHeadline = segment.archetype === 'fullscreen-headline'
+  const isQuote = segment.archetype === 'fullscreen-quote'
+  const label = isHeadline ? 'Headline text' : isQuote ? 'Quote text' : 'Overlay text'
+
+  return (
+    <div className="px-3 pt-3 pb-2 border-b border-border/40">
+      <label className="text-[10px] font-semibold text-foreground uppercase tracking-wide">
+        {label}
+      </label>
+      <p className="text-[9px] text-muted-foreground mb-1.5">
+        Shown on-screen for this segment. Seeded from the caption — edit to taste.
+      </p>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          const next = draft.trim()
+          if (next !== (segment.overlayText ?? '')) onChange(next)
+        }}
+        rows={2}
+        maxLength={120}
+        className={cn(
+          'w-full resize-none rounded border border-border/60 bg-background/60',
+          'px-2 py-1.5 text-[11px] leading-snug text-foreground',
+          'focus:outline-none focus:ring-1 focus:ring-ring'
+        )}
+        placeholder="Type the hero text…"
+      />
+      <div className="flex items-center justify-between mt-0.5">
+        <span className="text-[9px] text-muted-foreground/60">{draft.length}/120</span>
+        <button
+          type="button"
+          className="text-[9px] text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            const reset = deriveDefaultHero(segment.captionText)
+            setDraft(reset)
+            onChange(reset)
+          }}
+        >
+          Reset from caption
+        </button>
       </div>
     </div>
   )

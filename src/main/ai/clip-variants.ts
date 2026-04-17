@@ -25,11 +25,10 @@ import type { ClipCandidate } from './curiosity-gap'
 export interface OverlayCapabilities {
   hookTitle: boolean
   rehook: boolean
-  progressBar: boolean
 }
 
 /** The type of a single overlay element applied to a variant. */
-export type OverlayType = 'hook-title' | 'rehook' | 'progress-bar'
+export type OverlayType = 'hook-title' | 'rehook'
 
 /** Configuration for a single overlay element in a variant. */
 export interface OverlayConfig {
@@ -95,8 +94,6 @@ export interface RenderConfig {
   rehookText?: string
   /** Rehook overlay style to use. */
   rehookStyle?: 'bar' | 'text-only' | 'slide-up'
-  /** Whether to burn the progress bar overlay. */
-  progressBar: boolean
   /** Caption style preset for the variant. */
   captionStyle: CaptionStylePreset
   /** Layout to apply during render. */
@@ -282,13 +279,6 @@ Virality score: ${clip.score}`
       color: '#FFFF00'
     })
   }
-  if (capabilities.progressBar) {
-    variantAOverlays.push({
-      type: 'progress-bar',
-      style: 'glow',
-      color: '#FFFFFF'
-    })
-  }
 
   const variantA: ClipVariant = {
     id: 'variant-a',
@@ -306,13 +296,6 @@ Virality score: ${clip.score}`
   // ── Variant B: Cold open ──────────────────────────────────────────────────
   // Jumps to the most dramatic moment, no hook overlay, minimal captions.
   const variantBOverlays: OverlayConfig[] = []
-  if (capabilities.progressBar) {
-    variantBOverlays.push({
-      type: 'progress-bar',
-      style: 'solid',
-      color: '#FFFFFF'
-    })
-  }
 
   const variantB: ClipVariant = {
     id: 'variant-b',
@@ -342,13 +325,6 @@ Virality score: ${clip.score}`
     variantCOverlays.push({
       type: 'rehook',
       style: 'slide-up',
-      color: '#FFFFFF'
-    })
-  }
-  if (capabilities.progressBar) {
-    variantCOverlays.push({
-      type: 'progress-bar',
-      style: 'gradient',
       color: '#FFFFFF'
     })
   }
@@ -392,7 +368,6 @@ export function buildVariantRenderConfigs(
   return variants.map((variant) => {
     const hookOverlay = variant.overlays.find((o) => o.type === 'hook-title')
     const rehookOverlay = variant.overlays.find((o) => o.type === 'rehook')
-    const progressOverlay = variant.overlays.find((o) => o.type === 'progress-bar')
 
     // Derive the clipId from the baseClip id (fallback to baseName) + variant suffix
     const baseId =
@@ -406,8 +381,7 @@ export function buildVariantRenderConfigs(
       endTime: variant.endTime,
       captionStyle: variant.captionStyle,
       layout: variant.layout,
-      overlays: variant.overlays,
-      progressBar: !!progressOverlay
+      overlays: variant.overlays
     }
 
     if (hookOverlay) {

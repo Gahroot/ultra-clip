@@ -168,7 +168,8 @@ export async function segmentSplittingStage(
       const styledSegments: VideoSegment[] = await window.api.assignSegmentStyles(
         segments,
         selectedEditStyleId,
-        geminiApiKey || undefined
+        geminiApiKey || undefined,
+        Boolean(falApiKey)
       )
 
       // Step 3: Store segments in the Zustand store
@@ -216,7 +217,8 @@ export async function segmentSplittingStage(
       const styledSegments: VideoSegment[] = await window.api.assignSegmentStyles(
         allSegments,
         selectedEditStyleId,
-        geminiApiKey || undefined
+        geminiApiKey || undefined,
+        Boolean(falApiKey)
       )
 
       store.setSegments(sc.id, styledSegments)

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { VideoSegment, SegmentStyleCategory } from '../store'
+import type { VideoSegment, SegmentStyleCategory, Archetype } from '../store'
 
 // ---------------------------------------------------------------------------
 // Category metadata — icon + label for each segment style category
@@ -12,6 +13,22 @@ const CATEGORY_META: Record<SegmentStyleCategory, { icon: string; label: string 
   'main-video-images': { icon: '🖼️', label: 'Images' },
   'fullscreen-image':  { icon: '🌄', label: 'Image' },
   'fullscreen-text':   { icon: '💬', label: 'Full Text' },
+}
+
+// ---------------------------------------------------------------------------
+// Archetype labels — short, user-facing name shown on each timeline card.
+// Kept compact so it fits under the thumbnail; the picker uses the full name.
+// ---------------------------------------------------------------------------
+
+const ARCHETYPE_LABEL: Record<Archetype, string> = {
+  'talking-head':        'Talking',
+  'tight-punch':         'Punch',
+  'wide-breather':       'Wide',
+  'quote-lower':         'Quote ↓',
+  'split-image':         'Split',
+  'fullscreen-image':    'FS Image',
+  'fullscreen-quote':    'FS Quote',
+  'fullscreen-headline': 'Headline',
 }
 
 // ---------------------------------------------------------------------------
@@ -271,9 +288,30 @@ export function SegmentTimeline({
                 )}
               </div>
 
+              {/* Archetype label + fallback chip */}
+              <div
+                className={cn(
+                  'flex items-center gap-1 px-1.5 py-1 bg-card',
+                  'text-[9px] font-semibold leading-tight',
+                  seg.fallbackReason
+                    ? 'text-amber-500'
+                    : 'text-foreground/80'
+                )}
+              >
+                {seg.fallbackReason && (
+                  <AlertTriangle
+                    className="w-2.5 h-2.5 shrink-0"
+                    aria-label={`Fell back: ${seg.fallbackReason}`}
+                  />
+                )}
+                <span className="truncate">
+                  {ARCHETYPE_LABEL[seg.archetype] ?? meta.label}
+                </span>
+              </div>
+
               {/* Caption preview strip — first ~20 chars */}
               {seg.captionText && (
-                <div className="px-1.5 py-1 bg-card text-[9px] text-muted-foreground/70 truncate leading-tight">
+                <div className="px-1.5 pb-1 bg-card text-[9px] text-muted-foreground/60 truncate leading-tight">
                   {seg.captionText.slice(0, 30)}
                 </div>
               )}

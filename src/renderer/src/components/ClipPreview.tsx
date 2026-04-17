@@ -52,7 +52,8 @@ import { EditableTime, formatTime } from './EditableTime'
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard'
 import { WaveformDisplay } from './WaveformDisplay'
 import { SegmentTimeline } from './SegmentTimeline'
-import { SegmentStylePicker } from './SegmentStylePicker'
+import { SegmentTemplatePicker } from './SegmentTemplatePicker'
+import type { Archetype } from '@shared/types'
 import { SegmentCaptionEditor, type SidebarTab } from './SegmentCaptionEditor'
 import { EditStyleSelector } from './EditStyleSelector'
 import type { VideoSegment, EditStyle as EditStyleType } from '../store'
@@ -259,6 +260,74 @@ interface ClipPreviewProps {
   onClose: () => void
 }
 
+// ---------------------------------------------------------------------------
+// SegmentPatternControls — row above the timeline offering Re-roll (re-runs
+// the AI segment styler for this clip) and Lock to one (applies the same
+// archetype to every segment).
+// ---------------------------------------------------------------------------
+
+const ARCHETYPE_OPTIONS: { value: Archetype; label: string }[] = [
+  { value: 'fullscreen-headline', label: 'Headline' },
+  { value: 'fullscreen-quote',    label: 'FS Quote' },
+  { value: 'fullscreen-image',    label: 'FS Image' },
+  { value: 'split-image',         label: 'Split' },
+  { value: 'quote-lower',         label: 'Quote ↓' },
+  { value: 'talking-head',        label: 'Talking' },
+  { value: 'tight-punch',         label: 'Punch' },
+  { value: 'wide-breather',       label: 'Wide' },
+]
+
+function SegmentPatternControls({
+  clipId: _clipId,
+  restyling,
+  onReroll,
+  onLockToOne,
+}: {
+  clipId: string
+  restyling: boolean
+  onReroll: () => void
+  onLockToOne: (archetype: Archetype) => void
+}) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card/30">
+      <span className="text-[10px] font-semibold text-muted-foreground">Pattern</span>
+      <button
+        type="button"
+        onClick={onReroll}
+        disabled={restyling}
+        className={cn(
+          'flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium',
+          'border border-border hover:bg-muted/50 transition-colors',
+          restyling && 'opacity-50 cursor-not-allowed'
+        )}
+        title="Re-run the AI segment styler with your current edit style"
+      >
+        {restyling
+          ? <Loader2 className="w-3 h-3 animate-spin" />
+          : <Wand2 className="w-3 h-3" />}
+        {restyling ? 'Re-rolling…' : 'Re-roll'}
+      </button>
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] text-muted-foreground">Lock all to</span>
+        <Select
+          onValueChange={(v) => onLockToOne(v as Archetype)}
+        >
+          <SelectTrigger className="h-6 min-w-[110px] text-[10px] px-2">
+            <SelectValue placeholder="Pick archetype…" />
+          </SelectTrigger>
+          <SelectContent>
+            {ARCHETYPE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value} className="text-[11px]">
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  )
+}
+
 export function ClipPreview({
   clip,
   sourceId,
@@ -331,6 +400,12 @@ export function ClipPreview({
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [showPreview, setShowPreview] = useState(false)
+  /**
+   * Message shown on the preview loading overlay. When an archetype swap
+   * triggers a re-preview this switches to "Re-rendering with new archetype…"
+   * so the user understands why they're waiting.
+   */
+  const [previewLoadingMessage, setPreviewLoadingMessage] = useState<string>('Rendering preview…')
 
   // Original AI-selected boundaries (fixed for "Reset to Original")
   const [origStart] = useState(clip.startTime)
@@ -351,7 +426,11 @@ export function ClipPreview({
   const storeUpdateSegment = useStore((s) => s.updateSegment)
   const storeSetSelectedSegmentIndex = useStore((s) => s.setSelectedSegmentIndex)
   const storeSetSelectedEditStyleId = useStore((s) => s.setSelectedEditStyleId)
+  const setSegmentArchetype = useStore((s) => s.setSegmentArchetype)
+  const setAllSegmentsArchetype = useStore((s) => s.setAllSegmentsArchetype)
+  const restyleOneClip = useStore((s) => s.restyleOneClip)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('style')
+  const [restyling, setRestyling] = useState(false)
   const [segmentLoading, setSegmentLoading] = useState(false)
   const [showStyleModal, setShowStyleModal] = useState(false)
   const [useOldLayout, setUseOldLayout] = useState(false)
@@ -594,11 +673,19 @@ export function ClipPreview({
     }
   }, [clipSegments, showPreview, localStart, storeSetSelectedSegmentIndex])
 
-  const handleSegmentStyleChange = useCallback((segmentId: string, variantId: string) => {
+  // Ref to the latest handlePreviewWithOverlays — defined below. Using a ref
+  // here lets handleSegmentArchetypeChange kick off a re-preview without a
+  // forward-declaration dance.
+  const handlePreviewRef = useRef<() => void>(() => {})
+
+  const handleSegmentArchetypeChange = useCallback((segmentId: string, archetype: Archetype) => {
     userSeekingRef.current = true
     setTimeout(() => { userSeekingRef.current = false }, 300)
-    storeUpdateSegment(clip.id, segmentId, { segmentStyleId: variantId })
-  }, [clip.id, storeUpdateSegment])
+    setSegmentArchetype(clip.id, segmentId, archetype)
+    // Auto-refresh preview so the user sees the new per-archetype layout.
+    setPreviewLoadingMessage('Re-rendering with new archetype…')
+    handlePreviewRef.current()
+  }, [clip.id, setSegmentArchetype])
 
   const handleSegmentSettingsChange = useCallback((segmentId: string, updates: Partial<VideoSegment>) => {
     userSeekingRef.current = true
@@ -613,16 +700,12 @@ export function ClipPreview({
   }, [clip.id, storeUpdateSegment])
 
   const handleEditStyleSelect = useCallback((styleId: string) => {
+    // Side-effects (wipe archetypes, re-run AI styler across all clips +
+    // stitched) are centralized inside the store action now, so both
+    // EditStyleStrip and ClipPreview trigger the same flow.
     storeSetSelectedEditStyleId(styleId)
-    if (clipSegments.length > 0) {
-      window.api.assignSegmentStyles(clipSegments, styleId, settings.geminiApiKey || undefined)
-        .then((styled: VideoSegment[]) => {
-          storeSetSegments(clip.id, styled)
-        })
-        .catch(() => {})
-    }
     setShowStyleModal(false)
-  }, [clipSegments, clip.id, storeSetSegments, storeSetSelectedEditStyleId, settings.geminiApiKey])
+  }, [storeSetSelectedEditStyleId])
 
   /** Check if a word overlaps with any filler segment. Returns the segment index or -1. */
   const getWordFillerIndex = useCallback(
@@ -774,7 +857,6 @@ export function ClipPreview({
         brandKit: settings.brandKit.enabled ? settings.brandKit : undefined,
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
-        progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
         captionsEnabled: true,
         captionStyle: activeEditStyle?.captionStyle,
         broll: settings.broll.enabled ? settings.broll : undefined,
@@ -852,10 +934,6 @@ export function ClipPreview({
     clip.overrides?.enableHookTitle !== undefined
       ? clip.overrides.enableHookTitle
       : settings.hookTitleOverlay?.enabled ?? false
-  const effectiveProgressBarEnabled =
-    clip.overrides?.enableProgressBar !== undefined
-      ? clip.overrides.enableProgressBar
-      : settings.progressBarOverlay?.enabled ?? false
   const effectiveAutoZoomEnabled =
     clip.overrides?.enableAutoZoom !== undefined
       ? clip.overrides.enableAutoZoom
@@ -899,7 +977,6 @@ export function ClipPreview({
         captionsEnabled: effectiveCaptionsEnabled,
         captionStyle: effectiveCaptionsEnabled ? activeEditStyle?.captionStyle : undefined,
         hookTitleOverlay: effectiveHookTitleEnabled ? settings.hookTitleOverlay : undefined,
-        progressBarOverlay: effectiveProgressBarEnabled ? settings.progressBarOverlay : undefined,
         autoZoom: effectiveAutoZoomEnabled
           ? { enabled: true, intensity: settings.autoZoom?.intensity, intervalSeconds: settings.autoZoom?.intervalSeconds }
           : undefined,
@@ -912,7 +989,14 @@ export function ClipPreview({
                 logoOpacity: settings.brandKit.logoOpacity
               }
             : undefined,
-        accentColor: clip.overrides?.accentColor
+        accentColor: clip.overrides?.accentColor,
+        // ── Per-segment archetype preview ──
+        // When the clip has segments, forward them so the main-process
+        // preview can route through renderSegmentedClip() and render each
+        // segment's archetype layout (fullscreen-headline, split-image, etc.)
+        // rather than a flat single-clip encode.
+        segments: clipSegments.length > 0 ? clipSegments : undefined,
+        stylePresetId: selectedEditStyleId ?? undefined
       })
       setPreviewPath(result.previewPath)
       setShowPreview(true)
@@ -920,6 +1004,8 @@ export function ClipPreview({
       setPreviewError(err instanceof Error ? err.message : 'Preview render failed')
     } finally {
       setPreviewLoading(false)
+      // Reset loading message so the next preview run shows the default copy.
+      setPreviewLoadingMessage('Rendering preview…')
     }
   }, [
     sourcePath,
@@ -928,14 +1014,24 @@ export function ClipPreview({
     localHook,
     clip.cropRegion,
     clip.wordTimestamps,
+    clip.overrides?.accentColor,
     previewPath,
     effectiveCaptionsEnabled,
     effectiveHookTitleEnabled,
-    effectiveProgressBarEnabled,
     effectiveAutoZoomEnabled,
     effectiveBrandKitEnabled,
-    settings
+    settings,
+    activeEditStyle,
+    clipSegments,
+    selectedEditStyleId
   ])
+
+  // Keep handlePreviewRef in sync with the latest callback so
+  // handleSegmentArchetypeChange (defined earlier) always invokes the current
+  // closure when the user flips a segment's archetype.
+  useEffect(() => {
+    handlePreviewRef.current = () => { void handlePreviewWithOverlays() }
+  }, [handlePreviewWithOverlays])
 
   // Current time relative to clip start
   // In preview mode the video starts at 0, so currentTime IS the relative time
@@ -1242,7 +1338,7 @@ export function ClipPreview({
                         {previewLoading && (
                           <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 pointer-events-none z-20">
                             <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
-                            <span className="text-[11px] text-white/80">Rendering preview…</span>
+                            <span className="text-[11px] text-white/80">{previewLoadingMessage}</span>
                           </div>
                         )}
                       </div>
@@ -1298,12 +1394,13 @@ export function ClipPreview({
                 {/* Sidebar content */}
                 <div className="flex-1 overflow-y-auto">
                   {sidebarTab === 'style' && selectedSegment && (
-                    <SegmentStylePicker
+                    <SegmentTemplatePicker
                       segment={selectedSegment}
-                      onStyleChange={handleSegmentStyleChange}
+                      onArchetypeChange={handleSegmentArchetypeChange}
                       onSegmentSettingsChange={handleSegmentSettingsChange}
                       accentColor={activeEditStyle?.accentColor ?? undefined}
                       sourcePath={sourcePath}
+                      pending={segmentStylingPending[`${clip.id}:${selectedSegment.id}`] ?? false}
                     />
                   )}
                   {sidebarTab === 'captions' && (
@@ -1326,8 +1423,19 @@ export function ClipPreview({
               </div>
             </div>
 
-            {/* ── Segment timeline (bottom) ── */}
+            {/* ── Segment controls + timeline (bottom) ── */}
             <div className="border-t border-border shrink-0">
+              {hasSegments && (
+                <SegmentPatternControls
+                  clipId={clip.id}
+                  restyling={restyling}
+                  onReroll={async () => {
+                    setRestyling(true)
+                    try { await restyleOneClip(clip.id) } finally { setRestyling(false) }
+                  }}
+                  onLockToOne={(archetype) => setAllSegmentsArchetype(clip.id, archetype)}
+                />
+              )}
               <SegmentTimeline
                 clipId={clip.id}
                 sourcePath={sourcePath}
@@ -1775,11 +1883,6 @@ export function ClipPreview({
                     Hook Title
                   </Badge>
                 )}
-                {effectiveProgressBarEnabled && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/40 text-violet-400 bg-violet-500/10">
-                    Progress Bar
-                  </Badge>
-                )}
                 {effectiveAutoZoomEnabled && (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-violet-500/40 text-violet-400 bg-violet-500/10">
                     Auto-Zoom
@@ -1790,7 +1893,7 @@ export function ClipPreview({
                     Logo
                   </Badge>
                 )}
-                {!effectiveCaptionsEnabled && !effectiveHookTitleEnabled && !effectiveProgressBarEnabled && !effectiveAutoZoomEnabled && !effectiveBrandKitEnabled && (
+                {!effectiveCaptionsEnabled && !effectiveHookTitleEnabled && !effectiveAutoZoomEnabled && !effectiveBrandKitEnabled && (
                   <span className="text-[10px] text-muted-foreground/50 italic">no overlays enabled</span>
                 )}
                 <button
@@ -2388,13 +2491,6 @@ export function ClipPreview({
                   label="Hook Title Overlay"
                   overrideKey="enableHookTitle"
                   globalValue={settings.hookTitleOverlay.enabled}
-                  overrides={clip.overrides}
-                  onChange={handleOverrideChange}
-                />
-                <OverrideRow
-                  label="Progress Bar"
-                  overrideKey="enableProgressBar"
-                  globalValue={settings.progressBarOverlay.enabled}
                   overrides={clip.overrides}
                   onChange={handleOverrideChange}
                 />

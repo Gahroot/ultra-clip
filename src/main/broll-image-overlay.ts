@@ -9,7 +9,7 @@
  * chain works unchanged because it receives a video input, not a static image.
  */
 
-import ffmpeg from 'fluent-ffmpeg'
+import { ffmpeg } from './ffmpeg'
 import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'

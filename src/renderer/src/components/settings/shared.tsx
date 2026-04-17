@@ -66,7 +66,7 @@ export function FieldRow({
   )
 }
 
-export type SectionKey = 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'progressBar' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality'
+export type SectionKey = 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality'
 
 export function SectionResetButton({ section, onReset }: { section: SectionKey; onReset: (s: SectionKey) => void }) {
   return (

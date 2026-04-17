@@ -20,8 +20,6 @@ import type {
   ZoomMode,
   HookTitleStyle,
   RehookStyle,
-  ProgressBarStyle,
-  ProgressBarPosition,
   LogoPosition,
   ScoredSegment,
   ScoringResult,
@@ -55,8 +53,6 @@ export type {
   ZoomMode,
   HookTitleStyle,
   RehookStyle,
-  ProgressBarStyle,
-  ProgressBarPosition,
   LogoPosition,
   ScoredSegment,
   ScoringResult,
@@ -75,6 +71,7 @@ export type {
   SegmentStyleVariant,
   ZoomKeyframe,
   TransitionType,
+  Archetype,
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +175,6 @@ export interface StoryArcUI {
 export interface ClipRenderSettings {
   enableCaptions?: boolean
   enableHookTitle?: boolean
-  enableProgressBar?: boolean
   enableAutoZoom?: boolean
   enableSoundDesign?: boolean
   enableBrandKit?: boolean
@@ -187,8 +183,7 @@ export interface ClipRenderSettings {
   /**
    * Per-clip accent color (CSS hex, e.g. '#FF6B35').
    * When set, overrides highlight/emphasis colors in captions, hook title
-   * text color, rehook text color, and progress bar color — painting the
-   * whole edit with one colour.
+   * text color, and rehook text color — painting the whole edit with one colour.
    */
   accentColor?: string
 }
@@ -403,32 +398,6 @@ export interface RehookOverlaySettings {
   positionFraction: number
 }
 
-/**
- * Settings for the animated completion progress bar overlay.
- */
-export interface ProgressBarOverlaySettings {
-  /** Whether the progress bar is burned into rendered clips. */
-  enabled: boolean
-  /**
-   * Edge of the frame to anchor the bar.
-   * 'bottom' (default) sits below captions; 'top' avoids caption overlap.
-   */
-  position: ProgressBarPosition
-  /** Bar thickness in pixels on the 1080×1920 canvas (2–8 px). Default: 4. */
-  height: number
-  /** Bar color in CSS hex format. Default: '#FFFFFF'. */
-  color: string
-  /** Bar opacity 0–1. Default: 0.9. */
-  opacity: number
-  /**
-   * Visual style:
-   *   'solid'    — flat single-color bar
-   *   'gradient' — bar with white highlight strip for a dimensional look
-   *   'glow'     — bar with a soft outer glow halo behind it
-   */
-  style: ProgressBarStyle
-}
-
 export interface BRollSettings {
   /** Whether B-Roll insertion is enabled at render time */
   enabled: boolean
@@ -625,7 +594,6 @@ export interface AppSettings {
   brandKit: BrandKit
   hookTitleOverlay: HookTitleOverlaySettings
   rehookOverlay: RehookOverlaySettings
-  progressBarOverlay: ProgressBarOverlaySettings
   broll: BRollSettings
   fillerRemoval: FillerRemovalSettings
   enableNotifications: boolean
@@ -671,7 +639,6 @@ export interface SettingsProfile {
   brandKit: BrandKit
   hookTitleOverlay: HookTitleOverlaySettings
   rehookOverlay: RehookOverlaySettings
-  progressBarOverlay: ProgressBarOverlaySettings
   broll: BRollSettings
   fillerRemoval: FillerRemovalSettings
   renderQuality: RenderQualitySettings
@@ -972,14 +939,6 @@ export interface AppState {
   setRehookDisplayDuration: (seconds: number) => void
   setRehookPositionFraction: (fraction: number) => void
 
-  // Actions — Progress Bar Overlay
-  setProgressBarEnabled: (enabled: boolean) => void
-  setProgressBarPosition: (position: ProgressBarPosition) => void
-  setProgressBarHeight: (height: number) => void
-  setProgressBarColor: (color: string) => void
-  setProgressBarOpacity: (opacity: number) => void
-  setProgressBarStyle: (style: ProgressBarStyle) => void
-
   // Actions — Brand Kit
   setBrandKitEnabled: (enabled: boolean) => void
   setBrandKitLogoPath: (path: string | null) => void
@@ -1022,7 +981,7 @@ export interface AppState {
 
   // Actions — Reset
   resetSettings: () => void
-  resetSection: (section: 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'progressBar' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality') => void
+  resetSection: (section: 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality') => void
 
   // Actions — Python setup
   setPythonStatus: (status: PythonSetupState) => void
@@ -1160,16 +1119,34 @@ export interface AppState {
   selectedEditStyleId: string | null
   /** Currently selected segment index in the segment timeline (per clip). */
   selectedSegmentIndex: number
+  /** Per-segment "AI is re-styling" flag, keyed `${clipId}:${segmentId}`. */
+  segmentStylingPending: Record<string, boolean>
+  /** Monotonic token bumped on every global edit-style change for stale-result
+   *  rejection inside the _restyleAllSegmentsForNewEditStyle thunk. */
+  editStyleChangeToken: number
   /** Set the selected segment index for the segment timeline. */
   setSelectedSegmentIndex: (index: number) => void
 
   // Actions — Segment Editor
   setSegments: (clipId: string, segments: VideoSegment[]) => void
   updateSegment: (clipId: string, segmentId: string, updates: Partial<VideoSegment>) => void
-  /** Convenience action: update a segment's style variant by index within a clip. */
-  updateSegmentStyle: (clipId: string, segmentIndex: number, variantId: string, category?: SegmentStyleCategory) => void
   /** Convenience action: update the transition type that plays before a given segment. */
   updateSegmentTransition: (clipId: string, segmentIndex: number, transitionType: TransitionType) => void
+  /** Direct per-segment archetype reassignment (fast path, no AI call). */
+  setSegmentArchetype: (clipId: string, segmentId: string, archetype: Archetype) => void
+  /** Re-run the AI segment styler for a single clip. Respects the current edit
+   *  style + fal.ai availability. Used by the "Re-roll" UX. */
+  restyleOneClip: (clipId: string) => Promise<void>
+  /** Apply the same archetype to every segment in a clip. Used by "Lock to one". */
+  setAllSegmentsArchetype: (clipId: string, archetype: Archetype) => void
+  /** Mark a segment as having been silently degraded at render time.
+   *  Populated by the SEGMENT_FALLBACK IPC listener. */
+  setSegmentFallbackReason: (clipId: string, segmentIndex: number, reason: string | undefined) => void
   setEditStyles: (styles: EditStyle[]) => void
+  /** Global edit-style change: wipes every segment's archetype across all clips
+   *  (normal + stitched) and re-runs the AI segment styler against the new
+   *  style's archetype set. Side-effects live inside the store action so every
+   *  caller (EditStyleStrip, ClipPreview, profile restore…) triggers the same flow. */
   setSelectedEditStyleId: (styleId: string | null) => void
+  clearSegmentStylingPending: (clipId?: string) => void
 }

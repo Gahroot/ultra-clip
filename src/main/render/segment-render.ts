@@ -16,14 +16,12 @@ import { ffmpeg, getEncoder, getSoftwareEncoder, isGpuSessionError, isGpuEncoder
 import type { BrandKitRenderOptions, HookTitleConfig } from './types'
 import type { CaptionStyleInput } from '../captions'
 import type { EmphasizedWord } from '@shared/types'
-import type { ProgressBarConfig } from '../overlays/progress-bar'
 import { toFFmpegPath, buildASSFilter, formatASSTimestamp } from './helpers'
 import { generateCaptions } from '../captions'
 import { analyzeEmphasisHeuristic } from '../word-emphasis'
 import { resolveFontsDir } from '../font-registry'
 import { buildCaptionBackground, buildLetterboxBars } from '../overlays/caption-background'
 import { buildSnapZoom, buildWordPulseZoom, buildDriftZoom, buildZoomOutReveal } from '../zoom-filters'
-import { buildProgressBarFilter } from '../overlays/progress-bar'
 import { applyFilterPass, applyFilterComplexPass } from './overlay-runner'
 import { buildLogoOnlyFilterComplex } from './features/brand-kit.feature'
 import { generateHookTitleASSFile } from './features/hook-title.feature'
@@ -33,6 +31,9 @@ import { buildSegmentLayout, type SegmentLayoutParams } from '../layouts/segment
 import { buildVFXFilterChain, buildVFXOverlays, type VFXBuildResult } from './vfx-filters'
 import { buildFaceTrackCropFilter, type FaceTrackEntry } from './face-track-filter'
 import { buildEditStyleColorGradeFilter } from './color-grade-filter'
+import { buildArchetypeHero, writeHeroAssFile } from './archetype-hero'
+import type { Archetype } from '../edit-styles/shared/archetypes'
+import { getVariantById } from '../segment-styles'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,6 +62,25 @@ export interface ResolvedSegment {
   imagePath?: string
   /** Per-segment face crop override */
   cropRect?: { x: number; y: number; width: number; height: number }
+  /**
+   * Archetype (PRESTYJ-style template). Drives hero/center-glow/push-center
+   * ASS generation in archetype-hero.ts. Absent on legacy callers that
+   * routed by variant id alone — hero builder treats that as "no hero".
+   */
+  archetype?: Archetype
+  /**
+   * Per-archetype caption vertical margin in pixels (from the bottom for
+   * Alignment=2). Overrides the template-layout-derived marginV.
+   */
+  captionMarginV?: number
+  /**
+   * Set by the render pipeline when a requested archetype could not be
+   * honored (e.g. split-image / fullscreen-image with no generated image)
+   * and the segment was silently degraded to a different layout. Mirrors
+   * VideoSegment.fallbackReason so upstream callers can surface this in
+   * the UI via render events.
+   */
+  fallbackReason?: string
 }
 
 export interface SegmentRenderConfig {
@@ -96,8 +116,6 @@ export interface SegmentRenderConfig {
   captionsEnabled?: boolean
   /** Brand kit settings */
   brandKit?: BrandKitRenderOptions
-  /** Progress bar config */
-  progressBarConfig?: ProgressBarConfig
   /** Template layout positions */
   templateLayout?: { titleText: { x: number; y: number }; subtitles: { x: number; y: number }; rehookText: { x: number; y: number } }
   /**
@@ -112,6 +130,15 @@ export interface SegmentRenderConfig {
   hookTitleText?: string
   /** Hook title styling + timing config */
   hookTitleConfig?: HookTitleConfig
+  /**
+   * Called when a segment's requested archetype/layout cannot be honored
+   * and is degraded to another layout at render time (e.g. image-based
+   * archetype with no generated image → quote-lower fallback). Receives
+   * the segment index, the original archetype, and a human-readable
+   * reason string. Implementations typically forward this as an IPC
+   * event via `Ch.Send.SEGMENT_FALLBACK`.
+   */
+  onFallback?: (info: { segmentIndex: number; archetype: string; reason: string }) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -292,16 +319,63 @@ function buildSegmentZoomFilter(
   }
 }
 
+type SegmentLocalWord = {
+  text: string
+  start: number
+  end: number
+  emphasis: 'normal' | 'emphasis' | 'supersize' | 'box'
+}
+
+/**
+ * Build the segment-local word list with emphasis resolved. Returned words are
+ * in 0-based segment time, clamped at segment boundaries. Returns [] when
+ * there are no word timestamps or none fall in range.
+ */
+function resolveSegmentLocalWords(
+  segStartTime: number,
+  segEndTime: number,
+  wordTimestamps: { text: string; start: number; end: number }[] | undefined,
+  wordEmphasis: EmphasizedWord[] | undefined
+): SegmentLocalWord[] {
+  if (!wordTimestamps) return []
+  const segWords = wordTimestamps.filter(
+    (w) => w.end > segStartTime && w.start < segEndTime
+  )
+  if (segWords.length === 0) return []
+
+  const localBase = segWords.map((w) => ({
+    text: w.text,
+    start: Math.max(w.start, segStartTime) - segStartTime,
+    end: Math.min(w.end, segEndTime) - segStartTime
+  }))
+
+  let levels: string[]
+  if (wordEmphasis && wordEmphasis.length > 0) {
+    levels = localBase.map((w) => {
+      const match = wordEmphasis.find(
+        (ov) => Math.abs(ov.start - (w.start + segStartTime)) < 0.05
+            || Math.abs(ov.start - w.start) < 0.05
+      )
+      return match?.emphasis ?? 'normal'
+    })
+  } else {
+    const heuristic = analyzeEmphasisHeuristic(localBase)
+    levels = heuristic.map((h) => h.emphasis)
+  }
+
+  return localBase.map((w, idx) => ({
+    ...w,
+    emphasis: levels[idx] as SegmentLocalWord['emphasis']
+  }))
+}
+
 /**
  * Generate per-segment captions as an ASS file path.
  * Returns null if captions are disabled or no words fall in the segment range.
  */
 async function generateSegmentCaptions(
   seg: ResolvedSegment,
-  segStartTime: number,
-  segEndTime: number,
-  wordTimestamps: { text: string; start: number; end: number }[] | undefined,
-  wordEmphasis: EmphasizedWord[] | undefined,
+  localWords: SegmentLocalWord[],
   captionStyle: CaptionStyleInput | undefined,
   captionsEnabled: boolean | undefined,
   targetWidth: number,
@@ -309,52 +383,18 @@ async function generateSegmentCaptions(
   userAccentColor?: string,
   templateLayout?: { subtitles: { x: number; y: number } }
 ): Promise<string | null> {
-  if (!captionsEnabled || !captionStyle || !wordTimestamps) return null
-
-  // Filter words that overlap this segment's absolute time range.
-  // Uses overlap logic (end > segStart && start < segEnd) so words that
-  // straddle a segment boundary are included and clamped, not silently dropped.
-  const segWords = wordTimestamps.filter(
-    (w) => w.end > segStartTime && w.start < segEndTime
-  )
-  if (segWords.length === 0) return null
-
-  // Convert to segment-local time (0-based), clamping words that straddle
-  // the segment boundary so they start/end at the segment edge.
-  const localWordsBase = segWords.map((w) => ({
-    text: w.text,
-    start: Math.max(w.start, segStartTime) - segStartTime,
-    end: Math.min(w.end, segEndTime) - segStartTime
-  }))
-
-  // Resolve emphasis: prefer pre-computed > heuristic
-  let emphasisLevels: string[]
-  if (wordEmphasis && wordEmphasis.length > 0) {
-    emphasisLevels = localWordsBase.map((w) => {
-      const match = wordEmphasis!.find(
-        (ov) => Math.abs(ov.start - (w.start + segStartTime)) < 0.05
-            || Math.abs(ov.start - w.start) < 0.05
-      )
-      return match?.emphasis ?? 'normal'
-    })
-  } else {
-    const heuristic = analyzeEmphasisHeuristic(localWordsBase)
-    emphasisLevels = heuristic.map((h) => h.emphasis)
-  }
-
-  const localWords = localWordsBase.map((w, idx) => ({
-    ...w,
-    emphasis: emphasisLevels[idx] as 'normal' | 'emphasis' | 'supersize' | 'box'
-  }))
+  if (!captionsEnabled || !captionStyle || localWords.length === 0) return null
 
   try {
-    const marginVOverride = templateLayout?.subtitles
-      ? Math.round((1 - templateLayout.subtitles.y / 100) * targetHeight)
-      : undefined
+    // Per-archetype override takes precedence over the template layout Y.
+    let marginVOverride: number | undefined
+    if (typeof seg.captionMarginV === 'number') {
+      marginVOverride = seg.captionMarginV
+    } else if (templateLayout?.subtitles) {
+      marginVOverride = Math.round((1 - templateLayout.subtitles.y / 100) * targetHeight)
+    }
 
     // Apply per-segment accent color to caption highlight/emphasis/supersize colors.
-    // This mirrors the full-clip logic in accent-color.feature.ts but operates on a
-    // per-segment basis so segments with different accent colors render correctly.
     // Resolution order: per-segment → user-chosen → edit-style default.
     let effectiveCaptionStyle = captionStyle
     const segAccent = seg.accentColor ?? userAccentColor
@@ -372,6 +412,55 @@ async function generateSegmentCaptions(
     console.warn(`[SegmentRender] Failed to generate captions for segment:`, err)
     return null
   }
+}
+
+/**
+ * Build the per-archetype hero ASS (or custom caption ASS) for a segment.
+ * Returns temp file paths ready to be burned. Caller is responsible for
+ * cleanup via the returned paths.
+ */
+function generateSegmentHeroAss(
+  seg: ResolvedSegment,
+  segDuration: number,
+  localWords: SegmentLocalWord[],
+  editStyle: EditStyle,
+  targetWidth: number,
+  targetHeight: number,
+  userAccentColor?: string
+): { heroAssPath?: string; captionAssPath?: string; skipDefaultCaptions: boolean } {
+  if (!seg.archetype) {
+    return { skipDefaultCaptions: false }
+  }
+
+  const accentColor = seg.accentColor ?? userAccentColor ?? editStyle.accentColor ?? '#7058E3'
+  const primaryColor = editStyle.captionStyle?.primaryColor ?? '#FFFFFF'
+  const bodyFont = editStyle.captionStyle?.fontName ?? 'Geist'
+  // Quote uses the script font.
+  const scriptFont = 'Style Script'
+
+  const result = buildArchetypeHero({
+    archetype: seg.archetype,
+    durationSec: segDuration,
+    frameWidth: targetWidth,
+    frameHeight: targetHeight,
+    words: localWords,
+    heroText: seg.overlayText,
+    accentColor,
+    primaryColor,
+    bodyFont,
+    scriptFont
+  })
+
+  const out: { heroAssPath?: string; captionAssPath?: string; skipDefaultCaptions: boolean } = {
+    skipDefaultCaptions: result.skipDefaultCaptions ?? false
+  }
+  if (result.heroAssContent) {
+    out.heroAssPath = writeHeroAssFile(result.heroAssContent, seg.archetype)
+  }
+  if (result.captionAssContent) {
+    out.captionAssPath = writeHeroAssFile(result.captionAssContent, `cap-${seg.archetype}`)
+  }
+  return out
 }
 
 /**
@@ -419,9 +508,15 @@ function generateSegmentOverlayASS(
 /**
  * Returns true for categories that should use buildSegmentLayout() from
  * segment-layouts.ts instead of the default crop/scale/zoom pipeline.
+ *
+ * `main-video-text` is included so the `quote-lower` (and `quote-center`)
+ * archetype layouts actually draw their large on-screen text boxes via the
+ * layout builder instead of silently falling through to the plain
+ * main-video pipeline.
  */
 function isLayoutCategory(category: SegmentStyleCategory): boolean {
   return (
+    category === 'main-video-text' ||
     category === 'main-video-images' ||
     category === 'fullscreen-image' ||
     category === 'fullscreen-text'
@@ -506,29 +601,63 @@ async function encodeLayoutSegment(
     }
   }
 
-  // Per-segment captions
-  const captionAssPath = await generateSegmentCaptions(
-    seg,
+  // Resolve per-segment words + archetype hero ASS once; reuse for both the
+  // default caption pass and the hero/custom caption pass.
+  const localWords = resolveSegmentLocalWords(
     seg.startTime,
     seg.endTime,
     config.wordTimestamps,
-    config.wordEmphasis,
-    config.captionStyle,
-    config.captionsEnabled,
+    config.wordEmphasis
+  )
+  const heroAss = generateSegmentHeroAss(
+    seg,
+    segDuration,
+    localWords,
+    config.editStyle,
     tw,
     th,
-    config.userAccentColor,
-    config.templateLayout
+    config.userAccentColor
   )
-  if (captionAssPath) {
-    segmentTempFiles.push(captionAssPath)
-    const captionFilter = buildASSFilter(captionAssPath, fontsDir)
-    extraFilters.push(`[${currentLabel}]${captionFilter}[cap]`)
+
+  // Archetype-supplied custom captions (fullscreen-image center-glow,
+  // split-image push-center). Replaces the default caption pass when set.
+  if (heroAss.captionAssPath) {
+    segmentTempFiles.push(heroAss.captionAssPath)
+    const customFilter = buildASSFilter(heroAss.captionAssPath, fontsDir)
+    extraFilters.push(`[${currentLabel}]${customFilter}[cap]`)
     currentLabel = 'cap'
+  } else if (!heroAss.skipDefaultCaptions) {
+    const captionAssPath = await generateSegmentCaptions(
+      seg,
+      localWords,
+      config.captionStyle,
+      config.captionsEnabled,
+      tw,
+      th,
+      config.userAccentColor,
+      config.templateLayout
+    )
+    if (captionAssPath) {
+      segmentTempFiles.push(captionAssPath)
+      const captionFilter = buildASSFilter(captionAssPath, fontsDir)
+      extraFilters.push(`[${currentLabel}]${captionFilter}[cap]`)
+      currentLabel = 'cap'
+    }
   }
 
-  // Overlay text (skip for fullscreen-text — the layout already renders it)
-  if (seg.overlayText && category !== 'fullscreen-text') {
+  // Archetype hero overlay (fullscreen-headline drop-in,
+  // fullscreen-quote Style Script slide-up).
+  if (heroAss.heroAssPath) {
+    segmentTempFiles.push(heroAss.heroAssPath)
+    const heroFilter = buildASSFilter(heroAss.heroAssPath, fontsDir)
+    extraFilters.push(`[${currentLabel}]${heroFilter}[hero]`)
+    currentLabel = 'hero'
+  }
+
+  // Legacy overlay-text drawtext pass — skip for fullscreen-text (hero ASS
+  // now draws the text) and for any archetype that produced a hero overlay.
+  const hasHeroOverlay = !!heroAss.heroAssPath
+  if (seg.overlayText && category !== 'fullscreen-text' && !hasHeroOverlay) {
     const overlayAss = generateSegmentOverlayASS(seg.overlayText, tw, th)
     const overlayAssPath = join(tmpdir(), `batchcontent-seg-overlay-${Date.now()}-${segIndex}.ass`)
     writeFileSync(overlayAssPath, overlayAss, 'utf-8')
@@ -655,16 +784,67 @@ async function encodeSegment(
   // Layout-based categories use buildSegmentLayout() for their filter_complex
   // instead of the default crop/scale/zoom pipeline.
   if (isLayoutCategory(category)) {
-    // Image-based layouts require imagePath — fall back to main-video if missing
+    // Image-based layouts require imagePath. When it's missing, degrade to
+    // `main-video-text-lower` (quote-lower look) so the user still sees a
+    // visual difference instead of an indistinguishable talking-head frame.
     if (
       (category === 'main-video-images' || category === 'fullscreen-image') &&
       (!seg.imagePath || !existsSync(seg.imagePath))
     ) {
+      const originalId = seg.styleVariant.id
+      const originalArchetype = seg.archetype
+      const fallbackVariant = getVariantById('main-video-text-lower')
+      const reason = `No fal.ai image; showing quote-lower instead`
       console.warn(
-        `[SegmentRender] Segment ${segIndex} has layout '${seg.styleVariant.id}' ` +
-        `but imagePath is missing or does not exist — falling back to main-video pipeline`
+        `[SegmentRender] Segment ${segIndex} has layout '${originalId}' ` +
+        `but imagePath is missing or does not exist — degrading to main-video-text-lower. ` +
+        `[SEGMENT_FALLBACK] segmentIndex=${segIndex} archetype=${originalArchetype ?? 'unknown'} reason="${reason}"`
       )
-      // Fall through to main-video pipeline below
+
+      if (fallbackVariant) {
+        // Derive overlayText when none is set: first ~8 words of the
+        // segment's local transcript. Guarantees a non-empty text so the
+        // drawtext pass still renders.
+        let overlayText = seg.overlayText
+        if (!overlayText || !overlayText.trim()) {
+          const localWords = resolveSegmentLocalWords(
+            seg.startTime,
+            seg.endTime,
+            config.wordTimestamps,
+            config.wordEmphasis
+          )
+          if (localWords.length > 0) {
+            overlayText = localWords
+              .slice(0, 8)
+              .map((w) => w.text)
+              .join(' ')
+              .trim()
+          }
+          if (!overlayText) overlayText = '—'
+        }
+
+        const patchedSeg: ResolvedSegment = {
+          ...seg,
+          styleVariant: fallbackVariant,
+          overlayText,
+          fallbackReason: reason
+        }
+
+        config.onFallback?.({
+          segmentIndex: segIndex,
+          archetype: originalArchetype ?? originalId,
+          reason
+        })
+
+        return encodeLayoutSegment(config, patchedSeg, segIndex, segDuration, tempPath, onProgress)
+      }
+
+      // Fallback variant itself missing — fall through to main-video pipeline
+      // rather than crash (preserves previous behaviour as a safety net).
+      console.warn(
+        `[SegmentRender] main-video-text-lower variant not found; ` +
+        `falling through to main-video pipeline`
+      )
     } else {
       return encodeLayoutSegment(config, seg, segIndex, segDuration, tempPath, onProgress)
     }
@@ -760,27 +940,52 @@ async function encodeSegment(
     if (lbFilter) filterChain.push(lbFilter)
   }
 
-  // 5. Per-segment captions
-  const captionAssPath = await generateSegmentCaptions(
-    seg,
+  // 5. Per-segment captions + archetype hero overlay
+  const localWords = resolveSegmentLocalWords(
     seg.startTime,
     seg.endTime,
     config.wordTimestamps,
-    config.wordEmphasis,
-    config.captionStyle,
-    config.captionsEnabled,
+    config.wordEmphasis
+  )
+  const heroAss = generateSegmentHeroAss(
+    seg,
+    segDuration,
+    localWords,
+    config.editStyle,
     tw,
     th,
-    config.userAccentColor,
-    config.templateLayout
+    config.userAccentColor
   )
-  if (captionAssPath) {
-    segmentTempFiles.push(captionAssPath)
-    filterChain.push(buildASSFilter(captionAssPath, fontsDir))
+
+  if (heroAss.captionAssPath) {
+    segmentTempFiles.push(heroAss.captionAssPath)
+    filterChain.push(buildASSFilter(heroAss.captionAssPath, fontsDir))
+  } else if (!heroAss.skipDefaultCaptions) {
+    const captionAssPath = await generateSegmentCaptions(
+      seg,
+      localWords,
+      config.captionStyle,
+      config.captionsEnabled,
+      tw,
+      th,
+      config.userAccentColor,
+      config.templateLayout
+    )
+    if (captionAssPath) {
+      segmentTempFiles.push(captionAssPath)
+      filterChain.push(buildASSFilter(captionAssPath, fontsDir))
+    }
   }
 
-  // 6. Overlay text for text-based layouts
-  if (seg.overlayText) {
+  if (heroAss.heroAssPath) {
+    segmentTempFiles.push(heroAss.heroAssPath)
+    filterChain.push(buildASSFilter(heroAss.heroAssPath, fontsDir))
+  }
+
+  // 6. Legacy overlay-text drawtext pass — suppressed when a hero overlay
+  // already rendered the archetype's hero text.
+  const hasHeroOverlay = !!heroAss.heroAssPath
+  if (seg.overlayText && !hasHeroOverlay) {
     const overlayAss = generateSegmentOverlayASS(seg.overlayText, tw, th)
     const overlayAssPath = join(tmpdir(), `batchcontent-seg-overlay-${Date.now()}-${segIndex}.ass`)
     writeFileSync(overlayAssPath, overlayAss, 'utf-8')
@@ -1374,7 +1579,7 @@ export async function renderSegmentedClip(
   const hasSfxTransitions = allSfxPlacements.length > 0
 
   // Progress allocation: 80% segments, 5% concat, 5% SFX mix (if any), 10% post-concat
-  const hasPostConcat = !!(config.progressBarConfig?.enabled || config.brandKit?.logoPath || hasSfxTransitions)
+  const hasPostConcat = !!(config.brandKit?.logoPath || hasSfxTransitions)
   const segmentWeight = hasPostConcat ? 75 : 85
   const concatBase = segmentWeight
   const postConcatBase = concatBase + 5
@@ -1453,21 +1658,6 @@ export async function renderSegmentedClip(
         console.warn(`[SegmentRender] SFX mix failed, skipping:`, err)
       }
       onProgress(postConcatBase + 5)
-    }
-
-    // Progress bar overlay
-    if (config.progressBarConfig?.enabled) {
-      const totalDuration = config.segments.reduce((sum, s) => sum + (s.endTime - s.startTime), 0)
-      const barFilter = buildProgressBarFilter(totalDuration, config.progressBarConfig, tw, th)
-      if (barFilter) {
-        console.log(`[SegmentRender] Applying progress bar post-concat pass`)
-        const barTempPath = join(tempDir, `batchcontent-seg-bar-${Date.now()}.mp4`)
-        if (currentPath !== concatOutputPath) tempFiles.push(currentPath)
-        tempFiles.push(barTempPath)
-        await applyFilterPass(currentPath, barTempPath, barFilter)
-        currentPath = barTempPath
-        onProgress(92)
-      }
     }
 
     // Brand logo overlay

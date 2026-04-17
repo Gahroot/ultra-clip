@@ -7,13 +7,12 @@ import type { ZoomSettings, EmphasisKeyframe } from '../auto-zoom'
 import type { OutputAspectRatio } from '../aspect-ratios'
 import type { HookTitleConfig } from '../hook-title'
 import type { RehookConfig, OverlayVisualSettings } from '../overlays/rehook'
-import type { ProgressBarConfig } from '../overlays/progress-bar'
 import type { ClipDescription } from '../ai/description-generator'
 import type { BRollPlacement, BRollDisplayMode, BRollTransition } from '../broll-placement'
 import type { FillerDetectionSettings } from '../filler-detection'
 import type { CaptionStyleInput } from '../captions'
 import type { SegmentRole } from '../ai/clip-stitcher'
-import type { EmphasizedWord, ShotStyleConfig, ColorGradeConfig, ShotTransitionConfig } from '@shared/types'
+import type { EmphasizedWord, ShotStyleConfig, ColorGradeConfig, ShotTransitionConfig, SegmentStyleVariant } from '@shared/types'
 
 // Re-export pass-through types so consumers can import from one place
 export type {
@@ -25,7 +24,6 @@ export type {
   HookTitleConfig,
   RehookConfig,
   OverlayVisualSettings,
-  ProgressBarConfig,
   ClipDescription,
   BRollPlacement,
   BRollDisplayMode,
@@ -107,11 +105,6 @@ export interface RenderClipJob {
    */
   rehookAppearTime?: number
   /**
-   * Progress bar overlay config injected from global RenderBatchOptions.progressBarOverlay.
-   * Set by startBatchRender when progressBarOverlay.enabled is true.
-   */
-  progressBarConfig?: ProgressBarConfig
-  /**
    * Pre-generated description for this clip. When set, a .txt file is written
    * alongside the rendered .mp4 with platform-ready descriptions and hashtags.
    */
@@ -153,7 +146,6 @@ export interface RenderClipJob {
   clipOverrides?: {
     enableCaptions?: boolean
     enableHookTitle?: boolean
-    enableProgressBar?: boolean
     enableAutoZoom?: boolean
     enableSoundDesign?: boolean
     enableBrandKit?: boolean
@@ -173,9 +165,12 @@ export interface RenderClipJob {
   }
   /**
    * When present, this job represents a stitched (multi-segment) clip.
-   * The render pipeline routes these to renderStitchedClip() instead of
-   * the normal single-segment render path. startTime/endTime are still
-   * set (to the first segment) for compatibility but are ignored.
+   * The pipeline assembles the segments into a single MP4 (per-segment
+   * crop/layout + concat) then runs the regular feature pipeline on the
+   * assembled output. Stitched clips go through the exact same edit
+   * pipeline as regular clips — captions, hook title, rehook, color grade,
+   * sound design, etc. Source-time wordTimestamps/wordEmphasis are remapped
+   * to the concatenated timeline during assembly.
    */
   stitchedSegments?: RenderStitchedClipSegment[]
   /**
@@ -309,8 +304,8 @@ export interface SegmentedSegment {
   /** Segment time range in source video (absolute seconds) */
   startTime: number
   endTime: number
-  /** ID of the SegmentStyleVariant to apply (e.g. 'main-video-normal') */
-  styleVariantId: string
+  /** Archetype key — resolved against the active edit style's template set at render time. */
+  archetype: import('@shared/types').Archetype
   /** Zoom style for this segment */
   zoomStyle: 'none' | 'drift' | 'snap' | 'word-pulse' | 'zoom-out'
   /** Zoom intensity multiplier (1.0 = no zoom) */
@@ -334,6 +329,26 @@ export interface RenderStitchedClipSegment {
   endTime: number
   overlayText?: string
   role?: SegmentRole
+  /**
+   * Resolved style variant for this segment, produced by the edit-styles
+   * template resolver. When present, the stitched render path uses
+   * buildSegmentLayout() to build a per-segment filter_complex instead of
+   * the legacy raw crop+scale. When absent, the legacy path runs.
+   */
+  styleVariant?: SegmentStyleVariant
+  /** Zoom treatment resolved from the template + edit style. */
+  zoom?: {
+    style: 'none' | 'drift' | 'snap' | 'word-pulse' | 'zoom-out'
+    intensity: number
+  }
+  /** Optional contextual image path for image-based layouts. */
+  imagePath?: string
+  /** Per-segment accent color override. */
+  accentColor?: string
+  /** Per-segment caption background opacity override. */
+  captionBgOpacity?: number
+  /** Per-segment face crop override. */
+  cropRect?: { x: number; y: number; width: number; height: number }
 }
 
 export interface RenderStitchedClipJob {
@@ -351,8 +366,6 @@ export interface RenderStitchedClipJob {
   rehookText?: string
   /** Appear time for the re-hook overlay in seconds (absolute, relative to stitched clip start). */
   rehookAppearTime?: number
-  /** Progress bar overlay config from batch options. */
-  progressBarConfig?: ProgressBarConfig
   /** Brand kit settings. */
   brandKit?: BrandKitRenderOptions
   /** Caption style for generating per-segment captions. */
@@ -367,6 +380,12 @@ export interface RenderStitchedClipJob {
   wordEmphasisOverride?: EmphasizedWord[]
   /** Template layout positions for on-screen text elements (percentage-based). */
   templateLayout?: { titleText: { x: number; y: number }; subtitles: { x: number; y: number }; rehookText: { x: number; y: number } }
+  /**
+   * Active edit style id — used by the stitched render path to look up
+   * text animation / color grade defaults when building per-segment
+   * filter_complex via buildSegmentLayout().
+   */
+  stylePresetId?: string
 }
 
 export interface RenderBatchOptions {
@@ -390,8 +409,6 @@ export interface RenderBatchOptions {
   hookTitleOverlay?: HookTitleConfig
   /** Re-hook / pattern interrupt overlay — draws mid-clip attention-reset text */
   rehookOverlay?: RehookConfig
-  /** Progress bar overlay — animated bar that fills left→right over the clip duration */
-  progressBarOverlay?: ProgressBarConfig
   /** Filler & silence removal settings — detects and removes fillers/silences/repeats */
   fillerRemoval?: FillerDetectionSettings & { enabled: boolean }
   /** Caption style for re-generating captions after filler removal */

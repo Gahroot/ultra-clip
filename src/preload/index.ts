@@ -87,6 +87,7 @@ const api = {
   onRenderClipError: listen(S.RENDER_CLIP_ERROR),
   onRenderBatchDone: listen(S.RENDER_BATCH_DONE),
   onRenderCancelled: listen(S.RENDER_CANCELLED),
+  onSegmentFallback: listen(S.SEGMENT_FALLBACK),
   renderPreview: invoke(I.RENDER_PREVIEW),
   cleanupPreview: invoke(I.RENDER_CLEANUP_PREVIEW),
 
@@ -152,13 +153,13 @@ const api = {
   assignSegmentStyles: invoke(I.SEGMENTS_ASSIGN_STYLES),
   generateSegmentImages: invoke(I.SEGMENTS_GENERATE_IMAGES),
   updateSegmentCaption: invoke(I.SEGMENTS_UPDATE_CAPTION),
-  updateSegmentStyle: invoke(I.SEGMENTS_UPDATE_STYLE),
-  getSegmentStyleVariants: invoke(I.SEGMENTS_GET_STYLE_VARIANTS),
-  getVariantsForCategory: invoke(I.SEGMENTS_GET_VARIANTS_FOR_CATEGORY),
 
   // Edit Styles
   getEditStyles: invoke(I.EDIT_STYLES_GET_ALL),
   getEditStyleById: invoke(I.EDIT_STYLES_GET_BY_ID),
+  getEditStyleTemplates: invoke(I.EDIT_STYLES_GET_TEMPLATES),
+  resolveEditStyleTemplate: invoke(I.EDIT_STYLES_RESOLVE_TEMPLATE),
+  getArchetypes: invoke(I.ARCHETYPES_GET_ALL),
 
   // Shot Segmentation
   segmentClipIntoShots: invoke(I.SHOT_SEGMENT_CLIP),

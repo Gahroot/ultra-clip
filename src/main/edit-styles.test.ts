@@ -12,8 +12,8 @@ import { SEGMENT_STYLE_VARIANTS, getVariantById } from './segment-styles'
 // ---------------------------------------------------------------------------
 
 describe('EDIT_STYLES', () => {
-  it('defines exactly 15 styles', () => {
-    expect(EDIT_STYLES).toHaveLength(15)
+  it('defines exactly 16 styles', () => {
+    expect(EDIT_STYLES).toHaveLength(16)
   })
 
   it('all styles have unique ids', () => {
@@ -101,9 +101,9 @@ describe('getEditStylesByEnergy', () => {
     expect(medium.every((s) => s.energy === 'medium')).toBe(true)
   })
 
-  it('returns 5 high-energy styles', () => {
+  it('returns 6 high-energy styles', () => {
     const high = getEditStylesByEnergy('high')
-    expect(high).toHaveLength(5)
+    expect(high).toHaveLength(6)
     expect(high.every((s) => s.energy === 'high')).toBe(true)
   })
 
@@ -256,7 +256,7 @@ describe('DEFAULT_EDIT_STYLE_ID', () => {
     expect(style).toBeDefined()
   })
 
-  it('is cinematic', () => {
-    expect(DEFAULT_EDIT_STYLE_ID).toBe('cinematic')
+  it('is prestyj', () => {
+    expect(DEFAULT_EDIT_STYLE_ID).toBe('prestyj')
   })
 })

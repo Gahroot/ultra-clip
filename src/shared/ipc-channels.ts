@@ -49,6 +49,7 @@ export const InvokeChannels = {
   AI_GENERATE_BATCH_EDIT_PLANS: 'ai:generateBatchEditPlans',
   AI_EDIT_PLAN_CACHE_CLEAR: 'ai:editPlanCacheClear',
   AI_EDIT_PLAN_CACHE_SIZE: 'ai:editPlanCacheSize',
+  AI_GENERATE_EDIT_PLAN_SEGMENTS: 'ai:generateEditPlanSegments',
 
   // Face detection
   FACE_DETECT_CROPS: 'face:detectCrops',
@@ -107,14 +108,12 @@ export const InvokeChannels = {
   OVERLAY_BUILD_EMOJI_BURST_FILTERS: 'overlay:buildEmojiBurstFilters',
   OVERLAY_GENERATE_FAKE_COMMENT: 'overlay:generateFakeComment',
   OVERLAY_BUILD_FAKE_COMMENT_FILTER: 'overlay:buildFakeCommentFilter',
+  OVERLAY_BUILD_VELOCITY: 'overlay:buildVelocity',
 
   // Segment Editor
   SEGMENTS_SPLIT: 'segments:split',
   SEGMENTS_ASSIGN_STYLES: 'segments:assignStyles',
   SEGMENTS_UPDATE_CAPTION: 'segments:updateCaption',
-  SEGMENTS_UPDATE_STYLE: 'segments:updateStyle',
-  SEGMENTS_GET_STYLE_VARIANTS: 'segments:getStyleVariants',
-  SEGMENTS_GET_VARIANTS_FOR_CATEGORY: 'segments:getVariantsForCategory',
 
   // Segment Images — generate contextual images for segments needing visuals
   SEGMENTS_GENERATE_IMAGES: 'segments:generateImages',
@@ -125,6 +124,9 @@ export const InvokeChannels = {
   // Edit Styles
   EDIT_STYLES_GET_ALL: 'editStyles:getAll',
   EDIT_STYLES_GET_BY_ID: 'editStyles:getById',
+  EDIT_STYLES_GET_TEMPLATES: 'editStyles:getTemplates',
+  EDIT_STYLES_RESOLVE_TEMPLATE: 'editStyles:resolveTemplate',
+  ARCHETYPES_GET_ALL: 'archetypes:getAll',
 
   // Filler Detection
   FILLER_DETECT: 'filler:detect',
@@ -208,6 +210,7 @@ export const SendChannels = {
   RENDER_BATCH_DONE: 'render:batchDone',
   RENDER_CANCELLED: 'render:cancelled',
   RENDER_CLIP_PREPARE: 'render:clipPrepare',
+  SEGMENT_FALLBACK: 'render:segmentFallback',
   STITCH_PROGRESS: 'stitch:progress',
   PYTHON_SETUP_PROGRESS: 'python:setupProgress',
   PYTHON_SETUP_DONE: 'python:setupDone',
@@ -293,6 +296,12 @@ export interface IpcSendChannelMap {
     clipId: string
     message: string
     percent: number
+  }
+  [SendChannels.SEGMENT_FALLBACK]: {
+    clipId: string
+    segmentIndex: number
+    archetype: string
+    reason: string
   }
   [SendChannels.STITCH_PROGRESS]: { stage: string; message: string }
   [SendChannels.PYTHON_SETUP_PROGRESS]: {

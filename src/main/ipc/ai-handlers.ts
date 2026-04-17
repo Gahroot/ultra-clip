@@ -437,12 +437,16 @@ export function registerAiHandlers(): void {
       const editStyle = EDIT_STYLES.find((s) => s.id === opts.editStyleId)
       if (!editStyle) throw new Error(`Edit style "${opts.editStyleId}" not found`)
 
-      // Step 1: Assign segment styles via AI (or deterministic fallback)
+      // Step 1: Assign segment styles via AI (or deterministic fallback).
+      // generateSegmentImages uses Gemini image generation, so the presence
+      // of a Gemini key also signals that image-based archetypes can be
+      // realized in this handler's pipeline.
       console.log(`[AI Edit Plan] Clip ${opts.clipId}: assigning styles for ${opts.segments.length} segment(s)`)
       const styledSegments = await assignSegmentStyles(
         opts.segments,
         editStyle,
-        opts.geminiApiKey
+        opts.geminiApiKey,
+        Boolean(opts.geminiApiKey)
       )
 
       // Step 2: Generate images for image-needing segments

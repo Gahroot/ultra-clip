@@ -15,8 +15,6 @@ import type {
   ZoomMode,
   HookTitleStyle,
   RehookStyle,
-  ProgressBarPosition,
-  ProgressBarStyle,
   LogoPosition,
   OutputAspectRatio,
   PythonSetupState,
@@ -89,12 +87,6 @@ export interface SettingsSlice {
   setRehookStyle: (style: RehookStyle) => void
   setRehookDisplayDuration: (seconds: number) => void
   setRehookPositionFraction: (fraction: number) => void
-  setProgressBarEnabled: (enabled: boolean) => void
-  setProgressBarPosition: (position: ProgressBarPosition) => void
-  setProgressBarHeight: (height: number) => void
-  setProgressBarColor: (color: string) => void
-  setProgressBarOpacity: (opacity: number) => void
-  setProgressBarStyle: (style: ProgressBarStyle) => void
   setBrandKitEnabled: (enabled: boolean) => void
   setBrandKitLogoPath: (path: string | null) => void
   setBrandKitLogoPosition: (position: LogoPosition) => void
@@ -124,7 +116,7 @@ export interface SettingsSlice {
   setFilenameTemplate: (template: string) => void
   setRenderConcurrency: (concurrency: number) => void
   resetSettings: () => void
-  resetSection: (section: 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'progressBar' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality') => void
+  resetSection: (section: 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality') => void
 
   // Processing config
   setProcessingConfig: (config: Partial<ProcessingConfig>) => void
@@ -303,26 +295,6 @@ export const createSettingsSlice: StateCreator<
   setRehookPositionFraction: (positionFraction) =>
     set((state) => { state.settings.rehookOverlay.positionFraction = positionFraction }),
 
-  // --- Progress Bar Overlay ---
-
-  setProgressBarEnabled: (enabled) =>
-    set((state) => { state.settings.progressBarOverlay.enabled = enabled }),
-
-  setProgressBarPosition: (position) =>
-    set((state) => { state.settings.progressBarOverlay.position = position }),
-
-  setProgressBarHeight: (height) =>
-    set((state) => { state.settings.progressBarOverlay.height = height }),
-
-  setProgressBarColor: (color) =>
-    set((state) => { state.settings.progressBarOverlay.color = color }),
-
-  setProgressBarOpacity: (opacity) =>
-    set((state) => { state.settings.progressBarOverlay.opacity = opacity }),
-
-  setProgressBarStyle: (style) =>
-    set((state) => { state.settings.progressBarOverlay.style = style }),
-
   // --- Brand Kit ---
 
   setBrandKitEnabled: (enabled) =>
@@ -461,9 +433,6 @@ export const createSettingsSlice: StateCreator<
         case 'rehook':
           state.settings.rehookOverlay = DEFAULT_SETTINGS.rehookOverlay
           break
-        case 'progressBar':
-          state.settings.progressBarOverlay = DEFAULT_SETTINGS.progressBarOverlay
-          break
         case 'fillerRemoval':
           state.settings.fillerRemoval = DEFAULT_SETTINGS.fillerRemoval
           break
@@ -558,7 +527,6 @@ export const createSettingsSlice: StateCreator<
       brandKit: 'Brand Kit',
       hookTitleOverlay: 'Hook Title',
       rehookOverlay: 'Re-hook Overlay',
-      progressBarOverlay: 'Progress Bar',
       broll: 'B-Roll',
       fillerRemoval: 'Filler Removal',
       renderQuality: 'Render Quality',

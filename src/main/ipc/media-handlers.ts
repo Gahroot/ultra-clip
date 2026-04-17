@@ -28,8 +28,17 @@ import type { BRollSettings as BRollSettingsConfig, BRollDisplayMode, BRollTrans
 import { checkPythonSetup, runFullSetup } from '../python-setup'
 import { detectFillers } from '../filler-detection'
 import { splitIntoSegments } from '../segments'
-import { SEGMENT_STYLE_VARIANTS, getVariantsForCategory } from '../segment-styles'
-import { EDIT_STYLES, getEditStyleById } from '../edit-styles'
+import {
+  EDIT_STYLES,
+  getEditStyleById,
+  getTemplatesForEditStyle,
+  resolveTemplate
+} from '../edit-styles'
+import {
+  ARCHETYPE_KEYS,
+  ARCHETYPE_TO_CATEGORY,
+  type Archetype
+} from '../edit-styles/shared/archetypes'
 import { assignSegmentStyles } from '../ai/segment-styler'
 import { generateSegmentImages } from '../ai/segment-images'
 import type { WordTimestamp, VideoSegment, SegmentStyleCategory } from '@shared/types'
@@ -304,32 +313,42 @@ export function registerMediaHandlers(): void {
       _event,
       segments: VideoSegment[],
       styleId: string,
-      apiKey?: string
+      apiKey?: string,
+      hasFalKey?: boolean
     ) => {
       const editStyle = getEditStyleById(styleId)
       if (!editStyle) {
         throw new Error(`Unknown edit style: ${styleId}`)
       }
-      return assignSegmentStyles(segments, editStyle, apiKey ?? '')
+      return assignSegmentStyles(segments, editStyle, apiKey ?? '', Boolean(hasFalKey))
     })
   )
 
-  // Segment Style Variants — return all defined layout variants
+  // Edit Style Templates — return the 8 curated templates for a given edit style
   ipcMain.handle(
-    Ch.Invoke.SEGMENTS_GET_STYLE_VARIANTS,
-    wrapHandler(Ch.Invoke.SEGMENTS_GET_STYLE_VARIANTS, () => {
-      return SEGMENT_STYLE_VARIANTS
+    Ch.Invoke.EDIT_STYLES_GET_TEMPLATES,
+    wrapHandler(Ch.Invoke.EDIT_STYLES_GET_TEMPLATES, (_event, editStyleId: string) => {
+      return getTemplatesForEditStyle(editStyleId)
     })
   )
 
-  // Segment Style Variants — return variants filtered by category
+  // Edit Style Templates — resolve a single (archetype × editStyle) binding
   ipcMain.handle(
-    Ch.Invoke.SEGMENTS_GET_VARIANTS_FOR_CATEGORY,
-    wrapHandler(Ch.Invoke.SEGMENTS_GET_VARIANTS_FOR_CATEGORY, (
+    Ch.Invoke.EDIT_STYLES_RESOLVE_TEMPLATE,
+    wrapHandler(Ch.Invoke.EDIT_STYLES_RESOLVE_TEMPLATE, (
       _event,
-      category: SegmentStyleCategory
+      archetype: Archetype,
+      editStyleId: string
     ) => {
-      return getVariantsForCategory(category)
+      return resolveTemplate(archetype, editStyleId)
+    })
+  )
+
+  // Archetypes — return all known archetype keys and their category map
+  ipcMain.handle(
+    Ch.Invoke.ARCHETYPES_GET_ALL,
+    wrapHandler(Ch.Invoke.ARCHETYPES_GET_ALL, () => {
+      return { keys: ARCHETYPE_KEYS, categories: ARCHETYPE_TO_CATEGORY }
     })
   )
 

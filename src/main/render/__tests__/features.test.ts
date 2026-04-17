@@ -32,12 +32,6 @@ vi.mock('../../auto-zoom', () => ({
   generateZoomFilter: vi.fn(() => 'crop=trunc(iw*1.1):trunc(ih*1.1):0:0,scale=1080:1920')
 }))
 
-vi.mock('../../overlays/progress-bar', () => ({
-  buildProgressBarFilter: vi.fn(
-    () => "color=c=0xffffff@0.90:s=1080x6:d=30.000:r=30[_pbs0];[_pbs0]crop=w='(1+iw*(t/30.000+1-abs(t/30.000-1))/2+abs(1-iw*(t/30.000+1-abs(t/30.000-1))/2))/2':h=ih:x=0:y=0[_pbc0];[0:v][_pbc0]overlay=x=0:y=1914:shortest=1[outv]"
-  )
-}))
-
 vi.mock('../../overlays/rehook', () => ({
   getDefaultRehookPhrase: vi.fn(() => 'Wait for it...')
 }))
@@ -78,7 +72,6 @@ vi.mock('../../aspect-ratios', () => ({
 import { createCaptionsFeature } from '../features/captions.feature'
 import { createHookTitleFeature } from '../features/hook-title.feature'
 import { createRehookFeature } from '../features/rehook.feature'
-import { progressBarFeature } from '../features/progress-bar.feature'
 import { autoZoomFeature } from '../features/auto-zoom.feature'
 import { createFillerRemovalFeature } from '../features/filler-removal.feature'
 import { brandKitFeature } from '../features/brand-kit.feature'
@@ -434,103 +427,6 @@ describe('RehookFeature', () => {
       })
     )
     expect(job.rehookText).toBe('Wait for it...')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// ProgressBarFeature
-// ---------------------------------------------------------------------------
-
-describe('ProgressBarFeature', () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it('skips when no progress bar config', async () => {
-    const result = await progressBarFeature.prepare!(makeJob(), makeOptions())
-    expect(result.modified).toBe(false)
-  })
-
-  it('skips when progress bar not enabled', async () => {
-    const result = await progressBarFeature.prepare!(
-      makeJob(),
-      makeOptions({
-        progressBarOverlay: {
-          enabled: false,
-          position: 'bottom',
-          height: 6,
-          color: '#FFFFFF',
-          opacity: 0.8,
-          style: 'solid'
-        }
-      })
-    )
-    expect(result.modified).toBe(false)
-  })
-
-  it('injects config when enabled', async () => {
-    const job = makeJob()
-    const result = await progressBarFeature.prepare!(
-      job,
-      makeOptions({
-        progressBarOverlay: {
-          enabled: true,
-          position: 'bottom',
-          height: 6,
-          color: '#FFFFFF',
-          opacity: 0.8,
-          style: 'solid'
-        }
-      })
-    )
-    expect(result.modified).toBe(true)
-    expect(job.progressBarConfig).toBeDefined()
-  })
-
-  it('skips when per-clip override disables', async () => {
-    const job = makeJob({ clipOverrides: { enableProgressBar: false } })
-    const result = await progressBarFeature.prepare!(
-      job,
-      makeOptions({
-        progressBarOverlay: {
-          enabled: true,
-          position: 'bottom',
-          height: 6,
-          color: '#FFFFFF',
-          opacity: 0.8,
-          style: 'solid'
-        }
-      })
-    )
-    expect(result.modified).toBe(false)
-  })
-
-  it('overlayPass returns filter_complex with overlay when config set', () => {
-    const job = makeJob()
-    job.progressBarConfig = {
-      enabled: true,
-      position: 'bottom',
-      height: 6,
-      color: '#FFFFFF',
-      opacity: 0.8,
-      style: 'solid'
-    }
-    const result = progressBarFeature.overlayPass!(job, {
-      clipDuration: 30,
-      targetWidth: 1080,
-      targetHeight: 1920
-    })
-    expect(result).not.toBeNull()
-    expect(result!.name).toBe('progress-bar')
-    expect(result!.filter).toContain('overlay')
-    expect(result!.filterComplex).toBe(true)
-  })
-
-  it('overlayPass returns null when no config', () => {
-    const result = progressBarFeature.overlayPass!(makeJob(), {
-      clipDuration: 30,
-      targetWidth: 1080,
-      targetHeight: 1920
-    })
-    expect(result).toBeNull()
   })
 })
 
@@ -928,21 +824,6 @@ describe('AccentColorFeature', () => {
     expect(options.hookTitleOverlay!.textColor).toBe('#2563EB')
     // outlineColor should be untouched
     expect(options.hookTitleOverlay!.outlineColor).toBe('#000000')
-  })
-
-  it('overrides progress bar color', async () => {
-    const job = makeJob({ clipOverrides: { accentColor: '#C8FF00' } })
-    const options = makeOptions({
-      progressBarOverlay: {
-        enabled: true, position: 'bottom' as any, height: 4,
-        style: 'solid' as any, color: '#FFFFFF', opacity: 0.9
-      }
-    })
-    const result = await accentColorFeature.prepare!(job, options)
-    expect(result.modified).toBe(true)
-    expect(options.progressBarOverlay!.color).toBe('#C8FF00')
-    // opacity should be untouched
-    expect(options.progressBarOverlay!.opacity).toBe(0.9)
   })
 
   it('overrides per-shot caption style colors', async () => {

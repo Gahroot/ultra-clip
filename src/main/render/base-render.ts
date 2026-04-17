@@ -13,7 +13,7 @@
 import { existsSync, unlinkSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import type { FfmpegCommand } from 'fluent-ffmpeg'
+import type { FfmpegCommand } from '../ffmpeg'
 import {
   ffmpeg,
   getEncoder,

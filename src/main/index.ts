@@ -1,5 +1,6 @@
 import { app, shell, BrowserWindow, dialog, clipboard } from 'electron'
 import { join } from 'path'
+import { inspect } from 'util'
 import { initLogger, closeLogger, log } from './logger'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { setUsageWebContents } from './ai-usage'
@@ -34,7 +35,16 @@ process.on('uncaughtException', (error) => {
 })
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[Main] Unhandled rejection:', reason)
+  const r = reason as { message?: unknown; stack?: unknown; code?: unknown; errno?: unknown; url?: unknown } | null
+  const parts = [
+    `message=${r?.message ?? '<none>'}`,
+    `code=${r?.code ?? '<none>'}`,
+    `errno=${r?.errno ?? '<none>'}`,
+    `url=${r?.url ?? '<none>'}`,
+    `inspect=${inspect(reason, { depth: 4, breakLength: 200 })}`,
+    `stack=${r?.stack ?? '<none>'}`
+  ]
+  console.error('[Main] Unhandled rejection:\n  ' + parts.join('\n  '))
 })
 
 function createWindow(): BrowserWindow {
@@ -53,26 +63,56 @@ function createWindow(): BrowserWindow {
   })
 
   mainWindow.on('ready-to-show', () => {
+    console.log('[Main] ready-to-show fired — showing window')
     mainWindow.show()
   })
 
-  // Allow F12 / Ctrl+Shift+I to open DevTools in development only
-  if (is.dev) {
-    mainWindow.webContents.on('before-input-event', (_event, input) => {
-      if (
-        input.key === 'F12' ||
-        (input.control && input.shift && input.key.toLowerCase() === 'i')
-      ) {
-        mainWindow.webContents.toggleDevTools()
-      }
-    })
-  }
-
-  // Forward renderer console messages to main process log
-  mainWindow.webContents.on('console-message', (_event, level, message) => {
-    if (level >= 2) { // warnings and errors only
-      console.warn(`[Renderer] ${message}`)
+  // DIAG: force-show fallback in case ready-to-show never fires
+  setTimeout(() => {
+    if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      console.warn('[Main] DIAG: ready-to-show did not fire within 5s — force-showing window')
+      mainWindow.show()
+      mainWindow.webContents.openDevTools({ mode: 'detach' })
     }
+  }, 5000)
+
+  // Allow F12 / Ctrl+Shift+I to open DevTools in any build (diagnostics)
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (
+      input.key === 'F12' ||
+      (input.control && input.shift && input.key.toLowerCase() === 'i')
+    ) {
+      mainWindow.webContents.toggleDevTools()
+    }
+  })
+
+  // Forward ALL renderer console messages to main process log (diagnostics)
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const levelName = ['verbose', 'info', 'warn', 'error'][level] ?? `lvl${level}`
+    console.log(`[Renderer:${levelName}] ${message}  (${sourceId}:${line})`)
+  })
+
+  // DIAG: surface every possible failure mode for window load
+  mainWindow.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    console.error(`[Main] did-fail-load: code=${errorCode} desc=${errorDescription} url=${validatedURL} mainFrame=${isMainFrame}`)
+  })
+  mainWindow.webContents.on('did-fail-provisional-load', (_e, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Main] did-fail-provisional-load: code=${errorCode} desc=${errorDescription} url=${validatedURL}`)
+  })
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('[Main] did-finish-load')
+  })
+  mainWindow.webContents.on('dom-ready', () => {
+    console.log('[Main] dom-ready')
+  })
+  mainWindow.webContents.on('preload-error', (_e, preloadPath, error) => {
+    console.error(`[Main] preload-error: path=${preloadPath} err=${error?.stack || error?.message || error}`)
+  })
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    console.error(`[Main] render-process-gone: ${inspect(details)}`)
+  })
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('[Main] webContents unresponsive')
   })
 
   // Register webContents for AI token usage reporting
@@ -83,11 +123,16 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  const rendererIndex = join(__dirname, '../renderer/index.html')
+  console.log(`[Main] Loading renderer from: ${rendererIndex}`)
+  const loadPromise = is.dev && process.env['ELECTRON_RENDERER_URL']
+    ? mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    : mainWindow.loadFile(rendererIndex)
+  loadPromise
+    .then(() => console.log('[Main] loadFile resolved'))
+    .catch((err) => {
+      console.error(`[Main] loadFile REJECTED: ${inspect(err, { depth: 4 })}`)
+    })
 
   registerSettingsWindowHandlers(mainWindow)
 
@@ -110,17 +155,30 @@ app.whenReady().then(() => {
   // Check Python environment availability
   isPythonAvailable().then((ok) => {
     console.log(`[Python] Environment available: ${ok}`)
+  }).catch((err) => {
+    log('error', 'Python', `Failed to check Python availability: ${err}`)
   })
 
-  // Register all IPC handlers (domain-specific modules)
-  registerFfmpegHandlers()
-  registerAiHandlers()
-  registerRenderHandlers()
-  registerProjectHandlers()
-  registerSystemHandlers()
-  registerMediaHandlers()
-  registerExportHandlers()
-  registerSecretsHandlers()
+  // Register all IPC handlers (domain-specific modules).
+  // Each registration is wrapped so one broken handler cannot prevent window creation.
+  const handlerModules = [
+    ['ffmpeg', registerFfmpegHandlers],
+    ['ai', registerAiHandlers],
+    ['render', registerRenderHandlers],
+    ['project', registerProjectHandlers],
+    ['system', registerSystemHandlers],
+    ['media', registerMediaHandlers],
+    ['export', registerExportHandlers],
+    ['secrets', registerSecretsHandlers],
+  ] as const
+  for (const [name, register] of handlerModules) {
+    try {
+      register()
+    } catch (err) {
+      log('error', 'IPC', `Failed to register ${name} handlers: ${err instanceof Error ? err.message : err}`)
+      console.error(`[IPC] Failed to register ${name} handlers:`, err)
+    }
+  }
 
   createWindow()
 

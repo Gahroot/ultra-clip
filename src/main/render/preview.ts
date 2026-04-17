@@ -18,9 +18,11 @@ import { generateZoomFilter } from '../auto-zoom'
 import { buildVideoFilter, renderClip } from './base-render'
 import { createCaptionsFeature } from './features/captions.feature'
 import { createHookTitleFeature } from './features/hook-title.feature'
-import { progressBarFeature } from './features/progress-bar.feature'
+import { renderSegmentedClip, type SegmentRenderConfig, type ResolvedSegment } from './segment-render'
+import { getEditStyleById, resolveTemplate, DEFAULT_EDIT_STYLE_ID } from './../edit-styles/index'
 import type { RenderFeature, FilterContext, OverlayContext, OverlayPassResult } from './features/feature'
-import type { RenderClipJob, RenderBatchOptions, CaptionStyleInput, HookTitleConfig, ProgressBarConfig, ZoomSettings } from './types'
+import type { RenderClipJob, RenderBatchOptions, CaptionStyleInput, HookTitleConfig, ZoomSettings } from './types'
+import type { VideoSegment, EmphasizedWord } from '@shared/types'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -62,8 +64,6 @@ export interface PreviewRenderConfig {
   captionStyle?: CaptionStyleInput
   /** Hook title overlay config — applied when enabled=true AND hookTitleText is set */
   hookTitleOverlay?: HookTitleConfig
-  /** Progress bar overlay config — applied when enabled=true */
-  progressBarOverlay?: ProgressBarConfig
   /** Auto-zoom (Ken Burns) — applied when enabled=true */
   autoZoom?: ZoomSettings
   /**
@@ -82,6 +82,92 @@ export interface PreviewRenderConfig {
     logoScale: number
     logoOpacity: number
   }
+  /**
+   * Per-segment render plan. When present and non-empty, the preview renders
+   * each segment with its own archetype layout/zoom/caption treatment via
+   * renderSegmentedClip(), matching the batch render's segmented path.
+   * When absent, the preview falls back to the single-clip path.
+   */
+  segments?: VideoSegment[]
+  /**
+   * Active edit style id — used to resolve per-segment templates. Only
+   * consumed when `segments` is non-empty. Falls back to DEFAULT_EDIT_STYLE_ID.
+   */
+  stylePresetId?: string
+  /**
+   * Optional pre-computed word emphasis passed through to segmented preview.
+   */
+  wordEmphasis?: EmphasizedWord[]
+}
+
+// ---------------------------------------------------------------------------
+// Segmented preview render
+// ---------------------------------------------------------------------------
+
+/**
+ * Render a preview using the per-segment archetype pipeline.
+ *
+ * Mirrors pipeline.ts:389-474 but produces a lower-quality, half-resolution
+ * MP4 suitable for the in-editor preview dialog. Skips brand kit and template
+ * layout for speed.
+ */
+async function renderSegmentedPreview(
+  config: PreviewRenderConfig,
+  outputPath: string
+): Promise<string> {
+  const meta = await getVideoMetadata(config.sourceVideoPath)
+
+  const editStyleId = config.stylePresetId ?? DEFAULT_EDIT_STYLE_ID
+  const editStyle = getEditStyleById(editStyleId) ?? getEditStyleById(DEFAULT_EDIT_STYLE_ID)!
+
+  const rawSegments = config.segments ?? []
+  const resolvedSegments: ResolvedSegment[] = rawSegments.map((raw) => {
+    const resolved = resolveTemplate(raw.archetype, editStyleId)
+    return {
+      startTime: raw.startTime,
+      endTime: raw.endTime,
+      styleVariant: resolved.variant,
+      zoom: {
+        style: resolved.zoomStyle,
+        intensity: resolved.zoomIntensity
+      },
+      // Preview uses the segment's declared incoming transition when present,
+      // otherwise the edit style default.
+      transitionIn: raw.transitionIn ?? editStyle.defaultTransition,
+      overlayText: raw.overlayText ?? resolved.layoutParamOverrides.overlayText,
+      accentColor: resolved.layoutParamOverrides.accentColor,
+      captionBgOpacity: resolved.layoutParamOverrides.captionBgOpacity,
+      imagePath: raw.imagePath,
+      archetype: raw.archetype,
+      captionMarginV: resolved.captionMarginV
+    }
+  })
+
+  const segConfig: SegmentRenderConfig = {
+    sourceVideoPath: config.sourceVideoPath,
+    segments: resolvedSegments,
+    editStyle,
+    width: PREVIEW_WIDTH,
+    height: PREVIEW_HEIGHT,
+    fps: meta.fps ?? 30,
+    sourceWidth: meta.width,
+    sourceHeight: meta.height,
+    defaultCropRect: config.cropRegion,
+    wordTimestamps: config.wordTimestamps,
+    wordEmphasis: config.wordEmphasis,
+    captionStyle: config.captionStyle,
+    captionsEnabled: config.captionsEnabled ?? true,
+    // Preview intentionally skips brand kit and template layout for speed.
+    brandKit: undefined,
+    templateLayout: undefined,
+    userAccentColor: config.accentColor
+  }
+
+  await renderSegmentedClip(segConfig, outputPath, () => {
+    // Preview has no progress reporting — swallow updates.
+  })
+
+  return outputPath
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +176,7 @@ export interface PreviewRenderConfig {
 
 /**
  * Render a single clip at 540×960 with ultrafast/CRF-35 encoding.
- * Applies captions, hook title, progress bar, brand logo, and auto-zoom.
+ * Applies captions, hook title, brand logo, and auto-zoom.
  * Skips bumpers, sound design, B-roll, and filler removal.
  *
  * @returns Absolute path to the rendered temp file (caller must delete it).
@@ -98,6 +184,14 @@ export interface PreviewRenderConfig {
 export async function renderPreview(config: PreviewRenderConfig): Promise<string> {
   const clipId = `preview-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
   const outputPath = join(tmpdir(), `batchcontent-preview-${Date.now()}.mp4`)
+
+  // ── Segmented preview shortcut ──────────────────────────────────────────
+  // When the clip has per-segment styling, render each segment with its
+  // own archetype layout via renderSegmentedClip(). This mirrors the batch
+  // render path in pipeline.ts but at preview resolution/quality.
+  if (config.segments && config.segments.length > 0) {
+    return renderSegmentedPreview(config, outputPath)
+  }
 
   // ── Build job ─────────────────────────────────────────────────────────────
   const job: RenderClipJob = {
@@ -128,7 +222,6 @@ export async function renderPreview(config: PreviewRenderConfig): Promise<string
     captionsEnabled: config.captionsEnabled,
     captionStyle: config.captionStyle,
     hookTitleOverlay: config.hookTitleOverlay,
-    progressBarOverlay: config.progressBarOverlay,
     autoZoom: config.autoZoom
     // soundDesign, fillerRemoval, broll intentionally omitted
   }
@@ -151,12 +244,6 @@ export async function renderPreview(config: PreviewRenderConfig): Promise<string
         textColor: accent
       }
     }
-    if (batchOptions.progressBarOverlay) {
-      batchOptions.progressBarOverlay = {
-        ...batchOptions.progressBarOverlay,
-        color: accent
-      }
-    }
     console.log(`[Preview] Applying accent color: ${accent}`)
   }
 
@@ -166,12 +253,9 @@ export async function renderPreview(config: PreviewRenderConfig): Promise<string
   // ── Create fresh feature instances for this preview ───────────────────────
   // We create fresh instances of stateful features to avoid state pollution
   // between concurrent preview renders and batch renders.
-  // Note: progressBarFeature is stateless (state lives on the job object)
-  // so sharing the singleton is safe.
   const features: RenderFeature[] = [
     createCaptionsFeature(),
-    createHookTitleFeature(),
-    progressBarFeature
+    createHookTitleFeature()
   ]
 
   // Auto-zoom filter (call generateZoomFilter directly — the autoZoomFeature

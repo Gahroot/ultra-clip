@@ -592,13 +592,12 @@ export function ClipGrid() {
       wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
       hookTitleText: clip.hookText || undefined,
       // AI Edit mode isolation: prevent global settings-panel values (autoZoom,
-      // hookTitle, rehook, progressBar, captionStyle) from bleeding into AI edit
-      // clips. The edit style owns the full visual output — basic mode overlays
-      // are irrelevant and potentially visually contradictory (e.g. a Hormozi Bold
-      // caption style overriding Impact's dark-bar caption style).
+      // hookTitle, rehook, captionStyle) from bleeding into AI edit clips. The
+      // edit style owns the full visual output — basic mode overlays are
+      // irrelevant and potentially visually contradictory.
       clipOverrides: (() => {
         const aiEditOff = isAIEditClip(clip, segments[clip.id])
-          ? { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const }
+          ? { enableAutoZoom: false as const, enableHookTitle: false as const }
           : undefined
         const existing = clip.overrides && Object.keys(clip.overrides).length > 0 ? clip.overrides : undefined
         const merged = { ...aiEditOff, ...existing }
@@ -674,10 +673,11 @@ export function ClipGrid() {
         return segs.map((seg) => ({
           startTime: seg.startTime,
           endTime: seg.endTime,
-          styleVariantId: seg.segmentStyleId,
+          archetype: seg.archetype,
           zoomStyle: seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image' ? 'none' : 'drift' as const,
           zoomIntensity: 1.05,
           transitionIn: seg.transitionIn,
+          overlayText: seg.overlayText,
           captionBgOpacity: undefined,
           cropRect: clip.cropRegion
             ? { x: clip.cropRegion.x, y: clip.cropRegion.y, width: clip.cropRegion.width, height: clip.cropRegion.height }
@@ -730,12 +730,13 @@ export function ClipGrid() {
         ? scSegments.map((seg) => ({
             startTime: seg.startTime,
             endTime: seg.endTime,
-            styleVariantId: seg.segmentStyleId,
+            archetype: seg.archetype,
             zoomStyle: (seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image'
               ? 'none'
               : 'drift') as 'none' | 'drift',
             zoomIntensity: 1.05,
             transitionIn: seg.transitionIn,
+            overlayText: seg.overlayText,
             captionBgOpacity: undefined,
             cropRect: sc.cropRegion
               ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
@@ -744,7 +745,7 @@ export function ClipGrid() {
         : sc.segments.map((seg) => ({
             startTime: seg.startTime,
             endTime: seg.endTime,
-            styleVariantId: 'main-video-normal',
+            archetype: 'talking-head' as const,
             zoomStyle: 'drift' as const,
             zoomIntensity: 1.05,
             transitionIn: 'hard-cut' as const,
@@ -793,7 +794,7 @@ export function ClipGrid() {
               .map((e) => ({ time: e.start, end: e.end, level: e.level as 'emphasis' | 'supersize' }))
           : undefined,
         stylePresetId: selectedEditStyleId ?? sc.aiEditPlan?.stylePresetId ?? undefined,
-        clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const },
+        clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const },
         segmentedSegments
       })
     }
@@ -948,7 +949,6 @@ export function ClipGrid() {
         brandKit: settings.brandKit.enabled ? settings.brandKit : undefined,
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
-        progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
         captionsEnabled: true,
         captionStyle: activeEditStyle?.captionStyle,
         fillerRemoval: settings.fillerRemoval.enabled ? settings.fillerRemoval : undefined,
@@ -1080,14 +1080,15 @@ export function ClipGrid() {
           wordTimestamps: retryTranscriptionWords,
           outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
           stylePresetId: selectedEditStyleId ?? sc.aiEditPlan?.stylePresetId ?? undefined,
-          clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const },
+          clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const },
           segmentedSegments: scSegments.map((seg) => ({
             startTime: seg.startTime,
             endTime: seg.endTime,
-            styleVariantId: seg.segmentStyleId,
+            archetype: seg.archetype,
             zoomStyle: seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image' ? 'none' : 'drift' as const,
             zoomIntensity: 1.05,
             transitionIn: seg.transitionIn,
+            overlayText: seg.overlayText,
             captionBgOpacity: undefined,
             cropRect: sc.cropRegion
               ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
@@ -1228,7 +1229,6 @@ export function ClipGrid() {
         brandKit: settings.brandKit.enabled ? settings.brandKit : undefined,
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
-        progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
         captionsEnabled: true,
         captionStyle: activeEditStyle?.captionStyle,
         fillerRemoval: settings.fillerRemoval.enabled ? settings.fillerRemoval : undefined,
@@ -2752,6 +2752,7 @@ export function ClipGrid() {
                     <StitchedClipCard
                       clip={clip}
                       sourceId={activeSourceId ?? ''}
+                      sourcePath={sourcePath}
                       sourceDuration={sourceDuration}
                     />
                   </motion.div>

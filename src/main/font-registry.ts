@@ -171,6 +171,24 @@ export const BUNDLED_FONTS: BundledFont[] = [
     license: 'OFL-1.1'
   },
 
+  // ── PRESTYJ ─────────────────────────────────────────────────────────────
+  {
+    family: 'Geist',
+    label: 'Geist Bold',
+    file: 'Geist-Bold.ttf',
+    weight: '700',
+    category: 'sans-serif',
+    license: 'OFL-1.1'
+  },
+  {
+    family: 'Style Script',
+    label: 'Style Script',
+    file: 'StyleScript-Regular.ttf',
+    weight: '400',
+    category: 'handwritten',
+    license: 'OFL-1.1'
+  },
+
   // ── Decorative ──────────────────────────────────────────────────────────
   {
     family: 'Permanent Marker',

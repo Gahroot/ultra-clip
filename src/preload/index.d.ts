@@ -139,21 +139,6 @@ interface RehookOverlaySettings {
   positionFraction: number
 }
 
-interface ProgressBarOverlaySettings {
-  /** Whether the progress bar is burned into rendered clips. */
-  enabled: boolean
-  /** Edge of the frame to anchor the bar: 'top' or 'bottom'. */
-  position: 'top' | 'bottom'
-  /** Bar thickness in pixels on the 1080×1920 canvas (2–8 px). */
-  height: number
-  /** Bar color in CSS hex format (e.g. '#FFFFFF'). */
-  color: string
-  /** Bar opacity 0–1. */
-  opacity: number
-  /** Visual rendering style: 'solid' | 'gradient' | 'glow'. */
-  style: 'solid' | 'gradient' | 'glow'
-}
-
 // ---- Velocity Style -------------------------------------------------------
 
 type VelocitySegmentStyle = 'default' | 'impact' | 'chill' | 'emphasis' | 'split-screen'
@@ -281,8 +266,9 @@ interface RenderClipJob {
   crossfadeDuration?: number
   /**
    * When present, this job represents a stitched (multi-segment) clip.
-   * The pipeline routes these to renderStitchedClip() for proper concatenation.
-   * startTime/endTime are still set (to the first segment) but are ignored.
+   * The pipeline assembles the segments into a single MP4 then runs the
+   * regular feature pipeline on the assembled output — stitched clips go
+   * through the same editing pipeline as regular clips.
    */
   stitchedSegments?: Array<{
     startTime: number
@@ -362,8 +348,6 @@ interface RenderBatchOptions {
   hookTitleOverlay?: HookTitleOverlaySettings
   /** Re-hook overlay — burns mid-clip pattern interrupt text to reset viewer attention */
   rehookOverlay?: RehookOverlaySettings
-  /** Progress bar overlay — animated bar filling left→right over the clip duration */
-  progressBarOverlay?: ProgressBarOverlaySettings
   /** When true, all FFmpeg commands are sent back in render events for debug logging. */
   developerMode?: boolean
   /** Number of clips to render concurrently (1–4). GPU encoders are capped at 2. */
@@ -790,7 +774,7 @@ interface BatchEditPlanProgress {
 // Clip Variant Generator types
 // ---------------------------------------------------------------------------
 
-type OverlayType = 'hook-title' | 'rehook' | 'progress-bar'
+type OverlayType = 'hook-title' | 'rehook'
 
 interface VariantOverlayConfig {
   type: OverlayType
@@ -824,7 +808,6 @@ interface VariantRenderConfig {
   hookTitleStyle?: 'centered-bold' | 'top-bar' | 'slide-in'
   rehookText?: string
   rehookStyle?: 'bar' | 'text-only' | 'slide-up'
-  progressBar: boolean
   captionStyle: CaptionStylePreset
   layout: VariantLayout
   overlays: VariantOverlayConfig[]
@@ -840,7 +823,6 @@ interface VariantLabel {
 interface OverlayCapabilities {
   hookTitle: boolean
   rehook: boolean
-  progressBar: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -1046,6 +1028,30 @@ interface ZoomKeyframe {
 
 type TransitionType = 'none' | 'hard-cut' | 'crossfade' | 'flash-cut' | 'color-wash'
 
+type Archetype =
+  | 'talking-head'
+  | 'tight-punch'
+  | 'wide-breather'
+  | 'quote-lower'
+  | 'split-image'
+  | 'fullscreen-image'
+  | 'fullscreen-quote'
+  | 'fullscreen-headline'
+
+interface EditStyleTemplateView {
+  archetype: Archetype
+  editStyleId: string
+  name: string
+  description: string
+  category: SegmentStyleCategory
+  variantId: string
+  zoomStyle: 'none' | 'drift' | 'snap' | 'word-pulse' | 'zoom-out'
+  zoomIntensity: number
+  captionPosition: 'lower-third' | 'center' | 'top'
+  imageLayout?: 'pip' | 'side-by-side' | 'behind-speaker' | 'fullscreen' | 'top-bottom'
+  imagePlacement?: 'left' | 'right' | 'top' | 'bottom'
+}
+
 interface VideoSegment {
   id: string
   clipId: string
@@ -1054,7 +1060,7 @@ interface VideoSegment {
   endTime: number
   captionText: string
   words: WordTimestamp[]
-  segmentStyleId: string
+  archetype: Archetype
   segmentStyleCategory: SegmentStyleCategory
   zoomKeyframes: ZoomKeyframe[]
   transitionIn: TransitionType
@@ -1255,6 +1261,14 @@ interface Api {
   onRenderClipError: (callback: (data: RenderClipErrorEvent) => void) => () => void
   onRenderBatchDone: (callback: (data: RenderBatchResultEvent) => void) => () => void
   onRenderCancelled: (callback: (data: RenderBatchResultEvent) => void) => () => void
+  onSegmentFallback: (
+    callback: (data: {
+      clipId: string
+      segmentIndex: number
+      archetype: string
+      reason: string
+    }) => void
+  ) => () => void
   splitSegments: (
     inputPath: string,
     segments: { label: string; startTime: number; endTime: number }[],
@@ -1566,7 +1580,6 @@ interface Api {
     captionsEnabled?: boolean
     captionStyle?: CaptionStyleInput
     hookTitleOverlay?: HookTitleOverlaySettings
-    progressBarOverlay?: ProgressBarOverlaySettings
     autoZoom?: AutoZoomSettings
     brandKit?: {
       logoPath: string | null
@@ -1576,6 +1589,16 @@ interface Api {
     }
     /** Per-clip accent color — overrides highlight/emphasis colors across all overlays */
     accentColor?: string
+    /**
+     * Per-segment archetype plan. When present and non-empty, the preview
+     * renders each segment with its own layout/zoom/captions via the
+     * segmented render path — matching the batch render exactly.
+     */
+    segments?: VideoSegment[]
+    /** Active edit style id (resolved to default when absent). */
+    stylePresetId?: string
+    /** Optional pre-computed word emphasis for the segmented preview path. */
+    wordEmphasis?: EmphasizedWord[]
   }) => Promise<{ previewPath: string }>
   cleanupPreview: (previewPath: string) => Promise<void>
   // AI Token Usage
@@ -1621,7 +1644,8 @@ interface Api {
   assignSegmentStyles: (
     segments: VideoSegment[],
     styleId: string,
-    apiKey?: string
+    apiKey?: string,
+    hasFalKey?: boolean
   ) => Promise<VideoSegment[]>
   generateSegmentImages: (
     segments: VideoSegment[],
@@ -1633,16 +1657,18 @@ interface Api {
     segmentId: string,
     newText: string
   ) => Promise<VideoSegment>
-  updateSegmentStyle: (
-    segmentId: string,
-    styleId: string
-  ) => Promise<VideoSegment>
-  getSegmentStyleVariants: () => Promise<SegmentStyleVariant[]>
-  getVariantsForCategory: (category: SegmentStyleCategory) => Promise<SegmentStyleVariant[]>
-
   // Edit Styles — Captions.ai-style edit style presets
   getEditStyles: () => Promise<EditStyle[]>
   getEditStyleById: (id: string) => Promise<EditStyle | null>
+  getEditStyleTemplates: (editStyleId: string) => Promise<EditStyleTemplateView[]>
+  resolveEditStyleTemplate: (
+    archetype: Archetype,
+    editStyleId: string
+  ) => Promise<EditStyleTemplateView>
+  getArchetypes: () => Promise<{
+    keys: readonly Archetype[]
+    categories: Record<Archetype, SegmentStyleCategory>
+  }>
 
   // AI Edit — orchestrate the full AI edit preparation pipeline for a clip
   generateEditPlanSegments: (opts: {

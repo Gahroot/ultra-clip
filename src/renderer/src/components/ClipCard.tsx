@@ -46,7 +46,6 @@ function scoreBadgeClass(score: number): string {
 const OVERRIDE_LABELS: Record<keyof ClipRenderSettings, string> = {
   enableCaptions: 'Captions',
   enableHookTitle: 'Hook Title',
-  enableProgressBar: 'Progress Bar',
   enableAutoZoom: 'Auto-Zoom',
   enableSoundDesign: 'Sound Design',
   enableBrandKit: 'Brand Kit',

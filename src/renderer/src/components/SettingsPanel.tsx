@@ -11,7 +11,6 @@ import { FillerRemovalSettings } from './settings/FillerRemovalSettings'
 import { AIEditStyleSettings } from './settings/AIEditStyleSettings'
 import { HookTitleSettings } from './settings/HookTitleSettings'
 import { RehookSettings } from './settings/RehookSettings'
-import { ProgressBarSettings } from './settings/ProgressBarSettings'
 import { BrandKitSettings } from './settings/BrandKitSettings'
 import { AISettings } from './settings/AISettings'
 import { OutputSettings } from './settings/OutputSettings'
@@ -122,7 +121,6 @@ export function SettingsPanel() {
             <div className="p-5 space-y-8">
               <HookTitleSettings />
               <RehookSettings />
-              <ProgressBarSettings />
               <BrandKitSettings />
             </div>
           </ScrollArea>

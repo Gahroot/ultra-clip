@@ -6,7 +6,6 @@ import type {
   BrandKit,
   HookTitleOverlaySettings,
   RehookOverlaySettings,
-  ProgressBarOverlaySettings,
   BRollSettings,
   FillerRemovalSettings,
   RenderQualitySettings,
@@ -126,15 +125,6 @@ export const DEFAULT_REHOOK_OVERLAY: RehookOverlaySettings = {
   positionFraction: 0.45
 }
 
-export const DEFAULT_PROGRESS_BAR_OVERLAY: ProgressBarOverlaySettings = {
-  enabled: true,
-  position: 'bottom',
-  height: 4,
-  color: '#FFFFFF',
-  opacity: 0.9,
-  style: 'glow'
-}
-
 export const DEFAULT_BROLL: BRollSettings = {
   enabled: false,
   intervalSeconds: 5,
@@ -219,7 +209,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   brandKit: DEFAULT_BRAND_KIT,
   hookTitleOverlay: DEFAULT_HOOK_TITLE_OVERLAY,
   rehookOverlay: DEFAULT_REHOOK_OVERLAY,
-  progressBarOverlay: DEFAULT_PROGRESS_BAR_OVERLAY,
   broll: DEFAULT_BROLL,
   fillerRemoval: DEFAULT_FILLER_REMOVAL,
   enableNotifications: true,
@@ -349,7 +338,6 @@ export function loadPersistedSettings(): AppSettings {
         brandKit: { ...DEFAULT_BRAND_KIT, ...(saved.brandKit ?? {}) },
         hookTitleOverlay: { ...DEFAULT_HOOK_TITLE_OVERLAY, ...(saved.hookTitleOverlay ?? {}) },
         rehookOverlay: { ...DEFAULT_REHOOK_OVERLAY, ...(saved.rehookOverlay ?? {}) },
-        progressBarOverlay: { ...DEFAULT_PROGRESS_BAR_OVERLAY, ...(saved.progressBarOverlay ?? {}) },
         broll: { ...DEFAULT_BROLL, ...(saved.broll ?? {}) },
         fillerRemoval: { ...DEFAULT_FILLER_REMOVAL, ...(saved.fillerRemoval ?? {}) },
         renderQuality: { ...DEFAULT_RENDER_QUALITY, ...(saved.renderQuality ?? {}) },
@@ -409,7 +397,6 @@ export function extractProfileFromSettings(settings: AppSettings): SettingsProfi
     brandKit: settings.brandKit,
     hookTitleOverlay: settings.hookTitleOverlay,
     rehookOverlay: settings.rehookOverlay,
-    progressBarOverlay: settings.progressBarOverlay,
     broll: settings.broll,
     fillerRemoval: settings.fillerRemoval,
     renderQuality: settings.renderQuality,
@@ -430,7 +417,6 @@ export function applyProfileToSettings(settings: AppSettings, profile: SettingsP
     brandKit: profile.brandKit,
     hookTitleOverlay: profile.hookTitleOverlay,
     rehookOverlay: profile.rehookOverlay,
-    progressBarOverlay: profile.progressBarOverlay,
     broll: { ...profile.broll },
     fillerRemoval: profile.fillerRemoval,
     renderQuality: profile.renderQuality,

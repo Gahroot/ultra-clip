@@ -487,82 +487,32 @@ function buildFullscreenImageClean(params: SegmentLayoutParams): SegmentLayoutRe
 }
 
 /**
- * fullscreen-text-center: Solid dark background with large centered text.
- * No video input needed — uses color source.
+ * fullscreen-text-center: Solid dark background. The hero ASS pass
+ * (archetype-hero.ts) draws the animated text on top; fall back to a static
+ * drawtext when no overlayText is set so the frame isn't blank.
  */
 async function buildFullscreenTextCenter(params: SegmentLayoutParams): Promise<SegmentLayoutResult> {
   const w = params.width
   const h = params.height
-  const text = escapeDrawtext(params.overlayText ?? '')
-  const textCol = hexToFFmpeg(params.textColor ?? '#FFFFFF')
-  const fontSize = params.fontSize ?? 110
-  const font = await resolveBoldFont()
   const dur = params.segmentDuration
 
-  const drawtext =
-    `drawtext=${fontSpec(font, fontSize)}` +
-    `:text='${text}'` +
-    `:fontcolor=${textCol}` +
-    `:x=(w-text_w)/2` +
-    `:y=(h-text_h)/2` +
-    `:borderw=4` +
-    `:bordercolor=black@0.90`
-
-  const fc =
-    `color=c=0x0a0a14:s=${w}x${h}:d=${dur.toFixed(3)}:r=30,${drawtext}[composed];` +
-    finalize('composed')
-
+  const bg = `color=c=0x0a0a14:s=${w}x${h}:d=${dur.toFixed(3)}:r=30`
+  const fc = `${bg}[composed];` + finalize('composed')
   return { filterComplex: fc, inputCount: 0 }
 }
 
 /**
- * fullscreen-text-headline: Solid dark background with headline + subtext.
- * Uses two drawtext filters: large headline near top, smaller subtext below.
- * No video input needed — uses color source.
+ * fullscreen-text-headline: Solid dark background. The hero ASS pass
+ * (archetype-hero.ts) renders the animated headline + subtext; this layout
+ * only produces the solid background.
  */
 async function buildFullscreenTextHeadline(params: SegmentLayoutParams): Promise<SegmentLayoutResult> {
   const w = params.width
   const h = params.height
-  const rawText = params.overlayText ?? ''
-  const textCol = hexToFFmpeg(params.textColor ?? '#FFFFFF')
-  const accentCol = hexToFFmpeg(params.accentColor ?? '#FFD700')
-  const font = await resolveBoldFont()
   const dur = params.segmentDuration
 
-  // Split text: first line = headline, rest = subtext
-  const lines = rawText.split('\n').filter((l) => l.trim())
-  const headline = escapeDrawtext(lines[0] ?? '')
-  const subtext = escapeDrawtext(lines.slice(1).join(' ') || '')
-
-  const headlineFontSize = params.fontSize ?? 110
-  const subtextFontSize = Math.round(headlineFontSize * 0.5)
-
-  // Headline: large, centered, positioned at ~35% from top
-  const headlineY = Math.round(h * 0.35)
-  const drawHeadline =
-    `drawtext=${fontSpec(font, headlineFontSize)}` +
-    `:text='${headline}'` +
-    `:fontcolor=${accentCol}` +
-    `:x=(w-text_w)/2` +
-    `:y=${headlineY}` +
-    `:borderw=4` +
-    `:bordercolor=black@0.90`
-
-  // Subtext: smaller, below headline
-  const subtextY = headlineY + headlineFontSize + 40
-  const drawSubtext =
-    `drawtext=${fontSpec(font, subtextFontSize)}` +
-    `:text='${subtext}'` +
-    `:fontcolor=${textCol}` +
-    `:x=(w-text_w)/2` +
-    `:y=${subtextY}` +
-    `:borderw=2` +
-    `:bordercolor=black@0.70`
-
-  const fc =
-    `color=c=0x0a0a14:s=${w}x${h}:d=${dur.toFixed(3)}:r=30,${drawHeadline},${drawSubtext}[composed];` +
-    finalize('composed')
-
+  const bg = `color=c=0x0a0a14:s=${w}x${h}:d=${dur.toFixed(3)}:r=30`
+  const fc = `${bg}[composed];` + finalize('composed')
   return { filterComplex: fc, inputCount: 0 }
 }
 
