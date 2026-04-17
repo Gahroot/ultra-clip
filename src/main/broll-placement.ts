@@ -1,4 +1,5 @@
 import type { KeywordAtTimestamp } from './broll-keywords'
+import type { AIBRollMoment } from './broll-ai-placement'
 import type { BRollVideoResult } from './broll-pexels'
 
 export type BRollDisplayMode = 'fullscreen' | 'split-top' | 'split-bottom' | 'pip'

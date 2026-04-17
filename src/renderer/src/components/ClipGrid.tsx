@@ -96,6 +96,8 @@ import { cn, estimateClipSize, formatFileSize, getScoreDescription, isAIEditClip
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useETA } from '../hooks/useETA'
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard'
+import { BasicEditSettings } from './BasicEditSettings'
+import { AiEditSettings } from './AiEditSettings'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,6 +251,7 @@ export function ClipGrid() {
 
   const clipViewMode = useStore((s) => s.clipViewMode)
   const setClipViewMode = useStore((s) => s.setClipViewMode)
+  const editMode = useStore((s) => s.editMode)
 
   const searchQuery = useStore((s) => s.searchQuery)
   const setSearchQuery = useStore((s) => s.setSearchQuery)

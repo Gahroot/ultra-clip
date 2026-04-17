@@ -228,6 +228,95 @@ interface PrimeAIOptions {
   imageOverlays: PrimeImageOverlay[]
 }
 
+// ---- Velocity Style -------------------------------------------------------
+
+type VelocitySegmentStyle = 'default' | 'impact' | 'chill' | 'emphasis' | 'split-screen'
+type VelocityTransition = 'cut' | 'flash' | 'fade' | 'zoom-blur'
+
+interface VelocityOptions {
+  enabled: boolean
+  segmentStyle: VelocitySegmentStyle
+  glitchScanlines: boolean
+  glitchIntensity: number
+  lightLeak: boolean
+  lightLeakOpacity: number
+  particles: boolean
+  vignette: boolean
+  vignetteStrength: number
+  colorGrade: boolean
+  saturation: number
+  contrast: number
+  warmth: number
+  primaryText: string
+  primaryTextDuration: number
+  secondaryText: string
+  secondaryTextDuration: number
+  accentTag: string
+  lowerThird: boolean
+  lowerThirdText: string
+  calloutRing: boolean
+  calloutX: number
+  calloutY: number
+  priceStatCard: boolean
+  priceStatValue: string
+  priceStatLabel: string
+  stepCounter: boolean
+  stepNumber: number
+  stepTotal: number
+  arrowPointer: boolean
+  arrowX: number
+  arrowY: number
+  velocityProgressBar: boolean
+  velocityProgressBarColor: string
+  transitionIn: VelocityTransition
+  transitionDuration: number
+}
+
+// ---- Prime AI Render Style ------------------------------------------------
+
+type PrimeSegmentStyle = 'clean' | 'cinematic' | 'spotlight' | 'editorial'
+
+interface PrimeTextOverlay {
+  text: string
+  startTime: number
+  duration: number
+  yFraction?: number
+  fontSize?: number
+  color?: string
+  withPanel?: boolean
+}
+
+interface PrimeImageOverlay {
+  imagePath: string
+  startTime: number
+  duration: number
+  x?: number
+  y?: number
+  width?: number
+  opacity?: number
+}
+
+interface PrimeAIOptions {
+  enabled: boolean
+  segmentStyle: PrimeSegmentStyle
+  accentColor: string
+  showBanner: boolean
+  showFloatingCurrency: boolean
+  currencyText: string
+  showSparkles: boolean
+  showFullscreenText: boolean
+  fullscreenText: string
+  fullscreenTextTime: number
+  fullscreenTextDuration: number
+  showBadge: boolean
+  badgeText: string
+  badgePosition: 'top-left' | 'top-right'
+  showSubtitleStyle: boolean
+  showProgressBar: boolean
+  textOverlays: PrimeTextOverlay[]
+  imageOverlays: PrimeImageOverlay[]
+}
+
 interface RenderClipJob {
   clipId: string
   sourceVideoPath: string

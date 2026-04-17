@@ -18,6 +18,30 @@ import { RenderQualitySettings } from './settings/RenderQualitySettings'
 import { SystemSettings } from './settings/SystemSettings'
 import { SettingsProfiles } from './settings/SettingsProfiles'
 
+// ---------------------------------------------------------------------------
+// Edit Style Selector strip (compact, fetches from main process)
+// ---------------------------------------------------------------------------
+
+function EditStyleStrip() {
+  const selectedEditStyleId = useStore((s) => s.selectedEditStyleId)
+  const setSelectedEditStyleId = useStore((s) => s.setSelectedEditStyleId)
+  const [styles, setStyles] = useState<EditStyle[]>([])
+
+  useEffect(() => {
+    window.api.getEditStyles().then(setStyles).catch(() => {})
+  }, [])
+
+  if (styles.length === 0) return null
+
+  return (
+    <EditStyleSelector
+      styles={styles}
+      selectedStyleId={selectedEditStyleId}
+      onSelectStyle={setSelectedEditStyleId}
+    />
+  )
+}
+
 export function SettingsPanel() {
   const settingsChanged = useStore((s) => s.settingsChanged)
   const settingsSnapshot = useStore((s) => s.settingsSnapshot)

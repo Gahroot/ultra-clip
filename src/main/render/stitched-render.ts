@@ -12,7 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import { join } from 'path'
-import { unlinkSync, writeFileSync } from 'fs'
+import { unlinkSync, writeFileSync, renameSync } from 'fs'
 import { tmpdir } from 'os'
 import {
   ffmpeg,

@@ -304,6 +304,15 @@ export interface RenderProgress {
  */
 export type SFXStyle = 'minimal' | 'standard' | 'energetic'
 
+/**
+ * SFX placement density/aggressiveness preset.
+ * - minimal    — 1–2 quiet impacts only; barely noticeable
+ * - standard   — emphasis-driven placement at moderate density (default)
+ * - energetic  — maximum density; pops on every emphasis word, impacts on every
+ *                supersize word, whooshes on every edit event
+ */
+export type SFXStyle = 'minimal' | 'standard' | 'energetic'
+
 export interface SoundDesignSettings {
   enabled: boolean
   backgroundMusicTrack: MusicTrack
@@ -708,6 +717,13 @@ export interface HookTextTemplate {
 }
 
 export type PythonSetupState = 'checking' | 'not-setup' | 'installing' | 'ready' | 'skipped' | 'error'
+
+// ---------------------------------------------------------------------------
+// Edit Mode (Two-Track Architecture)
+// ---------------------------------------------------------------------------
+
+/** Determines which render/UI track is active. */
+export type EditMode = 'basic' | 'ai-edit'
 
 // ---------------------------------------------------------------------------
 // Full AppState

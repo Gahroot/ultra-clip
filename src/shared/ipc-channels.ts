@@ -135,6 +135,31 @@ export const InvokeChannels = {
   FAL_GENERATE_IMAGE: 'fal:generateImage',
   FAL_GENERATE_SEGMENT_IMAGE: 'fal:generateSegmentImage',
 
+  // Segment Editor
+  SEGMENTS_SPLIT: 'segments:split',
+  SEGMENTS_ASSIGN_STYLES: 'segments:assignStyles',
+  SEGMENTS_UPDATE_CAPTION: 'segments:updateCaption',
+  SEGMENTS_UPDATE_STYLE: 'segments:updateStyle',
+  SEGMENTS_GET_STYLE_VARIANTS: 'segments:getStyleVariants',
+  SEGMENTS_GET_VARIANTS_FOR_CATEGORY: 'segments:getVariantsForCategory',
+
+  // Segment Images — generate contextual images for segments needing visuals
+  SEGMENTS_GENERATE_IMAGES: 'segments:generateImages',
+
+  // Shot Segmentation
+  SHOT_SEGMENT_CLIP: 'shot:segmentClip',
+
+  // Edit Styles
+  EDIT_STYLES_GET_ALL: 'editStyles:getAll',
+  EDIT_STYLES_GET_BY_ID: 'editStyles:getById',
+
+  // Filler Detection
+  FILLER_DETECT: 'filler:detect',
+
+  // fal.ai Image Generation
+  FAL_GENERATE_IMAGE: 'fal:generateImage',
+  FAL_GENERATE_SEGMENT_IMAGE: 'fal:generateSegmentImage',
+
   // B-Roll
   BROLL_GENERATE_PLACEMENTS: 'broll:generatePlacements',
   BROLL_GENERATE_IMAGE: 'broll:generateImage',
