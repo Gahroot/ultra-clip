@@ -96,21 +96,35 @@ def _chunk_audio_ffmpeg(audio_path: str, start: float, duration: float, out_path
     return result.returncode == 0
 
 
+# Per-chunk subprocess timeout: 30 min. Covers cold model load (~30–120 s),
+# optional CPU fallback (5-min chunk on CPU ≈ 8–15 min), plus headroom. The old
+# 10-min ceiling was too tight when PyTorch was CPU-only in the packaged venv.
+CHUNK_SUBPROCESS_TIMEOUT = 30 * 60
+
+
 def _transcribe_chunk_subprocess(
-    chunk_path: str, model_name: str, output_json: str
-) -> dict | None:
+    chunk_path: str, model_name: str, output_json: str, chunk_label: str = ""
+) -> "tuple[dict | None, str | None]":
     """Transcribe a single chunk in an isolated subprocess to avoid CUDA OOM accumulation.
 
     NeMo's Parakeet model leaks GPU memory across successive transcribe() calls in the
     same process, eventually causing an unrecoverable CUDA abort.  Running each chunk in
     its own subprocess guarantees the GPU is fully released between chunks.
+
+    Progress emitted by the worker on stdout is streamed back and re-emitted on this
+    script's stdout so the Electron renderer gets live feedback during the minutes-long
+    chunk work (instead of a silent UI until timeout).
     """
     import subprocess
+    import threading
+    import queue
+    import time
 
-    # Resolve the Python binary (same one running this script)
     python_bin = sys.executable
+    prefix = f"{chunk_label}: " if chunk_label else ""
 
-    # Mini-script that loads the model, transcribes one file, writes JSON result
+    # Mini-script that loads the model, transcribes one file, writes JSON result,
+    # and emits structured progress on stdout so the parent can surface it.
     worker_code = f"""
 import os, sys, json
 os.environ['NEMO_LOGGING_LEVEL'] = 'ERROR'
@@ -118,16 +132,27 @@ import logging
 logging.getLogger('nemo_logger').setLevel(logging.ERROR)
 logging.getLogger('nemo').setLevel(logging.ERROR)
 
+def _emit(msg):
+    print(json.dumps({{'type': 'progress', 'stage': 'transcribing', 'message': msg}}), flush=True)
+
+_emit('loading model')
 import nemo.collections.asr as nemo_asr
 model = nemo_asr.models.ASRModel.from_pretrained(model_name={model_name!r})
 model.eval()
-try:
-    import torch
-    if torch.cuda.is_available():
-        model = model.cuda()
-except Exception:
-    pass
 
+import torch
+_device = 'cpu'
+if torch.cuda.is_available():
+    try:
+        model = model.cuda()
+        _device = 'cuda'
+        _emit(f'model on GPU ({{torch.cuda.get_device_name(0)}})')
+    except Exception as _gpu_err:
+        _emit(f'GPU move failed ({{_gpu_err}}) — using CPU')
+else:
+    _emit('CUDA unavailable — using CPU (transcription will be slow)')
+
+_emit('transcribing chunk')
 output = model.transcribe([{chunk_path!r}], timestamps=True, batch_size=1, num_workers=0)
 result = output[0]
 words = [dict(text=w.get('word',''), start=float(w.get('start',0)), end=float(w.get('end',0)))
@@ -137,14 +162,80 @@ segments = [dict(text=s.get('segment',''), start=float(s.get('start',0)), end=fl
 payload = dict(text=result.text.strip(), words=words, segments=segments)
 with open({output_json!r}, 'w') as f:
     json.dump(payload, f)
+_emit(f'chunk done ({{len(words)}} words, device={{_device}})')
 """
-    proc = subprocess.run(
+
+    proc = subprocess.Popen(
         [python_bin, "-c", worker_code],
-        capture_output=True, timeout=600
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
     )
-    if proc.returncode != 0:
-        stderr_tail = proc.stderr.decode(errors="replace")[-500:]
-        return None, f"exit {proc.returncode}: {stderr_tail}"
+
+    def _drain(stream, q):
+        try:
+            for line in iter(stream.readline, ""):
+                q.put(line)
+        finally:
+            try:
+                stream.close()
+            except Exception:
+                pass
+            q.put(None)  # sentinel
+
+    out_q: queue.Queue = queue.Queue()
+    err_q: queue.Queue = queue.Queue()
+    threading.Thread(target=_drain, args=(proc.stdout, out_q), daemon=True).start()
+    threading.Thread(target=_drain, args=(proc.stderr, err_q), daemon=True).start()
+
+    start = time.time()
+    stderr_chunks: list = []
+    out_done = False
+    err_done = False
+
+    while not (out_done and err_done):
+        if time.time() - start > CHUNK_SUBPROCESS_TIMEOUT:
+            proc.kill()
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                pass
+            return None, f"timeout after {CHUNK_SUBPROCESS_TIMEOUT}s"
+
+        # Poll both queues with a short timeout so we can re-check the wall clock.
+        try:
+            line = out_q.get(timeout=0.25)
+            if line is None:
+                out_done = True
+            else:
+                stripped = line.strip()
+                if stripped:
+                    try:
+                        obj = json.loads(stripped)
+                        if isinstance(obj, dict) and obj.get("type") == "progress":
+                            emit_progress(
+                                obj.get("stage", "transcribing"),
+                                f"{prefix}{obj.get('message', '')}",
+                            )
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+        except queue.Empty:
+            pass
+
+        try:
+            eline = err_q.get_nowait()
+            if eline is None:
+                err_done = True
+            else:
+                stderr_chunks.append(eline)
+        except queue.Empty:
+            pass
+
+    returncode = proc.wait()
+    if returncode != 0:
+        stderr_tail = ("".join(stderr_chunks))[-500:]
+        return None, f"exit {returncode}: {stderr_tail}"
 
     try:
         with open(output_json, "r") as f:
@@ -189,7 +280,10 @@ def transcribe_chunked(model_name: str, audio_path: str, duration_sec: float) ->
             emit_progress("transcribing", f"Warning: failed to extract chunk {i + 1} audio")
             continue
 
-        result, err = _transcribe_chunk_subprocess(chunk_path, model_name, chunk_json)
+        chunk_label = f"chunk {i + 1}/{len(chunks)}"
+        result, err = _transcribe_chunk_subprocess(
+            chunk_path, model_name, chunk_json, chunk_label
+        )
 
         # Cleanup temp files
         for f in (chunk_path, chunk_json):

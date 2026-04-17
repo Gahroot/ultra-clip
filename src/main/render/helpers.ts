@@ -57,19 +57,21 @@ export function cssHexToASS(hex: string): string {
 
 /**
  * Build an escaped `ass='...'` filter string from an ASS file path.
- * Handles Windows backslashes and colons in the path.
+ *
+ * On Windows, libavfilter chokes on double-backslash escaped paths inside
+ * single-quoted filter values (`ass='C\:\\Users\\...'` → "No option name near
+ * \Users\...").  The drawtext/fontfile code elsewhere in the app handles this
+ * by flipping to forward slashes first — match that pattern here.
  */
 export function buildASSFilter(assFilePath: string, fontsDir?: string): string {
-  const escaped = assFilePath
-    .replace(/\\/g, '\\\\')
-    .replace(/:/g, '\\:')
-    .replace(/'/g, "\\'")
-  if (fontsDir) {
-    const escapedDir = fontsDir
-      .replace(/\\/g, '\\\\')
+  const escape = (p: string): string =>
+    p
+      .replace(/\\/g, '/')
       .replace(/:/g, '\\:')
       .replace(/'/g, "\\'")
-    return `ass='${escaped}':fontsdir='${escapedDir}'`
+  const escaped = escape(assFilePath)
+  if (fontsDir) {
+    return `ass='${escaped}':fontsdir='${escape(fontsDir)}'`
   }
   return `ass='${escaped}'`
 }

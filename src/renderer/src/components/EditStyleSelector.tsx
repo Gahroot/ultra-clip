@@ -3,6 +3,7 @@ import { Check, Zap, Film, Flame } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import type { EditStyle } from '@/store'
+import type { CaptionAnimation } from '@shared/types'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,13 +71,19 @@ function transitionLabel(t: string): string {
   }
 }
 
-function captionLabel(c: string): string {
-  switch (c) {
-    case 'white-clean': return 'Clean'
-    case 'colored-vibrant': return 'Vibrant'
-    case 'minimal-dark': return 'Dark'
-    case 'colored-wash': return 'Wash'
-    default: return c
+function animationLabel(a: CaptionAnimation): string {
+  switch (a) {
+    case 'captions-ai': return 'CaptionsAI'
+    case 'karaoke-fill': return 'Karaoke'
+    case 'word-pop': return 'Pop'
+    case 'fade-in': return 'Fade'
+    case 'glow': return 'Glow'
+    case 'word-box': return 'Box'
+    case 'elastic-bounce': return 'Bounce'
+    case 'typewriter': return 'Typewriter'
+    case 'impact-two': return 'Impact'
+    case 'cascade': return 'Cascade'
+    default: return a
   }
 }
 
@@ -153,7 +160,7 @@ function StyleCard({
           </span>
         )}
         <span className="text-[8px] text-muted-foreground bg-muted/60 rounded px-1.5 py-0.5 leading-tight">
-          {captionLabel(style.captionStyle)}
+          {animationLabel(style.captionStyle.animation)}
         </span>
       </div>
     </button>

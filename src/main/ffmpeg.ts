@@ -275,26 +275,46 @@ export function getSoftwareEncoder(quality?: QualityParams): EncoderConfig {
   return { encoder: 'libx264', presetFlag: ['-preset', preset, '-crf', String(crf), '-threads', '0'] }
 }
 
-/** Check if an FFmpeg error is a GPU/NVENC/CUDA failure that should trigger software fallback */
+/** Check if an FFmpeg error is a GPU/NVENC/CUDA failure that should trigger software fallback.
+ *
+ * Must be narrow: FFmpeg's build-config banner ("--enable-nvenc --enable-cuda-llvm ...")
+ * prints on every invocation, so matching on bare "nvenc" or "cuda" fires on
+ * every error — including filter-graph syntax errors — and spuriously disables
+ * the GPU encoder for the whole session.  Match on actual error markers only.
+ */
 export function isGpuSessionError(errorMessage: string): boolean {
-  const msg = errorMessage.toLowerCase()
-  return (
-    errorMessage.includes('OpenEncodeSessionEx failed') ||
-    errorMessage.includes('No capable devices found') ||
-    errorMessage.includes('Cannot load nvcuda.dll') ||
-    errorMessage.includes('out of memory') ||
-    errorMessage.includes('hwupload_cuda failed') ||
-    errorMessage.includes('CUDA') ||
+  // Specific GPU failure strings
+  const specificErrors = [
+    'OpenEncodeSessionEx failed',
+    'No capable devices found',
+    'Cannot load nvcuda.dll',
+    'hwupload_cuda failed',
+    'CUDA_ERROR_',
+    'Error initializing',
     // Windows ACCESS_VIOLATION (0xC0000005 = 3221225477) — NVENC driver crash
-    errorMessage.includes('3221225477') ||
-    msg.includes('cuda') ||
-    msg.includes('nvenc') ||
-    msg.includes('h264_nvenc') ||
-    msg.includes('h264_qsv') ||
-    msg.includes('hwupload') ||
-    msg.includes('hwdownload') ||
-    msg.includes('scale_cuda')
-  )
+    '3221225477',
+  ]
+  if (specificErrors.some((s) => errorMessage.includes(s))) return true
+
+  // FFmpeg tag-style error lines, e.g. "[h264_nvenc @ 0x...] ...failed" or
+  // "[h264_qsv @ 0x...] Error...".  These only appear inside actual error
+  // contexts, not in the configuration banner.
+  const tagPattern = /\[(h264_nvenc|h264_qsv|hevc_nvenc|hevc_qsv|cuda|scale_cuda|hwupload|hwdownload)\s*@\s*[0-9a-fx]+\]/i
+  if (tagPattern.test(errorMessage)) return true
+
+  // Contextual matches — "X failed" / "error X"
+  const failurePattern = /(nvenc|h264_qsv|hwupload_cuda|scale_cuda|cuda)\s+(?:failed|error|aborted|not (?:available|supported))/i
+  if (failurePattern.test(errorMessage)) return true
+
+  // Generic "out of memory" only counts when paired with a GPU-ish phrase.
+  if (
+    /out of memory/i.test(errorMessage) &&
+    /(cuda|nvenc|gpu|device)/i.test(errorMessage)
+  ) {
+    return true
+  }
+
+  return false
 }
 
 /**

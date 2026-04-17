@@ -146,11 +146,12 @@ describe('buildASSFilter', () => {
     expect(buildASSFilter('/tmp/test.ass')).toBe("ass='/tmp/test.ass'")
   })
 
-  it('escapes backslashes and colons in Windows path', () => {
-    // C:\Users\test.ass → backslashes escaped first, then colon escaped
-    // C: → C\:  and \Users\ → \\Users\\
+  it('converts Windows backslashes to forward slashes and escapes the drive colon', () => {
+    // C:\Users\test.ass → C\:/Users/test.ass (matches the drawtext/fontfile
+    // pattern the rest of the codebase uses; libavfilter chokes on \\-escaped
+    // Windows paths inside single-quoted filter values).
     expect(buildASSFilter('C:\\Users\\test.ass')).toBe(
-      "ass='C\\:\\\\Users\\\\test.ass'"
+      "ass='C\\:/Users/test.ass'"
     )
   })
 
@@ -165,9 +166,9 @@ describe('buildASSFilter', () => {
     expect(result).toBe("ass='/tmp/test.ass':fontsdir='/fonts'")
   })
 
-  it('escapes fontsdir path too', () => {
-    // C:\Fonts\Dir → C\:\\Fonts\\Dir (colon + backslashes escaped)
+  it('normalizes fontsdir path too', () => {
+    // C:\Fonts\Dir → C\:/Fonts/Dir
     const result = buildASSFilter('/tmp/test.ass', 'C:\\Fonts\\Dir')
-    expect(result).toBe("ass='/tmp/test.ass':fontsdir='C\\:\\\\Fonts\\\\Dir'")
+    expect(result).toBe("ass='/tmp/test.ass':fontsdir='C\\:/Fonts/Dir'")
   })
 })

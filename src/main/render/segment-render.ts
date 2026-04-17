@@ -667,22 +667,15 @@ async function encodeLayoutSegment(
     currentLabel = 'ovl'
   }
 
-  // Asset-based VFX overlays — appended after captions so they render on top
-  // (light leaks, film grain, etc. should be the final visual layer)
-  if (layoutVfxResult && layoutVfxResult.assetFilterBuilders.length > 0) {
-    // Asset inputs will be added after existing inputs (source + optional image).
-    // We need to know the starting input index for asset overlays.
-    const needsImageInput =
-      seg.imagePath &&
-      (category === 'main-video-images' || category === 'fullscreen-image')
-    let assetInputStartIdx = needsImageInput ? 2 : 1  // 0=source, 1=image(maybe)
-
-    for (let i = 0; i < layoutVfxResult.assetFilterBuilders.length; i++) {
-      const builder = layoutVfxResult.assetFilterBuilders[i]
-      const { filterExpr, outputLabel } = builder(currentLabel, assetInputStartIdx + i)
-      extraFilters.push(filterExpr)
-      currentLabel = outputLabel
-    }
+  // Asset-based VFX overlays (image-overlay, video-overlay types) are not
+  // currently wired — VFXBuildResult.assetInputs carries path/blendMode/opacity
+  // but the per-overlay filter composition + input-option plumbing hasn't been
+  // implemented.  Procedural filters (drawbox, color-tint, etc.) still apply
+  // via the earlier proceduralFilters branch.
+  if (layoutVfxResult && layoutVfxResult.assetInputs.length > 0) {
+    console.warn(
+      `[SegmentRender] Skipping ${layoutVfxResult.assetInputs.length} asset VFX overlay(s) — feature not yet wired`
+    )
   }
 
   // Combine layout filter_complex with any extra filters
@@ -717,13 +710,8 @@ async function encodeLayoutSegment(
         cmd.inputOptions(['-loop', '1'])
       }
 
-      // Add asset overlay inputs (after source + optional image)
-      if (layoutVfxResult) {
-        for (const assetInput of layoutVfxResult.assetInputs) {
-          cmd.input(toFFmpegPath(assetInput.filePath))
-          cmd.inputOptions(assetInput.inputOptions)
-        }
-      }
+      // Asset VFX overlay inputs are intentionally not added — see the
+      // "feature not yet wired" branch above that gates the filter expressions.
 
       cmd
         .outputOptions([
@@ -925,7 +913,13 @@ async function encodeSegment(
     if (vfxResult.proceduralFilters) filterChain.push(vfxResult.proceduralFilters)
   }
 
-  const hasAssetOverlays = vfxResult && vfxResult.assetInputs.length > 0
+  // Asset VFX overlays not yet wired — keep the procedural -vf path.
+  if (vfxResult && vfxResult.assetInputs.length > 0) {
+    console.warn(
+      `[SegmentRender] Skipping ${vfxResult.assetInputs.length} asset VFX overlay(s) — feature not yet wired`
+    )
+  }
+  const hasAssetOverlays = false
 
   // 3. Caption background
   const bgOpacity = seg.captionBgOpacity ?? config.editStyle.captionBgOpacity ?? 0
@@ -1009,61 +1003,22 @@ async function encodeSegment(
       cmd.seekInput(seg.startTime)
       cmd.duration(segDuration)
 
-      if (hasAssetOverlays && vfxResult) {
-        // ── filter_complex path: asset overlays need extra inputs ──────────
-        // Add each asset overlay as an additional input
-        // Input 0 = source video, asset inputs start at index 1
-        let nextInputIdx = 1
-        for (const assetInput of vfxResult.assetInputs) {
-          cmd.input(toFFmpegPath(assetInput.filePath))
-          cmd.inputOptions(assetInput.inputOptions)
-          nextInputIdx++
-        }
-
-        // Build filter_complex:
-        // [0:v] → procedural filters → [proc]; then chain asset composites
-        const baseVideoFilter = filterChain.join(',')
-        const fcParts: string[] = []
-
-        // Step 1: apply all procedural filters to the source video
-        fcParts.push(`[0:v]${baseVideoFilter}[vfx_proc]`)
-
-        // Step 2: chain asset overlay composites sequentially
-        let currentLabel = 'vfx_proc'
-        let assetInputOffset = 1 // asset inputs start at index 1
-        for (let i = 0; i < vfxResult.assetFilterBuilders.length; i++) {
-          const builder = vfxResult.assetFilterBuilders[i]
-          const { filterExpr, outputLabel } = builder(currentLabel, assetInputOffset + i)
-          fcParts.push(filterExpr)
-          currentLabel = outputLabel
-        }
-
-        const fullFilterComplex = fcParts.join(';')
-
-        cmd.outputOptions([
-          '-filter_complex', fullFilterComplex,
-          '-map', `[${currentLabel}]`,
-          '-map', '0:a',
-          '-c:v', enc,
-          ...flags,
-          '-c:a', 'aac',
-          '-b:a', '192k',
-          '-movflags', '+faststart',
-          '-y'
-        ])
-      } else {
-        // ── Simple -vf path (no asset overlays) ───────────────────────────
-        const videoFilter = filterChain.join(',')
-        cmd.videoFilters(videoFilter)
-        cmd.outputOptions([
-          '-y',
-          '-c:v', enc,
-          ...flags,
-          '-c:a', 'aac',
-          '-b:a', '192k',
-          '-movflags', '+faststart'
-        ])
+      if (hasAssetOverlays) {
+        // Unreachable — hasAssetOverlays is hard-coded false above. Retained
+        // as a compile-time anchor for when asset-overlay composition lands.
+        throw new Error('Asset VFX overlay encode path is not yet implemented')
       }
+      // ── Simple -vf path ─────────────────────────────────────────────────
+      const videoFilter = filterChain.join(',')
+      cmd.videoFilters(videoFilter)
+      cmd.outputOptions([
+        '-y',
+        '-c:v', enc,
+        ...flags,
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-movflags', '+faststart'
+      ])
 
       cmd
         .on('progress', (progress) => {
