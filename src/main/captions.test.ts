@@ -207,21 +207,21 @@ describe('generateCaptions', () => {
     }
 
     it('applies \\fs override to emphasis words (larger than base)', async () => {
-      // base fontSize = 0.07 * 1920 = 134, emphasis = 134 * 1.25 = 168
+      // base fontSize = 0.07 * 1920 = 134, emphasis ≈ 134 * 1.18 = 158
       const content = await capturedContent(
         makeEmphasisWords(),
         makeStyle({ animation: 'karaoke-fill', wordsPerLine: 6 })
       )
-      expect(content).toContain('\\fs168')
+      expect(content).toContain('\\fs158')
     })
 
     it('applies \\fs override to supersize words (much larger than base)', async () => {
-      // base fontSize = 0.07 * 1920 = 134, supersize = 134 * 1.6 = 214
+      // base fontSize = 0.07 * 1920 = 134, supersize ≈ 134 * 1.47 = 197
       const content = await capturedContent(
         makeEmphasisWords(),
         makeStyle({ animation: 'karaoke-fill', wordsPerLine: 6 })
       )
-      expect(content).toContain('\\fs214')
+      expect(content).toContain('\\fs197')
     })
 
     it('applies emphasis color to emphasis words', async () => {

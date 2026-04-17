@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 import type { WordTimestamp } from '@shared/types'
 
 // ---------------------------------------------------------------------------
@@ -37,8 +37,7 @@ async function extractKeywordsWithGemini(
   words: WordTimestamp[],
   geminiApiKey: string
 ): Promise<KeywordAtTimestamp[]> {
-  const genAI = new GoogleGenerativeAI(geminiApiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+  const ai = new GoogleGenAI({ apiKey: geminiApiKey })
 
   // Build a compact transcript with timestamps for Gemini
   const timestampedText = words
@@ -47,8 +46,11 @@ async function extractKeywordsWithGemini(
 
   const prompt = `${KEYWORD_PROMPT}\n\nTranscript:\n${timestampedText}\n\nFull text: ${transcriptText}`
 
-  const result = await model.generateContent(prompt)
-  const raw = result.response.text().trim()
+  const result = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-lite',
+    contents: prompt
+  })
+  const raw = (result.text ?? '').trim()
 
   // Strip markdown code fences if present
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')

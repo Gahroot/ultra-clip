@@ -25,13 +25,11 @@ export type {
   PipelineStage,
   PipelineProgress,
   RenderProgress,
-  CaptionStyle,
   SoundDesignSettings,
   BrandKit,
   ZoomSettings,
   HookTitleOverlaySettings,
   RehookOverlaySettings,
-  ProgressBarOverlaySettings,
   BRollSettings,
   BRollDisplayMode,
   BRollTransition,
@@ -53,9 +51,6 @@ export type {
   PythonSetupState,
 } from './store/types'
 
-// Re-export the BUILT_IN_PROFILE_NAMES const (it's a value, not just a type)
-export { BUILT_IN_PROFILE_NAMES } from './store/types'
-
 // Re-export shared types that were previously re-exported from store.ts
 export type {
   WordTimestamp,
@@ -71,8 +66,6 @@ export type {
   ZoomIntensity,
   HookTitleStyle,
   RehookStyle,
-  ProgressBarStyle,
-  ProgressBarPosition,
   LogoPosition,
   ScoredSegment,
   ScoringResult,
@@ -91,7 +84,6 @@ export type {
 
 // Constants and helpers
 export {
-  CAPTION_PRESETS,
   DEFAULT_HOOK_TEMPLATES,
   DEFAULT_SETTINGS,
   DEFAULT_TEMPLATE_LAYOUT,

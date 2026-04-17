@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Mock } from 'vitest'
 
 // ---------------------------------------------------------------------------
-// Mock @google/generative-ai
+// Mock @google/genai
 // Vitest v4 requires `class` for constructor mocks (not arrow functions).
 // vi.hoisted makes mockGenerateContent and constructorSpy available inside
 // the vi.mock factory, which is also hoisted to the top of the file.
@@ -15,13 +15,11 @@ const { mockGenerateContent, constructorSpy } = vi.hoisted(() => {
   return { mockGenerateContent, constructorSpy }
 })
 
-vi.mock('@google/generative-ai', () => ({
-  GoogleGenerativeAI: class MockGoogleGenerativeAI {
-    constructor(apiKey: string) {
-      constructorSpy.lastApiKey = apiKey
-    }
-    getGenerativeModel(_config: unknown) {
-      return { generateContent: mockGenerateContent }
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: class MockGoogleGenAI {
+    models = { generateContent: mockGenerateContent }
+    constructor(opts: { apiKey: string }) {
+      constructorSpy.lastApiKey = opts.apiKey
     }
   }
 }))
@@ -34,9 +32,7 @@ import { scoreTranscript, generateHookText } from './ai-scoring'
 
 function makeResponse(segments: object[], summary = 'Test summary', key_topics: string[] = []) {
   const text = JSON.stringify({ segments, summary, key_topics })
-  mockGenerateContent.mockResolvedValue({
-    response: { text: () => text }
-  })
+  mockGenerateContent.mockResolvedValue({ text })
 }
 
 const noopProgress = vi.fn()
@@ -134,7 +130,7 @@ describe('scoreTranscript', () => {
     expect(result.segments[0].endTime).toBe(45)
   })
 
-  it('passes the apiKey to GoogleGenerativeAI constructor', async () => {
+  it('passes the apiKey to GoogleGenAI constructor', async () => {
     makeResponse([
       { start_time: '00:00', end_time: '00:30', text: 'Segment for testing API key passing.', score: 80, hook_text: '', reasoning: '' }
     ])
@@ -154,17 +150,13 @@ describe('generateHookText', () => {
   })
 
   it('returns the hook text from the model', async () => {
-    mockGenerateContent.mockResolvedValue({
-      response: { text: () => 'Nobody expected this' }
-    })
+    mockGenerateContent.mockResolvedValue({ text: 'Nobody expected this' })
     const result = await generateHookText('test-key', 'some transcript text')
     expect(result).toBe('Nobody expected this')
   })
 
-  it('passes the apiKey to GoogleGenerativeAI', async () => {
-    mockGenerateContent.mockResolvedValue({
-      response: { text: () => 'Hook' }
-    })
+  it('passes the apiKey to GoogleGenAI', async () => {
+    mockGenerateContent.mockResolvedValue({ text: 'Hook' })
     await generateHookText('hook-api-key', 'transcript')
     expect(constructorSpy.lastApiKey).toBe('hook-api-key')
   })

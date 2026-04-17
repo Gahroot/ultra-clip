@@ -1,9 +1,9 @@
-import ffmpeg from 'fluent-ffmpeg'
 import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
-import { execSync, spawnSync } from 'child_process'
+import { execSync, spawnSync, spawn, ChildProcess } from 'child_process'
 import { tmpdir } from 'os'
+import { EventEmitter } from 'events'
 
 function findOnSystemPath(name: string): string | null {
   try {
@@ -86,17 +86,17 @@ function resolveBinaryPath(name: string): string | null {
 
 let ffmpegReady = false
 let resolvedFfmpegPath: string | null = null
+let resolvedFfprobePath: string | null = null
 
 export function setupFFmpeg(): void {
   const ffmpegBin = resolveBinaryPath('ffmpeg')
   const ffprobeBin = resolveBinaryPath('ffprobe')
 
   if (ffmpegBin) {
-    ffmpeg.setFfmpegPath(ffmpegBin)
     resolvedFfmpegPath = ffmpegBin
   }
   if (ffprobeBin) {
-    ffmpeg.setFfprobePath(ffprobeBin)
+    resolvedFfprobePath = ffprobeBin
   }
 
   ffmpegReady = !!(ffmpegBin && ffprobeBin)
@@ -151,6 +151,45 @@ function detectHardwareEncoder(): HwEncoder {
   return cachedEncoder
 }
 
+// --- NVENC capability detection (b_ref_mode is Turing+) ---
+
+let cachedNvencSupportsBRefMode: boolean | null = null
+
+/**
+ * Detect if the installed NVENC encoder supports `-b_ref_mode middle`.
+ * Probing `ffmpeg -h encoder=h264_nvenc` lists the option when the build
+ * exposes it; actual runtime support requires Turing or newer, which the
+ * NVENC driver reports via a capability check. We err on the side of safety:
+ * only claim support when the option is listed AND the probe encode succeeds.
+ */
+function nvencSupportsBRefMode(): boolean {
+  if (cachedNvencSupportsBRefMode !== null) return cachedNvencSupportsBRefMode
+  const bin = resolvedFfmpegPath ?? 'ffmpeg'
+  try {
+    const helpOut = execSync(`"${bin}" -hide_banner -h encoder=h264_nvenc`, {
+      encoding: 'utf-8',
+      timeout: 5_000,
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+    if (!helpOut.includes('b_ref_mode')) {
+      cachedNvencSupportsBRefMode = false
+      return false
+    }
+    // Runtime probe: tiny synthetic encode to verify the driver accepts it.
+    execSync(
+      `"${bin}" -hide_banner -f lavfi -i "testsrc=size=64x64:rate=5:duration=0.2" ` +
+      `-c:v h264_nvenc -preset p1 -b_ref_mode middle -f null -`,
+      { timeout: 5_000, stdio: ['pipe', 'pipe', 'pipe'] }
+    )
+    cachedNvencSupportsBRefMode = true
+    console.log('[FFmpeg] NVENC b_ref_mode=middle supported (Turing+)')
+  } catch {
+    cachedNvencSupportsBRefMode = false
+    console.log('[FFmpeg] NVENC b_ref_mode=middle not supported — using default')
+  }
+  return cachedNvencSupportsBRefMode
+}
+
 // --- CUDA scale filter detection ---
 
 let cachedHasScaleCuda: boolean | null = null
@@ -191,17 +230,30 @@ export function getEncoder(quality?: QualityParams): EncoderConfig {
   const preset = quality?.preset ?? 'veryfast'
 
   switch (encoder) {
-    case 'h264_nvenc':
+    case 'h264_nvenc': {
       // Map x264 preset to nvenc preset (p1=fastest, p7=slowest)
       // ultrafast→p1, veryfast→p2, medium→p4, slow→p6
-      // CRF maps to cq for NVENC
-      return {
-        encoder,
-        presetFlag: ['-preset', nvencPreset(preset), '-rc', 'vbr', '-cq', String(crf)]
+      // CRF maps to cq for NVENC.
+      // `-spatial_aq 1` + `-rc-lookahead 8` improve perceptual quality at
+      // negligible speed cost on Maxwell+ cards. `-b_ref_mode middle` is
+      // Turing+ only, so we gate it on a runtime probe.
+      const flags = [
+        '-preset', nvencPreset(preset),
+        '-rc', 'vbr',
+        '-cq', String(crf),
+        '-b:v', '0',
+        '-spatial_aq', '1',
+        '-rc-lookahead', '8',
+        '-bf', '2'
+      ]
+      if (nvencSupportsBRefMode()) {
+        flags.push('-b_ref_mode', 'middle')
       }
+      return { encoder, presetFlag: flags }
+    }
     case 'h264_qsv':
       // QSV quality: global_quality ~ CRF (higher = worse, so scale proportionally)
-      return { encoder, presetFlag: ['-preset', 'fast', '-global_quality', String(crf)] }
+      return { encoder, presetFlag: ['-preset', 'fast', '-global_quality', String(crf), '-look_ahead', '1'] }
     default:
       return { encoder: 'libx264', presetFlag: ['-preset', preset, '-crf', String(crf), '-threads', '0'] }
   }
@@ -281,43 +333,255 @@ export function isFFmpegAvailable(): boolean {
   return ffmpegReady
 }
 
-export function getVideoMetadata(
+// ---------------------------------------------------------------------------
+// FfmpegCommand — child_process.spawn replacement for fluent-ffmpeg
+// ---------------------------------------------------------------------------
+
+export class FfmpegCommand extends EventEmitter {
+  private inputs: Array<{ path: string; options: string[]; loop: boolean }> = []
+  private outputOpts: string[] = []
+  private vFilters: string[] = []
+  private _outputPath: string | null = null
+  private _noVideo = false
+  private _audioFreq: number | null = null
+  private _audioChannels: number | null = null
+  private _audioFilterStr: string | null = null
+  private _format: string | null = null
+  private _frames: number | null = null
+  private _duration: number | null = null
+  private proc: ChildProcess | null = null
+
+  constructor(inputPath?: string) {
+    super()
+    if (inputPath) this.inputs.push({ path: inputPath, options: [], loop: false })
+  }
+
+  input(path: string): this { this.inputs.push({ path, options: [], loop: false }); return this }
+
+  inputOptions(opts: string[]): this {
+    const cur = this.inputs[this.inputs.length - 1]
+    if (cur) cur.options.push(...opts)
+    return this
+  }
+
+  seekInput(t: number): this {
+    const cur = this.inputs[this.inputs.length - 1]
+    if (cur) cur.options.push('-ss', String(t))
+    return this
+  }
+
+  loop(): this {
+    const cur = this.inputs[this.inputs.length - 1]
+    if (cur) cur.loop = true
+    return this
+  }
+
+  setStartTime(t: number): this { return this.seekInput(t) }
+
+  setDuration(d: number): this {
+    this._duration = d
+    this.outputOpts.push('-t', String(d))
+    return this
+  }
+
+  duration(d: number): this { return this.setDuration(d) }
+
+  frames(n: number): this { this._frames = n; return this }
+  noVideo(): this { this._noVideo = true; return this }
+  audioFrequency(freq: number): this { this._audioFreq = freq; return this }
+  audioChannels(n: number): this { this._audioChannels = n; return this }
+  audioFilters(filters: string[]): this { this._audioFilterStr = filters.join(','); return this }
+  format(fmt: string): this { this._format = fmt; return this }
+
+  videoFilters(filter: string): this { this.vFilters.push(filter); return this }
+  videoFilter(filter: string): this { return this.videoFilters(filter) }
+
+  outputOptions(opts: string[]): this { this.outputOpts.push(...opts); return this }
+  output(path: string): this { this._outputPath = path; return this }
+
+  save(path: string): this {
+    this._outputPath = path
+    this._exec()
+    return this
+  }
+
+  run(): this {
+    this._exec()
+    return this
+  }
+
+  kill(signal: string = 'SIGTERM'): void {
+    try { this.proc?.kill(signal as NodeJS.Signals) } catch { /* already dead */ }
+  }
+
+  private buildArgs(): string[] {
+    const args: string[] = []
+
+    for (const inp of this.inputs) {
+      if (inp.loop) args.push('-loop', '1')
+      args.push(...inp.options)
+      args.push('-i', inp.path)
+    }
+
+    if (this.vFilters.length > 0) {
+      args.push('-vf', this.vFilters.join(','))
+    }
+
+    if (this._noVideo) args.push('-vn')
+    if (this._audioFreq !== null) args.push('-ar', String(this._audioFreq))
+    if (this._audioChannels !== null) args.push('-ac', String(this._audioChannels))
+    if (this._audioFilterStr) args.push('-af', this._audioFilterStr)
+    if (this._format !== null) args.push('-f', this._format)
+    if (this._frames !== null) args.push('-frames:v', String(this._frames))
+
+    args.push(...this.outputOpts)
+    args.push('-y')
+
+    if (this._outputPath) args.push(this._outputPath)
+
+    return args
+  }
+
+  private _exec(): void {
+    const bin = resolvedFfmpegPath ?? 'ffmpeg'
+    const args = this.buildArgs()
+
+    this.proc = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+
+    const cmdLine = `${bin} ${args.join(' ')}`
+    this.emit('start', cmdLine)
+
+    let stderrBuf = ''
+    const stderrLines: string[] = []
+
+    this.proc.stderr?.on('data', (chunk: Buffer) => {
+      stderrBuf += chunk.toString()
+      const lines = stderrBuf.split('\n')
+      stderrBuf = lines.pop() ?? ''
+      for (const line of lines) {
+        stderrLines.push(line)
+        this.emit('stderr', line)
+        this.parseProgress(line)
+      }
+    })
+
+    this.proc.on('close', (code) => {
+      // Flush remaining stderr
+      if (stderrBuf) {
+        stderrLines.push(stderrBuf)
+        this.emit('stderr', stderrBuf)
+        this.parseProgress(stderrBuf)
+      }
+
+      if (code === 0) {
+        this.emit('end')
+      } else {
+        const lastLines = stderrLines.slice(-20).join('\n')
+        this.emit('error', new Error(`ffmpeg exited with code ${code}: ${lastLines}`))
+      }
+    })
+
+    this.proc.on('error', (err) => {
+      this.emit('error', err)
+    })
+  }
+
+  private parseProgress(line: string): void {
+    const timeMatch = line.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/)
+    if (!timeMatch) return
+    const hours = parseInt(timeMatch[1], 10)
+    const mins = parseInt(timeMatch[2], 10)
+    const secs = parseFloat(timeMatch[3])
+    const timeSec = hours * 3600 + mins * 60 + secs
+    const timemark = `${timeMatch[1]}:${timeMatch[2]}:${timeMatch[3]}`
+
+    let percent = 0
+    if (this._duration && this._duration > 0) {
+      percent = Math.min(100, (timeSec / this._duration) * 100)
+    }
+    this.emit('progress', { percent, timemark })
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ffprobe replacement
+// ---------------------------------------------------------------------------
+
+interface FfprobeStream {
+  codec_type: string
+  codec_name?: string
+  width?: number
+  height?: number
+  r_frame_rate?: string
+  avg_frame_rate?: string
+}
+
+interface FfprobeFormat {
+  duration?: number
+}
+
+interface FfprobeData {
+  streams: FfprobeStream[]
+  format: FfprobeFormat
+}
+
+function ffprobeRaw(filePath: string): Promise<FfprobeData> {
+  return new Promise((resolve, reject) => {
+    const bin = resolvedFfprobePath ?? 'ffprobe'
+    const proc = spawn(bin, [
+      '-v', 'quiet', '-print_format', 'json',
+      '-show_format', '-show_streams', filePath
+    ])
+    let stdout = ''
+    let stderr = ''
+    proc.stdout.on('data', (d: Buffer) => { stdout += d.toString() })
+    proc.stderr.on('data', (d: Buffer) => { stderr += d.toString() })
+    proc.on('close', (code) => {
+      if (code !== 0) return reject(new Error(`ffprobe exited ${code}: ${stderr}`))
+      try { resolve(JSON.parse(stdout)) }
+      catch (e) { reject(e) }
+    })
+    proc.on('error', reject)
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Video metadata / helpers
+// ---------------------------------------------------------------------------
+
+export async function getVideoMetadata(
   filePath: string
 ): Promise<{ duration: number; width: number; height: number; codec: string; fps: number; audioCodec: string }> {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(filePath, (err, metadata) => {
-      if (err) return reject(err)
-      const video = metadata.streams.find((s) => s.codec_type === 'video')
-      if (!video) return reject(new Error('No video stream found'))
-      const audio = metadata.streams.find((s) => s.codec_type === 'audio')
-      // Parse r_frame_rate (e.g. "30/1", "30000/1001")
-      let fps = 0
-      const rateStr = (video as any).r_frame_rate || (video as any).avg_frame_rate || ''
-      if (rateStr) {
-        const parts = rateStr.split('/')
-        if (parts.length === 2) {
-          const num = parseFloat(parts[0])
-          const den = parseFloat(parts[1])
-          if (den > 0) fps = num / den
-        } else {
-          fps = parseFloat(rateStr) || 0
-        }
-      }
-      resolve({
-        duration: metadata.format.duration || 0,
-        width: video.width || 0,
-        height: video.height || 0,
-        codec: video.codec_name || 'unknown',
-        fps,
-        audioCodec: audio?.codec_name || 'unknown'
-      })
-    })
-  })
+  const metadata = await ffprobeRaw(filePath)
+  const video = metadata.streams.find((s) => s.codec_type === 'video')
+  if (!video) throw new Error('No video stream found')
+  const audio = metadata.streams.find((s) => s.codec_type === 'audio')
+  // Parse r_frame_rate (e.g. "30/1", "30000/1001")
+  let fps = 0
+  const rateStr = video.r_frame_rate || video.avg_frame_rate || ''
+  if (rateStr) {
+    const parts = rateStr.split('/')
+    if (parts.length === 2) {
+      const num = parseFloat(parts[0])
+      const den = parseFloat(parts[1])
+      if (den > 0) fps = num / den
+    } else {
+      fps = parseFloat(rateStr) || 0
+    }
+  }
+  return {
+    duration: metadata.format.duration || 0,
+    width: video.width || 0,
+    height: video.height || 0,
+    codec: video.codec_name || 'unknown',
+    fps,
+    audioCodec: audio?.codec_name || 'unknown'
+  }
 }
 
 export function extractAudio(videoPath: string, outputPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    ffmpeg(videoPath)
+    new FfmpegCommand(videoPath)
       .noVideo()
       .audioFrequency(16000)
       .audioChannels(1)
@@ -335,19 +599,19 @@ export function trimVideo(
   endTime: number
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    ffmpeg(inputPath)
+    new FfmpegCommand(inputPath)
       .setStartTime(startTime)
       .setDuration(endTime - startTime)
-      .outputOptions(['-y', '-c', 'copy'])
+      .outputOptions(['-c', 'copy'])
       .on('end', () => resolve(outputPath))
       .on('error', () => {
         // Fallback: re-encode if stream copy fails
         const { encoder, presetFlag } = getEncoder()
-        ffmpeg(inputPath)
+        new FfmpegCommand(inputPath)
           .inputOptions(['-hwaccel', 'auto'])
           .setStartTime(startTime)
           .setDuration(endTime - startTime)
-          .outputOptions(['-y', '-c:v', encoder, ...presetFlag, '-c:a', 'aac'])
+          .outputOptions(['-c:v', encoder, ...presetFlag, '-c:a', 'aac'])
           .on('end', () => resolve(outputPath))
           .on('error', reject)
           .save(outputPath)
@@ -364,11 +628,11 @@ export function trimVideoReencode(
 ): Promise<string> {
   const { encoder, presetFlag } = getEncoder()
   return new Promise((resolve, reject) => {
-    ffmpeg(inputPath)
+    new FfmpegCommand(inputPath)
       .inputOptions(['-hwaccel', 'auto'])
       .setStartTime(startTime)
       .setDuration(endTime - startTime)
-      .outputOptions(['-y', '-c:v', encoder, ...presetFlag, '-c:a', 'aac'])
+      .outputOptions(['-c:v', encoder, ...presetFlag, '-c:a', 'aac'])
       .on('end', () => resolve(outputPath))
       .on('error', reject)
       .save(outputPath)
@@ -401,13 +665,13 @@ export function cropAndExport(
 
   return new Promise((resolve, reject) => {
     let stderrOutput = ''
-    const cmd = ffmpeg(inputPath)
+    const cmd = new FfmpegCommand(inputPath)
     if (!gpuOff) {
       cmd.inputOptions(['-hwaccel', 'auto'])
     }
     cmd
       .videoFilters(videoFilter)
-      .outputOptions(['-y', '-c:v', encoder, ...presetFlag, '-c:a', 'aac'])
+      .outputOptions(['-c:v', encoder, ...presetFlag, '-c:a', 'aac'])
       .on('stderr', (line: string) => { stderrOutput += line + '\n' })
       .on('end', () => resolve(outputPath))
       .on('error', (err: Error) => {
@@ -415,9 +679,9 @@ export function cropAndExport(
           // Retry with software encoder
           disableGpuEncoderForSession()
           const sw = getSoftwareEncoder()
-          ffmpeg(inputPath)
+          new FfmpegCommand(inputPath)
             .videoFilters(videoFilter)
-            .outputOptions(['-y', '-c:v', sw.encoder, ...sw.presetFlag, '-c:a', 'aac'])
+            .outputOptions(['-c:v', sw.encoder, ...sw.presetFlag, '-c:a', 'aac'])
             .on('end', () => resolve(outputPath))
             .on('error', reject)
             .save(outputPath)
@@ -441,7 +705,7 @@ export function generateThumbnail(videoPath: string, timeSec?: number): Promise<
 
     const tmpFile = join(tmpdir(), `batchcontent-thumb-${Date.now()}.png`)
 
-    ffmpeg(videoPath)
+    new FfmpegCommand(videoPath)
       .seekInput(seekSec)
       .frames(1)
       .outputOptions(['-vf', 'scale=320:-1'])
@@ -578,4 +842,10 @@ export function getWaveformPeaks(
   return peaks
 }
 
-export { ffmpeg }
+// ---------------------------------------------------------------------------
+// Factory export — drop-in replacement for `ffmpeg(path)` call sites
+// ---------------------------------------------------------------------------
+
+export function ffmpeg(inputPath?: string): FfmpegCommand {
+  return new FfmpegCommand(inputPath)
+}

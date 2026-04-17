@@ -30,7 +30,7 @@
  */
 
 import { existsSync } from 'fs'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 import { escapeDrawtext } from '../hook-title'
 import type { TranscriptionResult } from '../transcription'
 
@@ -482,8 +482,7 @@ async function callGeminiForMoments(
   formattedTranscript: string,
   clipDuration: number
 ): Promise<AIEmojiHit[]> {
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+  const ai = new GoogleGenAI({ apiKey })
 
   const prompt =
     `You are an expert short-form video editor who knows exactly when to trigger emoji reaction bursts to amplify emotion and increase viewer engagement.
@@ -503,8 +502,11 @@ Return ONLY valid JSON array, no markdown fences, no explanation:
 
 If no strong moments exist, return an empty array: []`
 
-  const result = await model.generateContent(prompt)
-  const raw = result.response.text().trim()
+  const result = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-lite',
+    contents: prompt
+  })
+  const raw = (result.text ?? '').trim()
 
   // Extract JSON array from response (strip any surrounding markdown)
   const jsonMatch = raw.match(/\[[\s\S]*\]/)

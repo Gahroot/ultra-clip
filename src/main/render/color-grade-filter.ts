@@ -76,10 +76,12 @@ export function buildEditStyleColorGradeFilter(config: ColorGradeConfig): string
     filters.push(`colorbalance=rs=${rs}:bs=${bs}:rm=${rs}:bm=${bs}`)
   }
 
-  // Black lift via curves (raise the black point)
+  // Black lift via curves (raise the black point).
+  // The curves filter takes normalized [0,1] coordinates for both axes, so
+  // blackLift (already in [0,1]) is passed directly. Clamp defensively.
   if (Math.abs(blackLift) >= 0.001) {
-    const lift = Math.round(blackLift * 255)
-    filters.push(`curves=master='0/${lift} 1/1'`)
+    const lift = Math.max(0, Math.min(1, blackLift))
+    filters.push(`curves=master='0/${lift.toFixed(3)} 1/1'`)
   }
 
   return filters.length > 0 ? filters.join(',') : null

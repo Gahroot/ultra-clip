@@ -20,8 +20,6 @@ import type {
   ZoomMode,
   HookTitleStyle,
   RehookStyle,
-  ProgressBarStyle,
-  ProgressBarPosition,
   LogoPosition,
   ScoredSegment,
   ScoringResult,
@@ -55,8 +53,6 @@ export type {
   ZoomMode,
   HookTitleStyle,
   RehookStyle,
-  ProgressBarStyle,
-  ProgressBarPosition,
   LogoPosition,
   ScoredSegment,
   ScoringResult,
@@ -75,6 +71,7 @@ export type {
   SegmentStyleVariant,
   ZoomKeyframe,
   TransitionType,
+  Archetype,
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +175,6 @@ export interface StoryArcUI {
 export interface ClipRenderSettings {
   enableCaptions?: boolean
   enableHookTitle?: boolean
-  enableProgressBar?: boolean
   enableAutoZoom?: boolean
   enableSoundDesign?: boolean
   enableBrandKit?: boolean
@@ -187,8 +183,7 @@ export interface ClipRenderSettings {
   /**
    * Per-clip accent color (CSS hex, e.g. '#FF6B35').
    * When set, overrides highlight/emphasis colors in captions, hook title
-   * text color, rehook text color, and progress bar color — painting the
-   * whole edit with one colour.
+   * text color, and rehook text color — painting the whole edit with one colour.
    */
   accentColor?: string
 }
@@ -300,26 +295,14 @@ export interface RenderProgress {
   prepareMessage?: string
 }
 
-export interface CaptionStyle {
-  id: string
-  label: string
-  fontName: string
-  fontFile: string
-  fontSize: number
-  primaryColor: string
-  highlightColor: string
-  outlineColor: string
-  backColor: string
-  outline: number
-  shadow: number
-  borderStyle: number
-  wordsPerLine: number
-  animation: CaptionAnimation
-  /** Color for emphasis-level words (bigger + this color). Defaults to highlightColor. */
-  emphasisColor?: string
-  /** Color for supersize-level words (huge + bold + this color). Defaults to '#FFD700' gold. */
-  supersizeColor?: string
-}
+/**
+ * SFX placement density/aggressiveness preset.
+ * - minimal    — 1–2 quiet impacts only; barely noticeable
+ * - standard   — emphasis-driven placement at moderate density (default)
+ * - energetic  — maximum density; pops on every emphasis word, impacts on every
+ *                supersize word, whooshes on every edit event
+ */
+export type SFXStyle = 'minimal' | 'standard' | 'energetic'
 
 /**
  * SFX placement density/aggressiveness preset.
@@ -422,32 +405,6 @@ export interface RehookOverlaySettings {
    * Default: 0.45.
    */
   positionFraction: number
-}
-
-/**
- * Settings for the animated completion progress bar overlay.
- */
-export interface ProgressBarOverlaySettings {
-  /** Whether the progress bar is burned into rendered clips. */
-  enabled: boolean
-  /**
-   * Edge of the frame to anchor the bar.
-   * 'bottom' (default) sits below captions; 'top' avoids caption overlap.
-   */
-  position: ProgressBarPosition
-  /** Bar thickness in pixels on the 1080×1920 canvas (2–8 px). Default: 4. */
-  height: number
-  /** Bar color in CSS hex format. Default: '#FFFFFF'. */
-  color: string
-  /** Bar opacity 0–1. Default: 0.9. */
-  opacity: number
-  /**
-   * Visual style:
-   *   'solid'    — flat single-color bar
-   *   'gradient' — bar with white highlight strip for a dimensional look
-   *   'glow'     — bar with a soft outer glow halo behind it
-   */
-  style: ProgressBarStyle
 }
 
 export interface BRollSettings {
@@ -641,14 +598,11 @@ export interface AppSettings {
   falApiKey: string
   outputDirectory: string | null
   minScore: number
-  captionStyle: CaptionStyle
-  captionsEnabled: boolean
   soundDesign: SoundDesignSettings
   autoZoom: ZoomSettings
   brandKit: BrandKit
   hookTitleOverlay: HookTitleOverlaySettings
   rehookOverlay: RehookOverlaySettings
-  progressBarOverlay: ProgressBarOverlaySettings
   broll: BRollSettings
   fillerRemoval: FillerRemovalSettings
   enableNotifications: boolean
@@ -689,14 +643,11 @@ export interface AppSettings {
  * API keys, output directory, and developer mode).
  */
 export interface SettingsProfile {
-  captionStyle: CaptionStyle
-  captionsEnabled: boolean
   soundDesign: SoundDesignSettings
   autoZoom: ZoomSettings
   brandKit: BrandKit
   hookTitleOverlay: HookTitleOverlaySettings
   rehookOverlay: RehookOverlaySettings
-  progressBarOverlay: ProgressBarOverlaySettings
   broll: BRollSettings
   fillerRemoval: FillerRemovalSettings
   renderQuality: RenderQualitySettings
@@ -706,9 +657,6 @@ export interface SettingsProfile {
   minScore: number
   enableNotifications: boolean
 }
-
-/** Names of profiles that ship with the app and cannot be deleted. */
-export const BUILT_IN_PROFILE_NAMES = ['TikTok Optimized', 'Reels Clean', 'Minimal'] as const
 
 export interface ProcessingConfig {
   targetDuration: TargetDuration
@@ -982,8 +930,6 @@ export interface AppState {
   setFalApiKey: (key: string) => void
   setOutputDirectory: (dir: string) => void
   setMinScore: (score: number) => void
-  setCaptionStyle: (style: CaptionStyle) => void
-  setCaptionsEnabled: (enabled: boolean) => void
   setSoundDesignEnabled: (enabled: boolean) => void
   setSoundDesignTrack: (track: MusicTrack) => void
   setSoundDesignSfxVolume: (volume: number) => void
@@ -1008,14 +954,6 @@ export interface AppState {
   setRehookStyle: (style: RehookStyle) => void
   setRehookDisplayDuration: (seconds: number) => void
   setRehookPositionFraction: (fraction: number) => void
-
-  // Actions — Progress Bar Overlay
-  setProgressBarEnabled: (enabled: boolean) => void
-  setProgressBarPosition: (position: ProgressBarPosition) => void
-  setProgressBarHeight: (height: number) => void
-  setProgressBarColor: (color: string) => void
-  setProgressBarOpacity: (opacity: number) => void
-  setProgressBarStyle: (style: ProgressBarStyle) => void
 
   // Actions — Brand Kit
   setBrandKitEnabled: (enabled: boolean) => void
@@ -1059,7 +997,7 @@ export interface AppState {
 
   // Actions — Reset
   resetSettings: () => void
-  resetSection: (section: 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'progressBar' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality') => void
+  resetSection: (section: 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality') => void
 
   // Actions — Python setup
   setPythonStatus: (status: PythonSetupState) => void
@@ -1197,26 +1135,34 @@ export interface AppState {
   selectedEditStyleId: string | null
   /** Currently selected segment index in the segment timeline (per clip). */
   selectedSegmentIndex: number
+  /** Per-segment "AI is re-styling" flag, keyed `${clipId}:${segmentId}`. */
+  segmentStylingPending: Record<string, boolean>
+  /** Monotonic token bumped on every global edit-style change for stale-result
+   *  rejection inside the _restyleAllSegmentsForNewEditStyle thunk. */
+  editStyleChangeToken: number
   /** Set the selected segment index for the segment timeline. */
   setSelectedSegmentIndex: (index: number) => void
 
   // Actions — Segment Editor
   setSegments: (clipId: string, segments: VideoSegment[]) => void
   updateSegment: (clipId: string, segmentId: string, updates: Partial<VideoSegment>) => void
-  /** Convenience action: update a segment's style variant by index within a clip. */
-  updateSegmentStyle: (clipId: string, segmentIndex: number, variantId: string, category?: SegmentStyleCategory) => void
   /** Convenience action: update the transition type that plays before a given segment. */
   updateSegmentTransition: (clipId: string, segmentIndex: number, transitionType: TransitionType) => void
+  /** Direct per-segment archetype reassignment (fast path, no AI call). */
+  setSegmentArchetype: (clipId: string, segmentId: string, archetype: Archetype) => void
+  /** Re-run the AI segment styler for a single clip. Respects the current edit
+   *  style + fal.ai availability. Used by the "Re-roll" UX. */
+  restyleOneClip: (clipId: string) => Promise<void>
+  /** Apply the same archetype to every segment in a clip. Used by "Lock to one". */
+  setAllSegmentsArchetype: (clipId: string, archetype: Archetype) => void
+  /** Mark a segment as having been silently degraded at render time.
+   *  Populated by the SEGMENT_FALLBACK IPC listener. */
+  setSegmentFallbackReason: (clipId: string, segmentIndex: number, reason: string | undefined) => void
   setEditStyles: (styles: EditStyle[]) => void
+  /** Global edit-style change: wipes every segment's archetype across all clips
+   *  (normal + stitched) and re-runs the AI segment styler against the new
+   *  style's archetype set. Side-effects live inside the store action so every
+   *  caller (EditStyleStrip, ClipPreview, profile restore…) triggers the same flow. */
   setSelectedEditStyleId: (styleId: string | null) => void
-
-  // Edit Mode (Two-Track Architecture)
-  /** Which editing track is active. null = not yet chosen (show TrackSelector). */
-  editMode: EditMode | null
-  /** Accent color chosen by the user for the AI Edit track. */
-  aiEditAccentColor: string
-  /** Set the edit mode (basic or ai-edit). */
-  setEditMode: (mode: EditMode | null) => void
-  /** Set the AI Edit accent color override. */
-  setAiEditAccentColor: (color: string) => void
+  clearSegmentStylingPending: (clipId?: string) => void
 }

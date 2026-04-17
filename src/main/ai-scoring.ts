@@ -1,5 +1,5 @@
-import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
-import { emitUsageFromResponse } from './ai-usage'
+import { GoogleGenAI } from '@google/genai'
+import { callGeminiWithRetry, type GeminiCall } from './ai/gemini-client'
 
 // ---------------------------------------------------------------------------
 // Types (canonical definitions live in @shared/types)
@@ -183,57 +183,6 @@ interface RawResponse {
 }
 
 /**
- * Classify a Gemini API error and throw a user-friendly message.
- */
-function classifyGeminiError(err: unknown): never {
-  const msg = err instanceof Error ? err.message : String(err)
-  const status = (err as { status?: number })?.status
-
-  if (status === 401 || status === 403 || /api.key/i.test(msg)) {
-    throw new Error('Invalid Gemini API key. Check your key in Settings.')
-  }
-  if (status === 429 || /resource.exhausted|rate.limit|quota/i.test(msg)) {
-    throw new Error('Gemini API rate limit exceeded. Please wait and try again.')
-  }
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)) {
-    throw new Error('Network error: cannot reach Gemini API. Check your internet connection.')
-  }
-  throw err
-}
-
-/**
- * Call Gemini with a single retry on transient errors (429, network).
- * Emits token usage via the ai-usage module after each successful call.
- */
-async function callGeminiWithRetry(model: GenerativeModel, prompt: string, usageSource: string): Promise<string> {
-  try {
-    const result = await model.generateContent(prompt)
-    emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-    return result.response.text().trim()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const status = (err as { status?: number })?.status
-    const isTransient =
-      status === 429 ||
-      /resource.exhausted|rate.limit|quota/i.test(msg) ||
-      /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)
-
-    if (isTransient) {
-      // Wait 2s then retry once
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const result = await model.generateContent(prompt)
-        emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-        return result.response.text().trim()
-      } catch (retryErr) {
-        classifyGeminiError(retryErr)
-      }
-    }
-    classifyGeminiError(err)
-  }
-}
-
-/**
  * Validate and normalise the raw JSON from Gemini into ScoredSegment[].
  * Applies all timing / score / overlap rules.
  */
@@ -302,13 +251,11 @@ export async function scoreTranscript(
 ): Promise<ScoringResult> {
   onProgress({ stage: 'sending', message: 'Sending transcript to Gemini AI...' })
 
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({
+  const ai = new GoogleGenAI({ apiKey })
+  const call: GeminiCall = {
     model: 'gemini-2.5-flash-lite',
-    generationConfig: {
-      responseMimeType: 'application/json'
-    }
-  })
+    config: { responseMimeType: 'application/json' }
+  }
 
   const systemPrompt = buildSystemPrompt(targetDuration, targetAudience)
 
@@ -321,7 +268,7 @@ ${formattedTranscript}`
 
   onProgress({ stage: 'analyzing', message: 'Gemini is analyzing the transcript...' })
 
-  const text = await callGeminiWithRetry(model, prompt, 'scoring')
+  const text = await callGeminiWithRetry(ai, call, prompt, 'scoring')
 
   onProgress({ stage: 'validating', message: 'Validating and scoring segments...' })
 
@@ -372,11 +319,11 @@ export async function rescoreSingleClip(
   clipText: string,
   clipDuration: number
 ): Promise<SingleClipRescoreResult> {
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({
+  const ai = new GoogleGenAI({ apiKey })
+  const call: GeminiCall = {
     model: 'gemini-2.5-flash-lite',
-    generationConfig: { responseMimeType: 'application/json' }
-  })
+    config: { responseMimeType: 'application/json' }
+  }
 
   const prompt = `You are an expert at scoring short-form video clips for viral potential on TikTok, Instagram Reels, and YouTube Shorts.
 
@@ -415,7 +362,7 @@ Return valid JSON:
 
 Transcript: "${clipText.trim()}"`
 
-  const text = await callGeminiWithRetry(model, prompt, 'rescore')
+  const text = await callGeminiWithRetry(ai, call, prompt, 'rescore')
 
   let raw: { score?: unknown; reasoning?: unknown; hook_text?: unknown }
   try {
@@ -441,8 +388,8 @@ Transcript: "${clipText.trim()}"`
 // ---------------------------------------------------------------------------
 
 export async function generateHookText(apiKey: string, transcript: string, videoSummary?: string, keyTopics?: string[]): Promise<string> {
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
+  const ai = new GoogleGenAI({ apiKey })
+  const call: GeminiCall = { model: 'gemini-2.5-flash' }
 
   let contextBlock = ''
   if (videoSummary || (keyTopics && keyTopics.length > 0)) {
@@ -454,7 +401,8 @@ export async function generateHookText(apiKey: string, transcript: string, video
 
   try {
     return await callGeminiWithRetry(
-      model,
+      ai,
+      call,
       `You are an expert short-form content creator specializing in organic (non-ad) TikTok, Instagram Reels, and YouTube Shorts.
 
 Your job is to write on-screen hook text that appears in the first 2 seconds of a clip. 80%+ viewers watch with sound off — the hook must work silently, hooking attention AND adding context so the right audience stays.

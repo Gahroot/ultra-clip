@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 export { startBatchRender, cancelRender } from './render/pipeline'
-export { renderStitchedClip } from './render/stitched-render'
+export { assembleStitchedVideo } from './render/stitched-render'
 export { renderSegmentedClip } from './render/segment-render'
 export type { SegmentRenderConfig, ResolvedSegment } from './render/segment-render'
 export { resolveFilenameTemplate } from './render/filename'
@@ -20,6 +20,5 @@ export type {
   SoundPlacementData,
   ZoomSettings,
   HookTitleConfig,
-  RehookConfig,
-  ProgressBarConfig
+  RehookConfig
 } from './render/types'

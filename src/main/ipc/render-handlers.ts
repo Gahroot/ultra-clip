@@ -408,7 +408,6 @@ export function registerRenderHandlers(): void {
           clipDuration,
           localWords,
           options.soundDesign,
-          emphasized,
           editEvents.length > 0 ? editEvents : undefined,
           job.shotStyleConfigs
         )

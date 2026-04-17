@@ -35,7 +35,6 @@ function lightenColor(hex: string, amount = 0.4): string {
 interface BatchSnapshot {
   captionStyle?: CaptionStyleInput
   hookTitleOverlay?: RenderBatchOptions['hookTitleOverlay']
-  progressBarOverlay?: RenderBatchOptions['progressBarOverlay']
 }
 
 export const accentColorFeature: RenderFeature = {
@@ -70,9 +69,6 @@ export const accentColorFeature: RenderFeature = {
       if (batchOptions.hookTitleOverlay) {
         snapshot.hookTitleOverlay = { ...batchOptions.hookTitleOverlay }
       }
-      if (batchOptions.progressBarOverlay) {
-        snapshot.progressBarOverlay = { ...batchOptions.progressBarOverlay }
-      }
       // Stash on the job so postProcess can find it (per-clip state).
       ;(job as Record<string, unknown>).__accentSnapshot = snapshot
 
@@ -99,14 +95,6 @@ export const accentColorFeature: RenderFeature = {
       // Note: rehook overlay inherits textColor from hookTitleOverlay (see
       // rehook.feature.ts:153), so no separate override is needed here.
 
-      // ── Progress bar — accent becomes bar color ────────────────────────────
-      if (batchOptions.progressBarOverlay) {
-        batchOptions.progressBarOverlay = {
-          ...batchOptions.progressBarOverlay,
-          color: accent
-        }
-      }
-
       // ── Per-shot style configs — tint caption colors in each shot ──────────
       if (job.shotStyleConfigs && job.shotStyleConfigs.length > 0) {
         for (const shotConfig of job.shotStyleConfigs) {
@@ -123,7 +111,7 @@ export const accentColorFeature: RenderFeature = {
 
       console.log(
         `[AccentColor] Clip ${job.clipId}: applying accent ${accent} → ` +
-        `captions, hook title (+rehook), progress bar, per-shot styles`
+        `captions, hook title (+rehook), per-shot styles`
       )
 
       return { tempFiles: [], modified: true }
@@ -176,9 +164,6 @@ export function restoreBatchOptions(
   }
   if (snapshot.hookTitleOverlay) {
     batchOptions.hookTitleOverlay = snapshot.hookTitleOverlay
-  }
-  if (snapshot.progressBarOverlay) {
-    batchOptions.progressBarOverlay = snapshot.progressBarOverlay
   }
 
   // Clean up the snapshot from the job

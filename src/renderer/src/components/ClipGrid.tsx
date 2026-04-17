@@ -262,6 +262,11 @@ export function ClipGrid() {
   const setRenderError = useStore((s) => s.setRenderError)
   const transcriptions = useStore((s) => s.transcriptions)
   const selectedEditStyleId = useStore((s) => s.selectedEditStyleId)
+  const editStyles = useStore((s) => s.editStyles)
+  const activeEditStyle =
+    editStyles.find((s) => s.id === selectedEditStyleId) ??
+    editStyles.find((s) => s.id === 'cinematic') ??
+    editStyles[0]
 
   // Batch multi-select
   const selectedClipIds = useStore((s) => s.selectedClipIds)
@@ -590,13 +595,12 @@ export function ClipGrid() {
       wordTimestamps: clip.wordTimestamps?.map((w) => ({ text: w.text, start: w.start, end: w.end })),
       hookTitleText: clip.hookText || undefined,
       // AI Edit mode isolation: prevent global settings-panel values (autoZoom,
-      // hookTitle, rehook, progressBar, captionStyle) from bleeding into AI edit
-      // clips. The edit style owns the full visual output — basic mode overlays
-      // are irrelevant and potentially visually contradictory (e.g. a Hormozi Bold
-      // caption style overriding Impact's dark-bar caption style).
+      // hookTitle, rehook, captionStyle) from bleeding into AI edit clips. The
+      // edit style owns the full visual output — basic mode overlays are
+      // irrelevant and potentially visually contradictory.
       clipOverrides: (() => {
         const aiEditOff = isAIEditClip(clip, segments[clip.id])
-          ? { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const }
+          ? { enableAutoZoom: false as const, enableHookTitle: false as const }
           : undefined
         const existing = clip.overrides && Object.keys(clip.overrides).length > 0 ? clip.overrides : undefined
         const merged = { ...aiEditOff, ...existing }
@@ -672,10 +676,11 @@ export function ClipGrid() {
         return segs.map((seg) => ({
           startTime: seg.startTime,
           endTime: seg.endTime,
-          styleVariantId: seg.segmentStyleId,
+          archetype: seg.archetype,
           zoomStyle: seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image' ? 'none' : 'drift' as const,
           zoomIntensity: 1.05,
           transitionIn: seg.transitionIn,
+          overlayText: seg.overlayText,
           captionBgOpacity: undefined,
           cropRect: clip.cropRegion
             ? { x: clip.cropRegion.x, y: clip.cropRegion.y, width: clip.cropRegion.width, height: clip.cropRegion.height }
@@ -719,82 +724,82 @@ export function ClipGrid() {
       const scSegments = segments[sc.id]
       const hasAIEditSegments = scSegments && scSegments.length > 0
 
-      if (hasAIEditSegments) {
-        // AI Edit path — same as regular clips with segmentedSegments
-        jobs.push({
-          clipId: sc.id,
-          sourceVideoPath: sourcePath,
-          startTime: Math.min(...sc.segments.map((s) => s.startTime)),
-          endTime: Math.max(...sc.segments.map((s) => s.endTime)),
-          cropRegion: sc.cropRegion
-            ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
-            : undefined,
-          hookTitleText: sc.hookText || undefined,
-          wordTimestamps: transcriptionWords,
-          outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
-          // AI Edit Plan fields
-          wordEmphasisOverride: sc.aiEditPlan?.wordEmphasis?.length
-            ? sc.aiEditPlan.wordEmphasis.map((e) => ({
-                text: e.text, start: e.start, end: e.end,
-                emphasis: e.level as 'emphasis' | 'supersize'
-              }))
-            : undefined,
-          aiSfxSuggestions: sc.aiEditPlan?.sfxSuggestions?.length
-            ? sc.aiEditPlan.sfxSuggestions.map((s) => ({ timestamp: s.timestamp, type: s.type }))
-            : undefined,
-          wordEmphasis: sc.aiEditPlan?.wordEmphasis?.length
-            ? sc.aiEditPlan.wordEmphasis.map((e) => ({
-                text: e.text, start: e.start, end: e.end,
-                emphasis: e.level as 'emphasis' | 'supersize'
-              }))
-            : undefined,
-          brollSuggestions: sc.aiEditPlan?.brollSuggestions?.length
-            ? sc.aiEditPlan.brollSuggestions.map((b) => ({
-                timestamp: b.timestamp, duration: b.duration, keyword: b.keyword,
-                displayMode: b.displayMode, transition: b.transition
-              }))
-            : undefined,
-          emphasisKeyframesInput: sc.aiEditPlan?.wordEmphasis?.length
-            ? sc.aiEditPlan.wordEmphasis
-                .filter((e) => e.level === 'emphasis' || e.level === 'supersize')
-                .map((e) => ({ time: e.start, end: e.end, level: e.level as 'emphasis' | 'supersize' }))
-            : undefined,
-          stylePresetId: selectedEditStyleId ?? sc.aiEditPlan?.stylePresetId ?? undefined,
-          clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const },
-          segmentedSegments: scSegments.map((seg) => ({
+      // Always route stitched clips through the AI edit style render path.
+      // When the user hasn't run AI segment styling yet, synthesize a minimal
+      // segmentedSegments list from sc.segments using `main-video-normal` so
+      // stitched clips still get the full EditStyle treatment (captions,
+      // emphasis, zoom, transitions, edit-event SFX).
+      const segmentedSegments = hasAIEditSegments
+        ? scSegments.map((seg) => ({
             startTime: seg.startTime,
             endTime: seg.endTime,
-            styleVariantId: seg.segmentStyleId,
-            zoomStyle: seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image' ? 'none' : 'drift' as const,
+            archetype: seg.archetype,
+            zoomStyle: (seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image'
+              ? 'none'
+              : 'drift') as 'none' | 'drift',
             zoomIntensity: 1.05,
             transitionIn: seg.transitionIn,
+            overlayText: seg.overlayText,
             captionBgOpacity: undefined,
             cropRect: sc.cropRegion
               ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
               : undefined,
           }))
-        })
-      } else {
-        // Legacy stitched render path — no AI Edit segments available
-        jobs.push({
-          clipId: sc.id,
-          sourceVideoPath: sourcePath,
-          startTime: firstSeg.startTime,
-          endTime: firstSeg.endTime,
-          cropRegion: sc.cropRegion
-            ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
-            : undefined,
-          hookTitleText: sc.hookText || undefined,
-          wordTimestamps: transcriptionWords,
-          outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
-          stitchedSegments: sc.segments.map((seg) => ({
+        : sc.segments.map((seg) => ({
             startTime: seg.startTime,
             endTime: seg.endTime,
-            overlayText: seg.overlayText ?? (seg.role === 'hook' ? sc.hookText : undefined),
-            role: seg.role
+            archetype: 'talking-head' as const,
+            zoomStyle: 'drift' as const,
+            zoomIntensity: 1.05,
+            transitionIn: 'hard-cut' as const,
+            captionBgOpacity: undefined,
+            cropRect: sc.cropRegion
+              ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
+              : undefined,
           }))
-        })
-      }
+
+      jobs.push({
+        clipId: sc.id,
+        sourceVideoPath: sourcePath,
+        startTime: Math.min(...sc.segments.map((s) => s.startTime)),
+        endTime: Math.max(...sc.segments.map((s) => s.endTime)),
+        cropRegion: sc.cropRegion
+          ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
+          : undefined,
+        hookTitleText: sc.hookText || undefined,
+        wordTimestamps: transcriptionWords,
+        outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
+        // AI Edit Plan fields (only present when user ran AI Edit Plan on this stitched clip)
+        wordEmphasisOverride: sc.aiEditPlan?.wordEmphasis?.length
+          ? sc.aiEditPlan.wordEmphasis.map((e) => ({
+              text: e.text, start: e.start, end: e.end,
+              emphasis: e.level as 'emphasis' | 'supersize'
+            }))
+          : undefined,
+        aiSfxSuggestions: sc.aiEditPlan?.sfxSuggestions?.length
+          ? sc.aiEditPlan.sfxSuggestions.map((s) => ({ timestamp: s.timestamp, type: s.type }))
+          : undefined,
+        wordEmphasis: sc.aiEditPlan?.wordEmphasis?.length
+          ? sc.aiEditPlan.wordEmphasis.map((e) => ({
+              text: e.text, start: e.start, end: e.end,
+              emphasis: e.level as 'emphasis' | 'supersize'
+            }))
+          : undefined,
+        brollSuggestions: sc.aiEditPlan?.brollSuggestions?.length
+          ? sc.aiEditPlan.brollSuggestions.map((b) => ({
+              timestamp: b.timestamp, duration: b.duration, keyword: b.keyword,
+              displayMode: b.displayMode, transition: b.transition
+            }))
+          : undefined,
+        emphasisKeyframesInput: sc.aiEditPlan?.wordEmphasis?.length
+          ? sc.aiEditPlan.wordEmphasis
+              .filter((e) => e.level === 'emphasis' || e.level === 'supersize')
+              .map((e) => ({ time: e.start, end: e.end, level: e.level as 'emphasis' | 'supersize' }))
+          : undefined,
+        stylePresetId: selectedEditStyleId ?? sc.aiEditPlan?.stylePresetId ?? undefined,
+        clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const },
+        segmentedSegments
+      })
     }
 
     // Initialize per-clip render progress
@@ -947,9 +952,8 @@ export function ClipGrid() {
         brandKit: settings.brandKit.enabled ? settings.brandKit : undefined,
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
-        progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
-        captionsEnabled: settings.captionsEnabled,
-        captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
+        captionsEnabled: true,
+        captionStyle: activeEditStyle?.captionStyle,
         fillerRemoval: settings.fillerRemoval.enabled ? settings.fillerRemoval : undefined,
         renderConcurrency: settings.renderConcurrency,
         // Source metadata enables auto-manifest generation at batch end
@@ -969,9 +973,7 @@ export function ClipGrid() {
         geminiApiKey: settings.geminiApiKey || undefined,
         primeAI: settings.primeAI?.enabled ? settings.primeAI : undefined,
         pulseAI: settings.pulseAI?.enabled ? settings.pulseAI : undefined,
-        editMode: editMode ?? undefined,
-        stylePresetId: editMode === 'ai-edit' ? useStore.getState().selectedEditStyleId ?? undefined : undefined,
-        aiEditAccentColor: editMode === 'ai-edit' ? useStore.getState().aiEditAccentColor : undefined,
+        stylePresetId: selectedEditStyleId ?? undefined,
       })
     } catch (err) {
       setIsRendering(false)
@@ -980,7 +982,8 @@ export function ClipGrid() {
     }
   }, [
     activeSourceId, activeSource, approved, approvedClips, approvedVariants, approvedStitchedClips,
-    stitchedClips, updateStitchedClipStatus, sourcePath, settings, templateLayout, editMode,
+    stitchedClips, updateStitchedClipStatus, sourcePath, settings, templateLayout,
+    activeEditStyle, selectedEditStyleId,
     setRenderProgress, setIsRendering, detachListeners, addError, setRenderError
   ])
 
@@ -1080,14 +1083,15 @@ export function ClipGrid() {
           wordTimestamps: retryTranscriptionWords,
           outputFileName: `stitched_${sc.hookText?.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_') || sc.id}`,
           stylePresetId: selectedEditStyleId ?? sc.aiEditPlan?.stylePresetId ?? undefined,
-          clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const, enableProgressBar: false as const },
+          clipOverrides: { enableAutoZoom: false as const, enableHookTitle: false as const },
           segmentedSegments: scSegments.map((seg) => ({
             startTime: seg.startTime,
             endTime: seg.endTime,
-            styleVariantId: seg.segmentStyleId,
+            archetype: seg.archetype,
             zoomStyle: seg.segmentStyleCategory === 'fullscreen-text' || seg.segmentStyleCategory === 'fullscreen-image' ? 'none' : 'drift' as const,
             zoomIntensity: 1.05,
             transitionIn: seg.transitionIn,
+            overlayText: seg.overlayText,
             captionBgOpacity: undefined,
             cropRect: sc.cropRegion
               ? { x: sc.cropRegion.x, y: sc.cropRegion.y, width: sc.cropRegion.width, height: sc.cropRegion.height }
@@ -1228,9 +1232,8 @@ export function ClipGrid() {
         brandKit: settings.brandKit.enabled ? settings.brandKit : undefined,
         hookTitleOverlay: settings.hookTitleOverlay.enabled ? settings.hookTitleOverlay : undefined,
         rehookOverlay: settings.rehookOverlay.enabled ? settings.rehookOverlay : undefined,
-        progressBarOverlay: settings.progressBarOverlay.enabled ? settings.progressBarOverlay : undefined,
-        captionsEnabled: settings.captionsEnabled,
-        captionStyle: settings.captionsEnabled ? settings.captionStyle : undefined,
+        captionsEnabled: true,
+        captionStyle: activeEditStyle?.captionStyle,
         fillerRemoval: settings.fillerRemoval.enabled ? settings.fillerRemoval : undefined,
         renderConcurrency: settings.renderConcurrency,
         sourceMeta: activeSource
@@ -1249,9 +1252,7 @@ export function ClipGrid() {
         geminiApiKey: settings.geminiApiKey || undefined,
         primeAI: settings.primeAI?.enabled ? settings.primeAI : undefined,
         pulseAI: settings.pulseAI?.enabled ? settings.pulseAI : undefined,
-        editMode: editMode ?? undefined,
-        stylePresetId: editMode === 'ai-edit' ? useStore.getState().selectedEditStyleId ?? undefined : undefined,
-        aiEditAccentColor: editMode === 'ai-edit' ? useStore.getState().aiEditAccentColor : undefined,
+        stylePresetId: selectedEditStyleId ?? undefined,
       })
     } catch (err) {
       setIsRendering(false)
@@ -1259,7 +1260,8 @@ export function ClipGrid() {
       addError({ source: 'render', message: `Failed to start retry render: ${err instanceof Error ? err.message : String(err)}` })
     }
   }, [
-    isRendering, activeSource, approvedClips, stitchedClips, sourcePath, settings, templateLayout, editMode,
+    isRendering, activeSource, approvedClips, stitchedClips, sourcePath, settings, templateLayout,
+    activeEditStyle, selectedEditStyleId,
     setRenderProgress, setIsRendering, detachListeners, addError, setRenderError, segments
   ])
 
@@ -2753,6 +2755,7 @@ export function ClipGrid() {
                     <StitchedClipCard
                       clip={clip}
                       sourceId={activeSourceId ?? ''}
+                      sourcePath={sourcePath}
                       sourceDuration={sourceDuration}
                     />
                   </motion.div>
@@ -2846,9 +2849,6 @@ export function ClipGrid() {
         )
       })()}
       </div>
-      {/* Settings sidebar — conditionally rendered by edit mode */}
-      {editMode === 'basic' && <BasicEditSettings />}
-      {editMode === 'ai-edit' && <AiEditSettings />}
     </div>
   )
 }

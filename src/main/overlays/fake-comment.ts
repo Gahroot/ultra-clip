@@ -18,7 +18,7 @@
  * used by rehook.ts and hook-title.ts.
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 import { escapeDrawtext, resolveHookFont } from '../hook-title'
 
 // ---------------------------------------------------------------------------
@@ -211,8 +211,7 @@ export async function generateFakeComment(
   if (!apiKey) return getDefaultComment(transcript)
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' })
+    const ai = new GoogleGenAI({ apiKey })
 
     const contextHint = clipContext ? `\nExtra context: ${clipContext}` : ''
 
@@ -239,8 +238,11 @@ Return ONLY a valid JSON object, no markdown, no explanation:
 Username rules: 8–20 chars, lowercase letters/numbers/underscores/dots only, no spaces.
 Emoji: one character if used, otherwise null.`
 
-    const result = await model.generateContent(prompt)
-    const raw = result.response.text().trim()
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-lite',
+      contents: prompt
+    })
+    const raw = (result.text ?? '').trim()
 
     // Strip markdown code fences if the model wraps it
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()

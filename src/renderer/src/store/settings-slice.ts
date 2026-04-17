@@ -3,13 +3,11 @@ import { v4 as uuidv4 } from 'uuid'
 import type {
   AppState,
   AppSettings,
-  CaptionStyle,
   ProcessingConfig,
   AutoModeConfig,
   SettingsProfile,
   HookTextTemplate,
   RenderQualitySettings,
-  BUILT_IN_PROFILE_NAMES,
 } from './types'
 import type {
   MusicTrack,
@@ -17,8 +15,6 @@ import type {
   ZoomMode,
   HookTitleStyle,
   RehookStyle,
-  ProgressBarPosition,
-  ProgressBarStyle,
   LogoPosition,
   OutputAspectRatio,
   PythonSetupState,
@@ -37,7 +33,6 @@ import {
   loadActiveProfileName,
   persistProfiles,
   persistActiveProfileName,
-  BUILT_IN_PROFILES,
   loadHookTemplatesFromStorage,
   saveHookTemplatesToStorage,
   ACTIVE_HOOK_TEMPLATE_KEY,
@@ -60,12 +55,14 @@ export interface SettingsSlice {
   settingsSnapshot: SettingsProfile | null
   settingsChanged: boolean
 
+  // Hydrate API keys from main-process encrypted store (safeStorage).
+  // Also performs a one-time migration from any legacy localStorage values.
+  hydrateSecretsFromMain: () => Promise<void>
+
   // Settings setters
   setGeminiApiKey: (key: string) => void
   setOutputDirectory: (dir: string) => void
   setMinScore: (score: number) => void
-  setCaptionStyle: (style: CaptionStyle) => void
-  setCaptionsEnabled: (enabled: boolean) => void
   setSoundDesignEnabled: (enabled: boolean) => void
   setSoundDesignTrack: (track: MusicTrack) => void
   setSoundDesignSfxVolume: (volume: number) => void
@@ -90,12 +87,6 @@ export interface SettingsSlice {
   setRehookStyle: (style: RehookStyle) => void
   setRehookDisplayDuration: (seconds: number) => void
   setRehookPositionFraction: (fraction: number) => void
-  setProgressBarEnabled: (enabled: boolean) => void
-  setProgressBarPosition: (position: ProgressBarPosition) => void
-  setProgressBarHeight: (height: number) => void
-  setProgressBarColor: (color: string) => void
-  setProgressBarOpacity: (opacity: number) => void
-  setProgressBarStyle: (style: ProgressBarStyle) => void
   setBrandKitEnabled: (enabled: boolean) => void
   setBrandKitLogoPath: (path: string | null) => void
   setBrandKitLogoPosition: (position: LogoPosition) => void
@@ -125,7 +116,7 @@ export interface SettingsSlice {
   setFilenameTemplate: (template: string) => void
   setRenderConcurrency: (concurrency: number) => void
   resetSettings: () => void
-  resetSection: (section: 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'progressBar' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality') => void
+  resetSection: (section: 'captions' | 'soundDesign' | 'autoZoom' | 'brandKit' | 'hookTitle' | 'rehook' | 'fillerRemoval' | 'broll' | 'aiSettings' | 'renderQuality') => void
 
   // Processing config
   setProcessingConfig: (config: Partial<ProcessingConfig>) => void
@@ -172,10 +163,51 @@ export const createSettingsSlice: StateCreator<
   settingsSnapshot: null,
   settingsChanged: false,
 
+  // --- Secrets hydration (migration + async load) ---
+
+  hydrateSecretsFromMain: async () => {
+    const secrets = window.api?.secrets
+    if (!secrets) return
+
+    // One-time migration from legacy plaintext localStorage entries into
+    // safeStorage. After migration the plaintext copy is removed.
+    const migrations: Array<[secretName: string, legacyKey: string]> = [
+      ['gemini', 'batchcontent-gemini-key'],
+      ['pexels', 'batchcontent-pexels-key'],
+    ]
+    await Promise.all(
+      migrations.map(async ([name, legacyKey]) => {
+        const legacy = localStorage.getItem(legacyKey)
+        if (!legacy) return
+        try {
+          await secrets.set(name, legacy)
+          localStorage.removeItem(legacyKey)
+        } catch (err) {
+          console.warn(`[secrets] Failed to migrate legacy ${name} key:`, err)
+        }
+      })
+    )
+
+    try {
+      const [gemini, pexels] = await Promise.all([
+        secrets.get('gemini'),
+        secrets.get('pexels'),
+      ])
+      set((state) => {
+        if (gemini) state.settings.geminiApiKey = gemini
+        if (pexels) state.settings.broll.pexelsApiKey = pexels
+      })
+    } catch (err) {
+      console.warn('[secrets] Failed to hydrate secrets from main:', err)
+    }
+  },
+
   // --- Settings ---
 
   setGeminiApiKey: (key) => {
-    localStorage.setItem('batchcontent-gemini-key', key)
+    // Persist encrypted via Electron safeStorage (falls back to plain base64
+    // in tests / non-electron environments where window.api is unavailable).
+    void window.api?.secrets?.set('gemini', key)
     set((state) => { state.settings.geminiApiKey = key })
   },
 
@@ -186,12 +218,6 @@ export const createSettingsSlice: StateCreator<
     _pushUndo(get(), set)
     set((state) => { state.settings.minScore = score })
   },
-
-  setCaptionStyle: (style) =>
-    set((state) => { state.settings.captionStyle = style }),
-
-  setCaptionsEnabled: (enabled) =>
-    set((state) => { state.settings.captionsEnabled = enabled }),
 
   setSoundDesignEnabled: (enabled) =>
     set((state) => { state.settings.soundDesign.enabled = enabled }),
@@ -269,26 +295,6 @@ export const createSettingsSlice: StateCreator<
   setRehookPositionFraction: (positionFraction) =>
     set((state) => { state.settings.rehookOverlay.positionFraction = positionFraction }),
 
-  // --- Progress Bar Overlay ---
-
-  setProgressBarEnabled: (enabled) =>
-    set((state) => { state.settings.progressBarOverlay.enabled = enabled }),
-
-  setProgressBarPosition: (position) =>
-    set((state) => { state.settings.progressBarOverlay.position = position }),
-
-  setProgressBarHeight: (height) =>
-    set((state) => { state.settings.progressBarOverlay.height = height }),
-
-  setProgressBarColor: (color) =>
-    set((state) => { state.settings.progressBarOverlay.color = color }),
-
-  setProgressBarOpacity: (opacity) =>
-    set((state) => { state.settings.progressBarOverlay.opacity = opacity }),
-
-  setProgressBarStyle: (style) =>
-    set((state) => { state.settings.progressBarOverlay.style = style }),
-
   // --- Brand Kit ---
 
   setBrandKitEnabled: (enabled) =>
@@ -318,7 +324,7 @@ export const createSettingsSlice: StateCreator<
     set((state) => { state.settings.broll.enabled = enabled }),
 
   setBRollPexelsApiKey: (key) => {
-    localStorage.setItem('batchcontent-pexels-key', key)
+    void window.api?.secrets?.set('pexels', key)
     set((state) => { state.settings.broll.pexelsApiKey = key })
   },
 
@@ -412,10 +418,6 @@ export const createSettingsSlice: StateCreator<
         case 'aiSettings':
           state.settings.minScore = DEFAULT_SETTINGS.minScore
           break
-        case 'captions':
-          state.settings.captionsEnabled = DEFAULT_SETTINGS.captionsEnabled
-          state.settings.captionStyle = DEFAULT_SETTINGS.captionStyle
-          break
         case 'soundDesign':
           state.settings.soundDesign = DEFAULT_SETTINGS.soundDesign
           break
@@ -430,9 +432,6 @@ export const createSettingsSlice: StateCreator<
           break
         case 'rehook':
           state.settings.rehookOverlay = DEFAULT_SETTINGS.rehookOverlay
-          break
-        case 'progressBar':
-          state.settings.progressBarOverlay = DEFAULT_SETTINGS.progressBarOverlay
           break
         case 'fillerRemoval':
           state.settings.fillerRemoval = DEFAULT_SETTINGS.fillerRemoval
@@ -523,14 +522,11 @@ export const createSettingsSlice: StateCreator<
     const diff: string[] = []
 
     const labelMap: Record<string, string> = {
-      captionStyle: 'Caption Style',
-      captionsEnabled: 'Captions',
       soundDesign: 'Sound Design',
       autoZoom: 'Auto-Zoom',
       brandKit: 'Brand Kit',
       hookTitleOverlay: 'Hook Title',
       rehookOverlay: 'Re-hook Overlay',
-      progressBarOverlay: 'Progress Bar',
       broll: 'B-Roll',
       fillerRemoval: 'Filler Removal',
       renderQuality: 'Render Quality',
@@ -572,7 +568,6 @@ export const createSettingsSlice: StateCreator<
   },
 
   deleteProfile: (name) => {
-    if ((['TikTok Optimized', 'Reels Clean', 'Minimal'] as readonly string[]).includes(name)) return
     const { settingsProfiles, activeProfileName } = get()
     const updated = { ...settingsProfiles }
     delete updated[name]
@@ -583,7 +578,6 @@ export const createSettingsSlice: StateCreator<
   },
 
   renameProfile: (oldName, newName) => {
-    if ((['TikTok Optimized', 'Reels Clean', 'Minimal'] as readonly string[]).includes(oldName)) return
     if (!newName.trim() || oldName === newName) return
     const { settingsProfiles, activeProfileName } = get()
     const profile = settingsProfiles[oldName]

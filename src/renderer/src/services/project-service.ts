@@ -8,6 +8,7 @@
 import { useStore } from '../store'
 import { DEFAULT_SETTINGS, DEFAULT_PIPELINE, DEFAULT_TEMPLATE_LAYOUT, DEFAULT_PROCESSING_CONFIG } from '../store/helpers'
 import type { ProjectFileData } from '../store/helpers'
+import type { AppState } from '../store/types'
 
 // ---------------------------------------------------------------------------
 // Serialise current project state
@@ -27,7 +28,7 @@ function getProjectJson(pretty = false): string {
     storyArcs: state.storyArcs,
     clipOrder: state.clipOrder,
     customOrder: state.customOrder,
-    selectedEditStyleId: (state as any).selectedEditStyleId ?? 'cinematic',
+    selectedEditStyleId: state.selectedEditStyleId ?? 'cinematic',
     processingConfig: state.processingConfig
   }
   return JSON.stringify(project, null, pretty ? 2 : undefined)
@@ -50,7 +51,7 @@ function applyProject(data: string): boolean {
     ? { stage: 'ready' as const, message: '', percent: 100 }
     : DEFAULT_PIPELINE
 
-  useStore.setState({
+  const nextState: Partial<AppState> = {
     sources,
     transcriptions: project.transcriptions ?? {},
     clips,
@@ -78,7 +79,8 @@ function applyProject(data: string): boolean {
       ...DEFAULT_PROCESSING_CONFIG,
       ...(project.processingConfig ?? {})
     }
-  } as any)
+  }
+  useStore.setState(nextState)
   return true
 }
 

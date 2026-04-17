@@ -11,7 +11,7 @@ import { BrowserWindow } from 'electron'
 import { Ch } from '@shared/ipc-channels'
 import { basename, dirname, extname } from 'path'
 import { existsSync, mkdirSync, unlinkSync } from 'fs'
-import type { FfmpegCommand } from 'fluent-ffmpeg'
+import type { FfmpegCommand } from '../ffmpeg'
 import { getEncoder, getVideoMetadata } from '../ffmpeg'
 import { ASPECT_RATIO_CONFIGS } from '../aspect-ratios'
 import type { OutputAspectRatio } from '../aspect-ratios'
@@ -25,20 +25,21 @@ import {
 import type { RenderClipJob, RenderBatchOptions, RenderStitchedClipJob } from './types'
 import type { RenderFeature, FilterContext, OverlayContext, PostProcessContext, OverlayPassResult } from './features/feature'
 import { buildVideoFilter, renderClip, activeCommands } from './base-render'
-import { renderStitchedClip } from './stitched-render'
+import { assembleStitchedVideo } from './stitched-render'
 import { renderSegmentedClip } from './segment-render'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import type { SegmentRenderConfig, ResolvedSegment } from './segment-render'
 import { resolveQualityParams, parseResolution } from './quality'
 import { buildOutputPath } from './filename'
 import { getVariantById } from '../segment-styles'
-import { getEditStyleById } from '../edit-styles'
+import { getEditStyleById, resolveTemplate, DEFAULT_EDIT_STYLE_ID } from './../edit-styles/index'
 
 // Feature imports
 import { createFillerRemovalFeature } from './features/filler-removal.feature'
 import { createCaptionsFeature } from './features/captions.feature'
 import { createHookTitleFeature } from './features/hook-title.feature'
 import { createRehookFeature } from './features/rehook.feature'
-import { progressBarFeature } from './features/progress-bar.feature'
 import { autoZoomFeature } from './features/auto-zoom.feature'
 import { brandKitFeature } from './features/brand-kit.feature'
 import { soundDesignFeature } from './features/sound-design.feature'
@@ -64,6 +65,62 @@ export function cancelRender(): void {
   }
   activeCommands.clear()
 }
+
+// ---------------------------------------------------------------------------
+// Stitched timeline remapping helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Remap a source-video timestamp onto the concatenated stitched timeline.
+ * Returns null when the timestamp falls outside every segment (i.e. it was
+ * cut from the output).
+ */
+function remapSourceTime(
+  sourceTime: number,
+  segments: Array<{ startTime: number; endTime: number }>
+): number | null {
+  let concatStart = 0
+  for (const seg of segments) {
+    if (sourceTime >= seg.startTime && sourceTime <= seg.endTime) {
+      return concatStart + (sourceTime - seg.startTime)
+    }
+    concatStart += seg.endTime - seg.startTime
+  }
+  return null
+}
+
+function remapWordTimestamps(
+  words: Array<{ text: string; start: number; end: number }> | undefined,
+  segments: Array<{ startTime: number; endTime: number }>
+): Array<{ text: string; start: number; end: number }> | undefined {
+  if (!words || words.length === 0) return words
+  const out: Array<{ text: string; start: number; end: number }> = []
+  for (const w of words) {
+    const s = remapSourceTime(w.start, segments)
+    const e = remapSourceTime(w.end, segments)
+    if (s !== null && e !== null && e >= s) {
+      out.push({ text: w.text, start: s, end: e })
+    }
+  }
+  return out
+}
+
+function remapWordEmphasis<T extends { start: number; end: number }>(
+  emphasis: T[] | undefined,
+  segments: Array<{ startTime: number; endTime: number }>
+): T[] | undefined {
+  if (!emphasis || emphasis.length === 0) return emphasis
+  const out: T[] = []
+  for (const e of emphasis) {
+    const s = remapSourceTime(e.start, segments)
+    const en = remapSourceTime(e.end, segments)
+    if (s !== null && en !== null && en >= s) {
+      out.push({ ...e, start: s, end: en })
+    }
+  }
+  return out
+}
+
 
 // ---------------------------------------------------------------------------
 // Main orchestrator
@@ -101,28 +158,27 @@ export async function startBatchRender(
   //  1. filler-removal    — mutates job.sourceVideoPath, startTime, endTime, wordTimestamps
   //  2. brand-kit         — writes job.brandKit (consumed by base-render)
   //  3. accent-color      — reads clipOverrides.accentColor, overrides highlight/emphasis
-  //                         colors in captionStyle, hookTitleOverlay, progressBarOverlay,
-  //                         and per-shot captionStyle — must run before any visual feature
+  //                         colors in captionStyle, hookTitleOverlay, and per-shot
+  //                         captionStyle — must run before any visual feature
   //  4. word-emphasis     — writes job.wordEmphasis + job.emphasisKeyframes
   //  5. captions          — reads job.wordEmphasis, generates ASS, fallback emphasisKeyframes
   //  6. hook-title        — generates ASS overlay file
   //  7. rehook            — reads hookTitleOverlay.displayDuration + textColor for appear time
-  //  8. progress-bar      — injects job.progressBarConfig
-  //  9. auto-zoom         — reads job.emphasisKeyframes for reactive zoom (prepare stores settings)
-  // 10. broll             — reads job.brollPlacements + shotStyleConfigs.brollMode,
+  //  8. auto-zoom         — reads job.emphasisKeyframes for reactive zoom (prepare stores settings)
+  //  9. broll             — reads job.brollPlacements + shotStyleConfigs.brollMode,
   //                         emits 'broll-transition' editEvents
-  // 11. color-grade       — reads shotStyleConfigs, validates + logs color grade configs;
+  // 10. color-grade       — reads shotStyleConfigs, validates + logs color grade configs;
   //                         videoFilter applies per-shot eq/hue — must run BEFORE transitions
   //                         so crossfades blend between properly color-graded shots
-  // 12. shot-transition   — reads shotStyleConfigs, emits 'shot-transition' editEvents;
+  // 11. shot-transition   — reads shotStyleConfigs, emits 'shot-transition' editEvents;
   //                         videoFilter applies crossfade/swipe — runs AFTER color-grade
   //                         so transitions blend between styled shots
-  // 13. sound-design      — reads ALL editEvents (broll + shot-transition + jump-cut),
+  // 12. sound-design      — reads ALL editEvents (broll + shot-transition + jump-cut),
   //                         validates job.soundPlacements
   //
   // Cross-feature data flow:
   //   filler-removal ──wordTimestamps──▸ word-emphasis (remapped timestamps)
-  //   accent-color ──captionStyle colors──▸ captions, hook-title (+rehook), progress-bar
+  //   accent-color ──captionStyle colors──▸ captions, hook-title (+rehook)
   //   word-emphasis ──wordEmphasis──▸ captions (emphasis tags for ASS styling)
   //   word-emphasis ──emphasisKeyframes──▸ auto-zoom (reactive zoom keyframes)
   //   captions ──emphasisKeyframes (fallback)──▸ auto-zoom (if word-emphasis didn't produce them)
@@ -139,7 +195,6 @@ export async function startBatchRender(
     createCaptionsFeature(),
     createHookTitleFeature(),
     createRehookFeature(),
-    progressBarFeature,
     autoZoomFeature,
     brollFeature,
     colorGradeFeature,
@@ -237,59 +292,98 @@ export async function startBatchRender(
     const allTempFiles: string[] = []
 
     try {
-      // ── Stitched clip shortcut ──────────────────────────────────────────
-      // When stitchedSegments are present, delegate to the dedicated stitched
-      // render path which encodes each segment individually then concatenates.
-      // Pass through all batch overlay options so stitched clips get captions,
-      // hook title, rehook, and progress bar overlays.
+      // ── Stitched clip assembly pre-pass ──────────────────────────────────
+      // Stitched clips are multiple source-video time ranges concatenated into
+      // one output. We do ONLY the stitched-specific work here (per-segment
+      // crop/layout via the edit-style template + concat into a raw MP4), then
+      // rewrite the job to point at the assembled MP4 with remapped timestamps.
+      // After this block, the job looks identical to a regular clip and runs
+      // through the exact same feature pipeline — captions, hook title,
+      // rehook, color grade, accent color, sound design, etc.
       if (job.stitchedSegments && job.stitchedSegments.length > 0) {
-        const stitchedJob: RenderStitchedClipJob = {
+        window.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
           clipId: job.clipId,
-          sourceVideoPath: job.sourceVideoPath,
-          segments: job.stitchedSegments,
-          cropRegion: job.cropRegion,
-          outputFileName: job.outputFileName,
-          hookTitleText: job.hookTitleText,
-          hookTitleConfig: options.hookTitleOverlay,
-          rehookConfig: options.rehookOverlay,
-          rehookText: job.rehookText,
-          progressBarConfig: options.progressBarOverlay,
-          captionsEnabled: options.captionsEnabled,
-          captionStyle: options.captionStyle,
-          wordTimestamps: job.wordTimestamps,
-          wordEmphasis: job.wordEmphasis,
-          wordEmphasisOverride: job.wordEmphasisOverride,
-          templateLayout: options.templateLayout,
-          brandKit: options.brandKit?.enabled ? {
-            logoPath: options.brandKit.logoPath,
-            logoPosition: options.brandKit.logoPosition,
-            logoScale: options.brandKit.logoScale,
-            logoOpacity: options.brandKit.logoOpacity,
-            introBumperPath: options.brandKit.introBumperPath,
-            outroBumperPath: options.brandKit.outroBumperPath
-          } : undefined
-        }
+          message: 'Assembling stitched segments…',
+          percent: 0
+        })
 
-        // Compute rehook text and appear time
-        if (stitchedJob.rehookConfig?.enabled) {
-          if (!stitchedJob.rehookText) {
-            const { getDefaultRehookPhrase } = await import('../overlays/rehook')
-            stitchedJob.rehookText = getDefaultRehookPhrase(job.clipId)
-          }
-          stitchedJob.rehookAppearTime = options.hookTitleOverlay?.displayDuration ?? 2.5
-        }
-
-        await renderStitchedClip(stitchedJob, outputPath, (percent) => {
-          if (!cancelRequested) {
-            window.webContents.send(Ch.Send.RENDER_CLIP_PROGRESS, { clipId: job.clipId, percent })
+        const stitchedStyleId = job.stylePresetId ?? DEFAULT_EDIT_STYLE_ID
+        const styledStitchedSegments = job.stitchedSegments.map((seg) => {
+          const archetype: import('@shared/types').Archetype =
+            seg.role === 'hook' ? 'tight-punch'
+            : seg.overlayText ? 'quote-lower'
+            : 'talking-head'
+          const resolved = resolveTemplate(archetype, stitchedStyleId)
+          return {
+            ...seg,
+            styleVariant: resolved.variant,
+            zoom: { style: resolved.zoomStyle, intensity: resolved.zoomIntensity },
+            // Do NOT pass overlayText / accentColor / captionBgOpacity through
+            // to the assembly step — text / color treatment belongs to the
+            // feature pipeline that runs on the assembled output.
+            overlayText: undefined,
+            accentColor: undefined,
+            captionBgOpacity: undefined
           }
         })
 
-        manifestResults.set(job.clipId, outputPath)
-        manifestRenderTimes.set(job.clipId, Date.now() - clipStartTime)
-        completed++
-        window.webContents.send(Ch.Send.RENDER_CLIP_DONE, { clipId: job.clipId, outputPath })
-        return
+        const assemblyJob: RenderStitchedClipJob = {
+          clipId: job.clipId,
+          sourceVideoPath: job.sourceVideoPath,
+          segments: styledStitchedSegments,
+          stylePresetId: stitchedStyleId,
+          cropRegion: job.cropRegion,
+          outputFileName: job.outputFileName
+        }
+
+        const assembledPath = join(tmpdir(), `batchcontent-stitched-${job.clipId}-${Date.now()}.mp4`)
+        allTempFiles.push(assembledPath)
+
+        await assembleStitchedVideo(assemblyJob, assembledPath, (percent) => {
+          if (!cancelRequested) {
+            // Assembly runs in the prepare phase — report under the same
+            // prepare channel the feature pipeline will use shortly.
+            window.webContents.send(Ch.Send.RENDER_CLIP_PREPARE, {
+              clipId: job.clipId,
+              message: 'Assembling stitched segments…',
+              // Reserve the first half of the prepare percent budget for
+              // assembly so feature-prepare can claim 50-100.
+              percent: Math.min(49, Math.round(percent * 0.49))
+            })
+          }
+        })
+
+        // ── Rewrite the job to look like a regular clip on the assembled MP4 ──
+        // Remap all source-time data (word timestamps, word emphasis, shots)
+        // onto the concatenated timeline so captions/sound-design/shot-style
+        // see the right times when they run.
+        const totalDuration = styledStitchedSegments.reduce(
+          (sum, s) => sum + (s.endTime - s.startTime),
+          0
+        )
+
+        // wordTimestamps / wordEmphasis are in source-video time for stitched
+        // clips (same convention the old stitched path used). Remap them onto
+        // the concatenated timeline so caption / sound-design / word-emphasis
+        // features see clip-local times.
+        job.wordTimestamps = remapWordTimestamps(job.wordTimestamps, styledStitchedSegments)
+        job.wordEmphasis = remapWordEmphasis(job.wordEmphasis, styledStitchedSegments)
+        job.wordEmphasisOverride = remapWordEmphasis(job.wordEmphasisOverride, styledStitchedSegments)
+
+        // Shot-based data is not currently populated for stitched clips; if it
+        // shows up in the future, decide the time basis at that point.
+        job.shots = undefined
+        job.shotStyleConfigs = undefined
+        job.shotStyles = undefined
+
+        job.sourceVideoPath = assembledPath
+        job.startTime = 0
+        job.endTime = totalDuration
+        // Assembled video is already 1080x1920 — no further crop needed.
+        job.cropRegion = undefined
+        // Clear the stitched marker so we don't re-enter this block.
+        job.stitchedSegments = undefined
+        // Fall through to the regular feature pipeline below.
       }
 
       // ── Segmented clip shortcut ───────────────────────────────────────────
@@ -313,26 +407,31 @@ export async function startBatchRender(
           }
         }
 
-        // Resolve edit style (defaults to 'cinematic' if not set)
-        const editStyle = getEditStyleById(job.stylePresetId ?? 'cinematic') ?? getEditStyleById('cinematic')!
+        // Resolve edit style (defaults to cinematic if not set)
+        const editStyleId = job.stylePresetId ?? DEFAULT_EDIT_STYLE_ID
+        const editStyle = getEditStyleById(editStyleId) ?? getEditStyleById(DEFAULT_EDIT_STYLE_ID)!
 
-        // Resolve each segmented segment into a ResolvedSegment
+        // Resolve each segmented segment into a ResolvedSegment via the
+        // per-edit-style template resolver. Archetype → variant + zoom +
+        // layout param overrides all flow through resolveTemplate().
         const resolvedSegments: ResolvedSegment[] = job.segmentedSegments.map((raw) => {
-          const variant = getVariantById(raw.styleVariantId) ?? getVariantById('main-video-normal')!
+          const resolved = resolveTemplate(raw.archetype, editStyleId)
           return {
             startTime: raw.startTime,
             endTime: raw.endTime,
-            styleVariant: variant,
+            styleVariant: resolved.variant,
             zoom: {
-              style: raw.zoomStyle ?? variant.zoomStyle,
-              intensity: raw.zoomIntensity ?? variant.zoomIntensity
+              style: raw.zoomStyle ?? resolved.zoomStyle,
+              intensity: raw.zoomIntensity ?? resolved.zoomIntensity
             },
             transitionIn: raw.transitionIn,
-            overlayText: raw.overlayText,
-            accentColor: raw.accentColor,
-            captionBgOpacity: raw.captionBgOpacity,
+            overlayText: raw.overlayText ?? resolved.layoutParamOverrides.overlayText,
+            accentColor: raw.accentColor ?? resolved.layoutParamOverrides.accentColor,
+            captionBgOpacity: raw.captionBgOpacity ?? resolved.layoutParamOverrides.captionBgOpacity,
             imagePath: raw.imagePath,
-            cropRect: raw.cropRect
+            cropRect: raw.cropRect,
+            archetype: raw.archetype,
+            captionMarginV: resolved.captionMarginV
           }
         })
 
@@ -349,7 +448,7 @@ export async function startBatchRender(
           wordTimestamps: job.wordTimestamps,
           wordEmphasis: job.wordEmphasis,
           captionStyle: options.captionStyle,
-          captionsEnabled: options.captionsEnabled,
+          captionsEnabled: true,
           brandKit: options.brandKit?.enabled ? {
             logoPath: options.brandKit.logoPath,
             logoPosition: options.brandKit.logoPosition,
@@ -358,8 +457,17 @@ export async function startBatchRender(
             introBumperPath: options.brandKit.introBumperPath,
             outroBumperPath: options.brandKit.outroBumperPath
           } : undefined,
-          progressBarConfig: options.progressBarOverlay?.enabled ? options.progressBarOverlay : undefined,
-          templateLayout: options.templateLayout
+          templateLayout: options.templateLayout,
+          onFallback: (info) => {
+            if (!cancelRequested) {
+              window.webContents.send(Ch.Send.SEGMENT_FALLBACK, {
+                clipId: job.clipId,
+                segmentIndex: info.segmentIndex,
+                archetype: info.archetype,
+                reason: info.reason
+              })
+            }
+          }
         }
 
         await renderSegmentedClip(segConfig, outputPath, (percent) => {

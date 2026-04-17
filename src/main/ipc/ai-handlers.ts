@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { Ch } from '@shared/ipc-channels'
 import { wrapHandler } from '../ipc-error-handler'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 import { scoreTranscript, generateHookText, rescoreSingleClip } from '../ai-scoring'
 import type { TargetDuration } from '../ai-scoring'
 import { generateRehookText } from '../overlays/rehook'
@@ -88,9 +88,11 @@ export function registerAiHandlers(): void {
         return { valid: false, error: 'API key is empty' }
       }
       try {
-        const genAI = new GoogleGenerativeAI(apiKey.trim())
-        const model = genAI.getGenerativeModel({ model: AI_VALIDATION_MODEL })
-        await model.generateContent('Hi')
+        const ai = new GoogleGenAI({ apiKey: apiKey.trim() })
+        await ai.models.generateContent({
+          model: AI_VALIDATION_MODEL,
+          contents: 'Hi'
+        })
         return { valid: true }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -435,12 +437,16 @@ export function registerAiHandlers(): void {
       const editStyle = EDIT_STYLES.find((s) => s.id === opts.editStyleId)
       if (!editStyle) throw new Error(`Edit style "${opts.editStyleId}" not found`)
 
-      // Step 1: Assign segment styles via AI (or deterministic fallback)
+      // Step 1: Assign segment styles via AI (or deterministic fallback).
+      // generateSegmentImages uses Gemini image generation, so the presence
+      // of a Gemini key also signals that image-based archetypes can be
+      // realized in this handler's pipeline.
       console.log(`[AI Edit Plan] Clip ${opts.clipId}: assigning styles for ${opts.segments.length} segment(s)`)
       const styledSegments = await assignSegmentStyles(
         opts.segments,
         editStyle,
-        opts.geminiApiKey
+        opts.geminiApiKey,
+        Boolean(opts.geminiApiKey)
       )
 
       // Step 2: Generate images for image-needing segments

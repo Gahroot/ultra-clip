@@ -1,139 +1,165 @@
 /**
  * AI Segment Styler
  *
- * Uses Gemini to analyze each segment's caption text and assign the best
- * visual layout category + variant. This creates the Captions.ai-style
- * variety where consecutive segments alternate between speaker shots,
- * image overlays, fullscreen text moments, etc.
+ * Uses Gemini to assign each segment an archetype — the user-facing, stable
+ * vocabulary of 8 slots every edit style implements. The archetype is later
+ * resolved to a concrete SegmentStyleVariant by the template resolver.
  *
  * Distribution targets (based on analysis of 10 real Captions.ai videos):
- *   - main-video-images: ~36% of segments (~70% of time — longest segments)
- *   - main-video:        ~36% of segments (~15% of time — shorter segments)
- *   - fullscreen-image:  ~19% of segments (~15% of time — brief cutaways)
- *   - fullscreen-text:    ~9% of segments (~1% of time — quick punctuation)
+ *   - split-image        : ~36% of segments (~70% time — longest segments)
+ *   - talking-head group : ~36% of segments (~15% time — shorter segments)
+ *   - fullscreen-image   : ~19% of segments (~15% time — brief cutaways)
+ *   - fullscreen-quote   :  ~9% of segments ( ~1% time — quick punctuation)
+ *
+ * When fal.ai is NOT configured, split-image / fullscreen-image drop out of
+ * rotation (they require a generated image) and the distribution tilts toward
+ * quote-lower and fullscreen-quote for visual variety instead.
  */
 
-import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
-import { emitUsageFromResponse } from '../ai-usage'
-import { SEGMENT_STYLE_VARIANTS } from '../segment-styles'
-import type { VideoSegment, EditStyle, SegmentStyleCategory } from '@shared/types'
+import { callGeminiWithRetry, type GeminiCall } from './gemini-client'
+import { GoogleGenAI } from '@google/genai'
+import {
+  ARCHETYPE_KEYS,
+  ARCHETYPE_TO_CATEGORY,
+  type Archetype
+} from '../edit-styles/shared/archetypes'
+import type { VideoSegment, EditStyle } from '@shared/types'
 
 // ---------------------------------------------------------------------------
-// Gemini helpers (shared pattern across AI modules)
+// Hero text derivation (for fullscreen-headline, fullscreen-quote, quote-lower)
 // ---------------------------------------------------------------------------
 
-function classifyGeminiError(err: unknown): never {
-  const msg = err instanceof Error ? err.message : String(err)
-  const status = (err as { status?: number })?.status
+const HERO_ARCHETYPES = new Set<Archetype>([
+  'fullscreen-headline',
+  'fullscreen-quote',
+  'quote-lower'
+])
 
-  if (status === 401 || status === 403 || /api.key/i.test(msg)) {
-    throw new Error('Invalid Gemini API key. Check your key in Settings.')
-  }
-  if (status === 429 || /resource.exhausted|rate.limit|quota/i.test(msg)) {
-    throw new Error('Gemini API rate limit exceeded. Please wait and try again.')
-  }
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)) {
-    throw new Error('Network error: cannot reach Gemini API. Check your internet connection.')
-  }
-  throw err
-}
-
-async function callGeminiWithRetry(model: GenerativeModel, prompt: string, usageSource: string): Promise<string> {
-  try {
-    const result = await model.generateContent(prompt)
-    emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-    return result.response.text().trim()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const status = (err as { status?: number })?.status
-    const isTransient =
-      status === 429 ||
-      /resource.exhausted|rate.limit|quota/i.test(msg) ||
-      /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)
-
-    if (isTransient) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const result = await model.generateContent(prompt)
-        emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-        return result.response.text().trim()
-      } catch (retryErr) {
-        classifyGeminiError(retryErr)
-      }
-    }
-    classifyGeminiError(err)
-  }
+/**
+ * Derive the big on-screen hero text for a hero archetype from its caption.
+ * Keeps natural casing (no title-case), strips trailing punctuation, and
+ * caps at 8 words so the text fits comfortably on a 9:16 hero card.
+ */
+function deriveHeroText(captionText: string): string {
+  const cleaned = captionText
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[.!?…,;:–—-]+$/g, '')
+  const words = cleaned.split(' ')
+  if (words.length <= 8) return cleaned
+  return words.slice(0, 8).join(' ')
 }
 
 // ---------------------------------------------------------------------------
 // Prompt construction
 // ---------------------------------------------------------------------------
 
-/** Build the variant list block for the prompt, grouped by category. */
-function buildVariantList(availableStyleIds: string[] | undefined): string {
-  const variants = availableStyleIds
-    ? SEGMENT_STYLE_VARIANTS.filter((v) => availableStyleIds.includes(v.id))
-    : SEGMENT_STYLE_VARIANTS
+const ARCHETYPE_PROMPT_DESCRIPTIONS: Record<Archetype, string> = {
+  'talking-head':
+    "Speaker fills the 9:16 frame, standard crop. Use for most narration.",
+  'tight-punch':
+    "Tight zoom on the speaker's face. Use for intimate / emotional / emphasis beats.",
+  'wide-breather':
+    'Slightly wider framing. Use for scene-setting or pacing relief.',
+  'quote-lower':
+    'Large-text overlay in the lower 40% over the speaker. Use for punchy lines.',
+  'split-image':
+    'Speaker plus a contextual image (topic visualization). Use for concepts, products, places, data.',
+  'fullscreen-image':
+    'B-roll only — image fills frame with captions and edits still on. Use for brief cutaways.',
+  'fullscreen-quote':
+    'Solid bg plus centered quote. Use for bold claims (max 1–2 per clip).',
+  'fullscreen-headline':
+    'Solid bg plus headline and subtext. Use for clip-opening or clip-closing beats.'
+}
 
-  const byCategory = new Map<SegmentStyleCategory, typeof variants>()
-  for (const v of variants) {
-    const list = byCategory.get(v.category) ?? []
-    list.push(v)
-    byCategory.set(v.category, list)
-  }
-
-  const lines: string[] = []
-  for (const [category, vars] of byCategory) {
-    lines.push(`\n${category}:`)
-    for (const v of vars) {
-      lines.push(`  - "${v.id}" (${v.name}): ${v.description}`)
+function buildArchetypeList(hasFalKey: boolean): string {
+  return ARCHETYPE_KEYS.filter((key) => {
+    if (!hasFalKey && (key === 'split-image' || key === 'fullscreen-image')) {
+      return false
     }
-  }
-  return lines.join('\n')
+    return true
+  })
+    .map((key) => `  - "${key}": ${ARCHETYPE_PROMPT_DESCRIPTIONS[key]}`)
+    .join('\n')
 }
 
 function buildSegmentList(segments: VideoSegment[]): string {
   return segments
-    .map((s, i) => `${i}. [${s.startTime.toFixed(1)}s–${s.endTime.toFixed(1)}s] "${s.captionText}"`)
+    .map(
+      (s, i) =>
+        `${i}. [${s.startTime.toFixed(1)}s–${s.endTime.toFixed(1)}s] "${s.captionText}"`
+    )
     .join('\n')
 }
 
-function buildPrompt(segments: VideoSegment[], editStyle: EditStyle): string {
-  const variantList = buildVariantList(editStyle.availableSegmentStyles)
+function buildDistributionGuidelines(hasFalKey: boolean): string {
+  if (hasFalKey) {
+    return [
+      '- Use split-image for 30-40% of segments (concepts, descriptions, things being explained)',
+      '- Use the talking-head family (talking-head / tight-punch / wide-breather) for 30-40% of segments (speaker is the focus, personal stories, direct address)',
+      '- Use fullscreen-image for 10-20% of segments (visual emphasis, brief cutaways, topic transitions)',
+      '- Use fullscreen-quote / fullscreen-headline sparingly, max 1-2 per video (key quotes, shocking statements, important numbers)',
+      '- Use quote-lower for emphasis moments (key points, calls to action)'
+    ].join('\n')
+  }
+  // No fal.ai: replace image-based slots with text-based visual variety
+  return [
+    '- Use the talking-head family (talking-head / tight-punch / wide-breather) for 40-55% of segments (speaker is the focus, personal stories, direct address)',
+    '- Use quote-lower for 25-35% of segments (punchy lines, key points, calls to action — this replaces split-image visual variety)',
+    '- Use fullscreen-quote for 10-20% of segments (bold claims, memorable statements — this replaces fullscreen-image cutaways)',
+    '- Use fullscreen-headline sparingly for the opening beat and occasional clip-closing beats (max 1-2 per video)'
+  ].join('\n')
+}
+
+export function buildPrompt(
+  segments: VideoSegment[],
+  editStyle: EditStyle,
+  hasFalKey: boolean
+): string {
+  const archetypeList = buildArchetypeList(hasFalKey)
   const segmentList = buildSegmentList(segments)
+  const distribution = buildDistributionGuidelines(hasFalKey)
+
+  const imageCaveat = hasFalKey
+    ? ''
+    : '\nIMPORTANT: fal.ai is not configured for this run, so do NOT emit "split-image" or "fullscreen-image" — they require a generated image and will degrade. Use quote-lower and fullscreen-quote for visual variety instead.'
 
   return `You are a professional short-form video editor assigning visual styles to segments of a 9:16 vertical video.
-Each segment has caption text and a time range. Assign each one a style category and a specific variant ID.
+Each segment has caption text and a time range. Assign each one an archetype from the list below.
 
 EDIT STYLE: "${editStyle.name}" (energy: ${editStyle.energy})
 
-Available categories and variants:${variantList}
-
+Available archetypes:
+${archetypeList}
+${imageCaveat}
 DISTRIBUTION GUIDELINES:
-- Use main-video-images for 30-40% of segments (concepts, descriptions, things being explained)
-- Use main-video for 30-40% of segments (speaker is the focus, personal stories, direct address)
-- Use fullscreen-image for 10-20% of segments (visual emphasis, brief cutaways, topic transitions)
-- Use fullscreen-text sparingly, max 1-2 per video (key quotes, shocking statements, important numbers)
-- main-video-text for emphasis moments (key points, calls to action)
+${distribution}
 
 RULES:
-- NEVER use the same category for 3+ consecutive segments — variety is key
-- First segment: prefer main-video or main-video-text (hook the viewer with the speaker)
-- Last segment: prefer main-video (call to action, personal close)
-- Short segments (<3 seconds) work well as fullscreen-text or fullscreen-image
-- Longer segments (>6 seconds) work better as main-video or main-video-images
-- When the speaker describes a concept/thing/place, use main-video-images; prefer "main-video-images-topbottom" when the concept can be visualized (products, places, data, ideas) — it keeps the speaker visible while showing context below
-- When the speaker makes a bold claim or quote, consider fullscreen-text
-- When the speaker tells a personal story, use main-video (tight or normal)
-- Energy level "${editStyle.energy}" means ${editStyle.energy === 'high' ? 'more variety, more fullscreen cuts, faster pacing' : editStyle.energy === 'low' ? 'more main-video, fewer cuts, calmer pacing' : 'balanced variety between speaker and visual cuts'}
+- NEVER use the same archetype category for 3+ consecutive segments — variety is key.
+  (talking-head, tight-punch, and wide-breather all share the same category.)
+- First segment: ALWAYS use fullscreen-headline — this is the on-screen text hook that anchors retention.
+- Last segment: prefer talking-head (call to action, personal close).
+- Short segments (<3 seconds) work well as fullscreen-quote${hasFalKey ? ' or fullscreen-image' : ''}.
+- Longer segments (>6 seconds) work better as talking-head${hasFalKey ? ' or split-image' : ' or quote-lower'}.
+${hasFalKey ? '- When the speaker describes a concept/thing/place, use split-image — it keeps the speaker visible while showing context.\n' : ''}- When the speaker makes a bold claim or quote, consider fullscreen-quote.
+- When the speaker tells a personal story, use talking-head or tight-punch.
+- Energy level "${editStyle.energy}" means ${
+    editStyle.energy === 'high'
+      ? 'more variety, more fullscreen cuts, faster pacing'
+      : editStyle.energy === 'low'
+      ? 'more talking-head, fewer cuts, calmer pacing'
+      : 'balanced variety between speaker and visual cuts'
+  }
 
 Segments:
 ${segmentList}
 
 Return a JSON array with one object per segment:
-[{"index": 0, "category": "main-video", "variantId": "main-video-normal"}, ...]
+[{"index": 0, "archetype": "fullscreen-headline"}, ...]
 
-The "index" must match the segment number. Every segment must be assigned exactly one category and variantId from the available variants listed above.`
+The "index" must match the segment number. Every segment must be assigned exactly one archetype from the list above.`
 }
 
 // ---------------------------------------------------------------------------
@@ -142,101 +168,165 @@ The "index" must match the segment number. Every segment must be assigned exactl
 
 interface RawAssignment {
   index?: unknown
-  category?: unknown
-  variantId?: unknown
+  archetype?: unknown
 }
 
-const VALID_CATEGORIES: Set<string> = new Set([
-  'main-video',
-  'main-video-text',
-  'main-video-images',
-  'fullscreen-image',
-  'fullscreen-text'
-])
+const VALID_ARCHETYPES: Set<string> = new Set(ARCHETYPE_KEYS as readonly string[])
+const IMAGE_ARCHETYPES: Set<string> = new Set(['split-image', 'fullscreen-image'])
 
-function parseAssignments(
+export function parseAssignments(
   text: string,
   segmentCount: number,
-  availableStyleIds: string[] | undefined
-): Array<{ index: number; category: SegmentStyleCategory; variantId: string }> {
+  hasFalKey: boolean
+): Array<{ index: number; archetype: Archetype }> {
   let raw: RawAssignment[]
   try {
     raw = JSON.parse(text) as RawAssignment[]
   } catch {
-    // Try to extract JSON array from within the text
     const match = text.match(/\[[\s\S]*\]/)
     if (!match) {
-      throw new Error('Gemini returned an unparseable response for segment style assignment')
+      throw new Error(
+        'Gemini returned an unparseable response for segment style assignment'
+      )
     }
     raw = JSON.parse(match[0]) as RawAssignment[]
   }
 
   if (!Array.isArray(raw)) {
-    throw new Error('Gemini did not return an array for segment style assignment')
+    throw new Error(
+      'Gemini did not return an array for segment style assignment'
+    )
   }
 
-  const validVariantIds = new Set(
-    availableStyleIds
-      ? SEGMENT_STYLE_VARIANTS.filter((v) => availableStyleIds.includes(v.id)).map((v) => v.id)
-      : SEGMENT_STYLE_VARIANTS.map((v) => v.id)
-  )
-
-  const result: Array<{ index: number; category: SegmentStyleCategory; variantId: string }> = []
+  const result: Array<{ index: number; archetype: Archetype }> = []
 
   for (const item of raw) {
     const idx = typeof item.index === 'number' ? item.index : Number(item.index)
     if (isNaN(idx) || idx < 0 || idx >= segmentCount) continue
 
-    const category = typeof item.category === 'string' ? item.category : ''
-    if (!VALID_CATEGORIES.has(category)) continue
+    const archetype = typeof item.archetype === 'string' ? item.archetype : ''
+    if (!VALID_ARCHETYPES.has(archetype)) continue
 
-    const variantId = typeof item.variantId === 'string' ? item.variantId : ''
-    if (!validVariantIds.has(variantId)) {
-      // Fall back to the first variant in this category
-      const fallback = SEGMENT_STYLE_VARIANTS.find(
-        (v) => v.category === category && (!availableStyleIds || availableStyleIds.includes(v.id))
-      )
-      if (!fallback) continue
-      result.push({ index: idx, category: category as SegmentStyleCategory, variantId: fallback.id })
-    } else {
-      result.push({ index: idx, category: category as SegmentStyleCategory, variantId })
-    }
+    // Drop image archetypes when fal.ai is not configured — they will fall
+    // through to the deterministic pattern-based fallback for a safer default.
+    if (!hasFalKey && IMAGE_ARCHETYPES.has(archetype)) continue
+
+    result.push({ index: idx, archetype: archetype as Archetype })
   }
 
   return result
 }
 
 // ---------------------------------------------------------------------------
-// Fallback: deterministic assignment without AI
+// Fallback: deterministic pattern-based assignment without AI
 // ---------------------------------------------------------------------------
+
+/**
+ * Baseline rotation pattern — anchor hook with a headline, then rotate between
+ * speaker framing and visual accents. The first slot is always the hook.
+ */
+const DEFAULT_PATTERN_WITH_IMAGES: Archetype[] = [
+  'fullscreen-headline', // hook
+  'tight-punch',
+  'split-image',
+  'talking-head',
+  'fullscreen-image',
+  'quote-lower',
+  'split-image',
+  'wide-breather',
+  'fullscreen-quote',
+  'talking-head'
+]
+
+/**
+ * Rotation when fal.ai is not configured: no image-based archetypes — replaced
+ * with text-heavy variety (quote-lower / fullscreen-quote) so each clip still
+ * feels dynamic without generated imagery.
+ */
+const DEFAULT_PATTERN_NO_IMAGES: Archetype[] = [
+  'fullscreen-headline', // hook
+  'tight-punch',
+  'quote-lower',
+  'talking-head',
+  'fullscreen-quote',
+  'wide-breather',
+  'quote-lower',
+  'tight-punch',
+  'fullscreen-quote',
+  'talking-head'
+]
+
+/**
+ * Pick a fallback archetype for the segment at `index`, respecting:
+ *   - index 0 → always fullscreen-headline (hook)
+ *   - last index → talking-head (CTA close)
+ *   - middle indices → pattern[i % length], but walk forward if picking it
+ *     would create 3-in-a-row of the same category
+ *   - very short middle segments (<3s) → fullscreen-quote (punchy, quick)
+ */
+function pickFallbackArchetype(
+  index: number,
+  segmentCount: number,
+  duration: number,
+  pattern: Archetype[],
+  previousAssignments: Archetype[]
+): Archetype {
+  if (index === 0) return 'fullscreen-headline'
+  if (index === segmentCount - 1) return 'talking-head'
+
+  // Short middle beat → punchy accent
+  if (duration < 3) return 'fullscreen-quote'
+
+  // Walk the pattern forward until we find an archetype that doesn't trigger
+  // a 3-consecutive-same-category streak.
+  const wouldStreak = (candidate: Archetype): boolean => {
+    if (previousAssignments.length < 2) return false
+    const cat = ARCHETYPE_TO_CATEGORY[candidate]
+    const prev1 = previousAssignments[previousAssignments.length - 1]
+    const prev2 = previousAssignments[previousAssignments.length - 2]
+    return (
+      ARCHETYPE_TO_CATEGORY[prev1] === cat &&
+      ARCHETYPE_TO_CATEGORY[prev2] === cat
+    )
+  }
+
+  for (let offset = 0; offset < pattern.length; offset++) {
+    const candidate = pattern[(index + offset) % pattern.length]
+    if (!wouldStreak(candidate)) return candidate
+  }
+  // Every pattern entry would streak — fall back to the literal index.
+  return pattern[index % pattern.length]
+}
 
 function assignFallbackStyles(
   segments: VideoSegment[],
-  editStyle: EditStyle
+  hasFalKey: boolean
 ): VideoSegment[] {
-  const availableIds = editStyle.availableSegmentStyles
-  const available = availableIds
-    ? SEGMENT_STYLE_VARIANTS.filter((v) => availableIds.includes(v.id))
-    : SEGMENT_STYLE_VARIANTS
-
-  // Group by category for round-robin
-  const mainVideoVariants = available.filter((v) => v.category === 'main-video')
-  const mainVideoImagesVariants = available.filter((v) => v.category === 'main-video-images')
-  const defaultVariant = mainVideoVariants[0] ?? available[0]
+  const pattern = hasFalKey
+    ? DEFAULT_PATTERN_WITH_IMAGES
+    : DEFAULT_PATTERN_NO_IMAGES
+  const assigned: Archetype[] = []
 
   return segments.map((seg, i) => {
-    let variant = defaultVariant
-    // Simple alternation: even = main-video, odd = main-video-images
-    if (i % 2 === 0 && mainVideoVariants.length > 0) {
-      variant = mainVideoVariants[i % mainVideoVariants.length]
-    } else if (mainVideoImagesVariants.length > 0) {
-      variant = mainVideoImagesVariants[i % mainVideoImagesVariants.length]
-    }
+    const archetype = pickFallbackArchetype(
+      i,
+      segments.length,
+      seg.endTime - seg.startTime,
+      pattern,
+      assigned
+    )
+    assigned.push(archetype)
+
+    const overlayText =
+      HERO_ARCHETYPES.has(archetype) && !seg.overlayText
+        ? deriveHeroText(seg.captionText)
+        : seg.overlayText
 
     return {
       ...seg,
-      segmentStyleCategory: variant.category,
-      segmentStyleId: variant.id
+      archetype,
+      segmentStyleCategory: ARCHETYPE_TO_CATEGORY[archetype],
+      overlayText
     }
   })
 }
@@ -246,57 +336,64 @@ function assignFallbackStyles(
 // ---------------------------------------------------------------------------
 
 /**
- * Use Gemini AI to assign a visual style category and variant to each segment
- * based on its caption content, the edit style energy level, and distribution
- * guidelines derived from real Captions.ai videos.
+ * Use Gemini AI to assign an archetype to each segment based on its caption
+ * content and the edit style's energy level. Falls back to a deterministic
+ * pattern when the AI call fails or no API key is set.
  *
- * Falls back to deterministic assignment if the AI call fails.
+ * When `hasFalKey` is false, split-image / fullscreen-image are excluded
+ * from both the AI prompt and the fallback pattern — those archetypes need
+ * a generated image and would otherwise degrade at render time.
  */
 export async function assignSegmentStyles(
   segments: VideoSegment[],
   editStyle: EditStyle,
-  apiKey: string
+  apiKey: string,
+  hasFalKey: boolean = false
 ): Promise<VideoSegment[]> {
   if (segments.length === 0) return segments
 
-  // If no API key, use deterministic fallback
+  // No API key → deterministic fallback
   if (!apiKey || !apiKey.trim()) {
-    return assignFallbackStyles(segments, editStyle)
+    return assignFallbackStyles(segments, hasFalKey)
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({
+  const ai = new GoogleGenAI({ apiKey })
+  const call: GeminiCall = {
     model: 'gemini-2.5-flash-lite',
-    generationConfig: { responseMimeType: 'application/json' }
-  })
-
-  const prompt = buildPrompt(segments, editStyle)
-
-  let assignments: Array<{ index: number; category: SegmentStyleCategory; variantId: string }>
-  try {
-    const text = await callGeminiWithRetry(model, prompt, 'segment-styler')
-    assignments = parseAssignments(text, segments.length, editStyle.availableSegmentStyles)
-  } catch {
-    // Fall back to deterministic assignment on AI failure
-    return assignFallbackStyles(segments, editStyle)
+    config: { responseMimeType: 'application/json' }
   }
 
-  // Build a map of index → assignment for quick lookup
-  const assignmentMap = new Map(assignments.map((a) => [a.index, a]))
+  const prompt = buildPrompt(segments, editStyle, hasFalKey)
 
-  // Apply assignments, falling back to deterministic for any missing segments
-  const fallback = assignFallbackStyles(segments, editStyle)
+  let assignments: Array<{ index: number; archetype: Archetype }>
+  try {
+    const text = await callGeminiWithRetry(ai, call, prompt, 'segment-styler')
+    assignments = parseAssignments(text, segments.length, hasFalKey)
+  } catch {
+    return assignFallbackStyles(segments, hasFalKey)
+  }
+
+  const assignmentMap = new Map(assignments.map((a) => [a.index, a.archetype]))
+  // Always force the first segment to be the hook headline.
+  if (segments.length > 0) {
+    assignmentMap.set(0, 'fullscreen-headline')
+  }
+  const fallback = assignFallbackStyles(segments, hasFalKey)
 
   return segments.map((seg, i) => {
-    const assignment = assignmentMap.get(i)
-    if (assignment) {
+    const archetype = assignmentMap.get(i)
+    if (archetype) {
+      const overlayText =
+        HERO_ARCHETYPES.has(archetype) && !seg.overlayText
+          ? deriveHeroText(seg.captionText)
+          : seg.overlayText
       return {
         ...seg,
-        segmentStyleCategory: assignment.category,
-        segmentStyleId: assignment.variantId
+        archetype,
+        segmentStyleCategory: ARCHETYPE_TO_CATEGORY[archetype],
+        overlayText
       }
     }
-    // Use the fallback for this index
     return fallback[i]
   })
 }

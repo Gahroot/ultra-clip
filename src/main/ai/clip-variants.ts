@@ -12,10 +12,10 @@
  *   C — "Curiosity":    opens with an AI-generated provocative question overlay, builds suspense
  */
 
-import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai'
+import { callGeminiWithRetry, type GeminiCall } from './gemini-client'
+import { GoogleGenAI } from '@google/genai'
 import type { TranscriptionResult } from '../transcription'
 import type { ClipCandidate } from './curiosity-gap'
-import { emitUsageFromResponse } from '../ai-usage'
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -25,11 +25,10 @@ import { emitUsageFromResponse } from '../ai-usage'
 export interface OverlayCapabilities {
   hookTitle: boolean
   rehook: boolean
-  progressBar: boolean
 }
 
 /** The type of a single overlay element applied to a variant. */
-export type OverlayType = 'hook-title' | 'rehook' | 'progress-bar'
+export type OverlayType = 'hook-title' | 'rehook'
 
 /** Configuration for a single overlay element in a variant. */
 export interface OverlayConfig {
@@ -95,8 +94,6 @@ export interface RenderConfig {
   rehookText?: string
   /** Rehook overlay style to use. */
   rehookStyle?: 'bar' | 'text-only' | 'slide-up'
-  /** Whether to burn the progress bar overlay. */
-  progressBar: boolean
   /** Caption style preset for the variant. */
   captionStyle: CaptionStylePreset
   /** Layout to apply during render. */
@@ -127,52 +124,6 @@ interface VariantAIOutput {
   curiosity_question: string
 }
 
-// ---------------------------------------------------------------------------
-// Gemini helpers (shared with other AI modules)
-// ---------------------------------------------------------------------------
-
-function classifyGeminiError(err: unknown): never {
-  const msg = err instanceof Error ? err.message : String(err)
-  const status = (err as { status?: number })?.status
-
-  if (status === 401 || status === 403 || /api.key/i.test(msg)) {
-    throw new Error('Invalid Gemini API key. Check your key in Settings.')
-  }
-  if (status === 429 || /resource.exhausted|rate.limit|quota/i.test(msg)) {
-    throw new Error('Gemini API rate limit exceeded. Please wait and try again.')
-  }
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)) {
-    throw new Error('Network error: cannot reach Gemini API. Check your internet connection.')
-  }
-  throw err
-}
-
-async function callGeminiWithRetry(model: GenerativeModel, prompt: string, usageSource: string): Promise<string> {
-  try {
-    const result = await model.generateContent(prompt)
-    emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-    return result.response.text().trim()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const status = (err as { status?: number })?.status
-    const isTransient =
-      status === 429 ||
-      /resource.exhausted|rate.limit|quota/i.test(msg) ||
-      /ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg)
-
-    if (isTransient) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const result = await model.generateContent(prompt)
-        emitUsageFromResponse(usageSource, 'gemini-2.5-flash-lite', result.response)
-        return result.response.text().trim()
-      } catch (retryErr) {
-        classifyGeminiError(retryErr)
-      }
-    }
-    classifyGeminiError(err)
-  }
-}
 
 // ---------------------------------------------------------------------------
 // AI prompt
@@ -259,11 +210,11 @@ export async function generateVariants(
   transcript: TranscriptionResult,
   capabilities: OverlayCapabilities
 ): Promise<ClipVariant[]> {
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({
+  const ai = new GoogleGenAI({ apiKey })
+  const call: GeminiCall = {
     model: 'gemini-2.5-flash-lite',
-    generationConfig: { responseMimeType: 'application/json' }
-  })
+    config: { responseMimeType: 'application/json' }
+  }
 
   const clipText = extractClipText(transcript, clip.startTime, clip.endTime)
 
@@ -276,7 +227,7 @@ Virality score: ${clip.score}`
 
   let aiOutput: VariantAIOutput
   try {
-    const text = await callGeminiWithRetry(model, prompt, 'variants')
+    const text = await callGeminiWithRetry(ai, call, prompt, 'variants')
     const raw = JSON.parse(text) as Partial<VariantAIOutput>
 
     // Validate + fallback each field
@@ -328,13 +279,6 @@ Virality score: ${clip.score}`
       color: '#FFFF00'
     })
   }
-  if (capabilities.progressBar) {
-    variantAOverlays.push({
-      type: 'progress-bar',
-      style: 'glow',
-      color: '#FFFFFF'
-    })
-  }
 
   const variantA: ClipVariant = {
     id: 'variant-a',
@@ -352,13 +296,6 @@ Virality score: ${clip.score}`
   // ── Variant B: Cold open ──────────────────────────────────────────────────
   // Jumps to the most dramatic moment, no hook overlay, minimal captions.
   const variantBOverlays: OverlayConfig[] = []
-  if (capabilities.progressBar) {
-    variantBOverlays.push({
-      type: 'progress-bar',
-      style: 'solid',
-      color: '#FFFFFF'
-    })
-  }
 
   const variantB: ClipVariant = {
     id: 'variant-b',
@@ -388,13 +325,6 @@ Virality score: ${clip.score}`
     variantCOverlays.push({
       type: 'rehook',
       style: 'slide-up',
-      color: '#FFFFFF'
-    })
-  }
-  if (capabilities.progressBar) {
-    variantCOverlays.push({
-      type: 'progress-bar',
-      style: 'gradient',
       color: '#FFFFFF'
     })
   }
@@ -438,7 +368,6 @@ export function buildVariantRenderConfigs(
   return variants.map((variant) => {
     const hookOverlay = variant.overlays.find((o) => o.type === 'hook-title')
     const rehookOverlay = variant.overlays.find((o) => o.type === 'rehook')
-    const progressOverlay = variant.overlays.find((o) => o.type === 'progress-bar')
 
     // Derive the clipId from the baseClip id (fallback to baseName) + variant suffix
     const baseId =
@@ -452,8 +381,7 @@ export function buildVariantRenderConfigs(
       endTime: variant.endTime,
       captionStyle: variant.captionStyle,
       layout: variant.layout,
-      overlays: variant.overlays,
-      progressBar: !!progressOverlay
+      overlays: variant.overlays
     }
 
     if (hookOverlay) {

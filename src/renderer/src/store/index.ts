@@ -4,7 +4,7 @@ import { immer } from 'zustand/middleware/immer'
 
 // Enable Immer's MapSet plugin so Set/Map values work in the store
 enableMapSet()
-import type { AppState, QueueResult, SourceVideo, TranscriptionData, RenderProgress, TemplateLayout, PipelineStage, VideoSegment, EditStyle } from './types'
+import type { AppState, QueueResult, SourceVideo, TranscriptionData, RenderProgress, TemplateLayout, PipelineStage, VideoSegment, EditStyle, Archetype, SegmentStyleCategory } from './types'
 import {
   persistSettings,
   persistProcessingConfig,
@@ -24,6 +24,70 @@ import { createErrorsSlice } from './errors-slice'
 
 /** Maximum number of AI usage history entries to keep in memory. */
 const MAX_AI_USAGE_HISTORY = 200
+
+/** Mirror of ARCHETYPE_TO_CATEGORY from src/main/edit-styles/shared/archetypes.ts.
+ *  The main-process module can't be imported into the renderer, so we keep a
+ *  local copy here — the 8 archetypes are stable and version-locked. */
+const ARCHETYPE_TO_CATEGORY: Record<Archetype, SegmentStyleCategory> = {
+  'talking-head': 'main-video',
+  'tight-punch': 'main-video',
+  'wide-breather': 'main-video',
+  'quote-lower': 'main-video-text',
+  'split-image': 'main-video-images',
+  'fullscreen-image': 'fullscreen-image',
+  'fullscreen-quote': 'fullscreen-text',
+  'fullscreen-headline': 'fullscreen-text'
+}
+
+/**
+ * Thunk: re-run the AI segment styler across every clip's segments after a
+ * global edit-style change. Results are token-checked so rapid style switches
+ * ignore stale responses.
+ */
+async function restyleAllSegments(
+  get: () => AppState,
+  set: (fn: (state: AppState) => void) => void,
+  styleId: string,
+  token: number
+): Promise<void> {
+  const state = get()
+  const apiKey = state.settings?.geminiApiKey?.trim() || ''
+  const hasFalKey = Boolean(state.settings?.falApiKey?.trim())
+  const clipIds = Object.keys(state.segments)
+
+  await Promise.all(
+    clipIds.map(async (clipId) => {
+      const segs = get().segments[clipId]
+      if (!segs || segs.length === 0) {
+        set((s) => {
+          for (const key of Object.keys(s.segmentStylingPending)) {
+            if (key.startsWith(`${clipId}:`)) delete s.segmentStylingPending[key]
+          }
+        })
+        return
+      }
+      try {
+        const styled = await window.api.assignSegmentStyles(segs, styleId, apiKey || undefined, hasFalKey)
+        if (get().editStyleChangeToken !== token) return // stale
+        set((s) => {
+          s.segments[clipId] = styled as VideoSegment[]
+          for (const key of Object.keys(s.segmentStylingPending)) {
+            if (key.startsWith(`${clipId}:`)) delete s.segmentStylingPending[key]
+          }
+        })
+      } catch (err) {
+        if (get().editStyleChangeToken !== token) return
+        set((s) => {
+          for (const key of Object.keys(s.segmentStylingPending)) {
+            if (key.startsWith(`${clipId}:`)) delete s.segmentStylingPending[key]
+          }
+        })
+        // eslint-disable-next-line no-console
+        console.warn(`[store] Failed to re-style segments for clip ${clipId}`, err)
+      }
+    })
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Store
@@ -154,8 +218,10 @@ export const useStore = create<AppState>()(immer((...a) => {
     // --- Segment Editor ---
     segments: {},
     editStyles: [],
-    selectedEditStyleId: 'cinematic',
+    selectedEditStyleId: 'prestyj',
     selectedSegmentIndex: 0,
+    segmentStylingPending: {},
+    editStyleChangeToken: 0,
 
     setSegments: (clipId: string, segs: VideoSegment[]) =>
       set((state) => { state.segments[clipId] = segs }),
@@ -169,9 +235,111 @@ export const useStore = create<AppState>()(immer((...a) => {
         Object.assign(segs[idx], updates)
       }),
 
+    updateSegmentTransition: (clipId: string, segmentIndex: number, transitionType) =>
+      set((state) => {
+        const segs = state.segments[clipId]
+        if (!segs || !segs[segmentIndex]) return
+        segs[segmentIndex].transitionIn = transitionType
+      }),
+
+    setSegmentArchetype: (clipId: string, segmentId: string, archetype: Archetype) =>
+      set((state) => {
+        const segs = state.segments[clipId]
+        if (!segs) return
+        const idx = segs.findIndex((s) => s.id === segmentId)
+        if (idx === -1) return
+        segs[idx].archetype = archetype
+        segs[idx].segmentStyleCategory = ARCHETYPE_TO_CATEGORY[archetype]
+        // Manual archetype swap invalidates any prior fallback record — the
+        // next render will recompute whether degradation is still needed.
+        segs[idx].fallbackReason = undefined
+      }),
+
+    setAllSegmentsArchetype: (clipId: string, archetype: Archetype) =>
+      set((state) => {
+        const segs = state.segments[clipId]
+        if (!segs) return
+        for (const seg of segs) {
+          seg.archetype = archetype
+          seg.segmentStyleCategory = ARCHETYPE_TO_CATEGORY[archetype]
+          seg.fallbackReason = undefined
+        }
+      }),
+
+    setSegmentFallbackReason: (clipId: string, segmentIndex: number, reason: string | undefined) =>
+      set((state) => {
+        const segs = state.segments[clipId]
+        if (!segs || !segs[segmentIndex]) return
+        segs[segmentIndex].fallbackReason = reason
+      }),
+
+    restyleOneClip: async (clipId: string) => {
+      const state = get()
+      const segs = state.segments[clipId]
+      const styleId = state.selectedEditStyleId
+      if (!segs || segs.length === 0 || !styleId) return
+      const apiKey = state.settings?.geminiApiKey?.trim() || ''
+      const hasFalKey = Boolean(state.settings?.falApiKey?.trim())
+      set((s) => {
+        for (const seg of segs) s.segmentStylingPending[`${clipId}:${seg.id}`] = true
+      })
+      try {
+        const styled = await window.api.assignSegmentStyles(
+          segs,
+          styleId,
+          apiKey || undefined,
+          hasFalKey
+        )
+        set((s) => {
+          s.segments[clipId] = styled as VideoSegment[]
+          for (const key of Object.keys(s.segmentStylingPending)) {
+            if (key.startsWith(`${clipId}:`)) delete s.segmentStylingPending[key]
+          }
+        })
+      } catch (err) {
+        set((s) => {
+          for (const key of Object.keys(s.segmentStylingPending)) {
+            if (key.startsWith(`${clipId}:`)) delete s.segmentStylingPending[key]
+          }
+        })
+        // eslint-disable-next-line no-console
+        console.warn(`[store] Failed to re-style segments for clip ${clipId}`, err)
+      }
+    },
+
     setEditStyles: (styles: EditStyle[]) => set({ editStyles: styles }),
 
-    setSelectedEditStyleId: (styleId: string | null) => set({ selectedEditStyleId: styleId }),
+    setSelectedEditStyleId: (styleId: string | null) => {
+      const prev = get().selectedEditStyleId
+      if (prev === styleId) return
+      const nextToken = get().editStyleChangeToken + 1
+      set((state) => {
+        state.selectedEditStyleId = styleId
+        state.editStyleChangeToken = nextToken
+        // Mark every existing segment pending (normal + stitched share this record).
+        for (const clipId of Object.keys(state.segments)) {
+          for (const seg of state.segments[clipId]) {
+            state.segmentStylingPending[`${clipId}:${seg.id}`] = true
+          }
+        }
+      })
+      if (styleId) {
+        void restyleAllSegments(get, set, styleId, nextToken)
+      } else {
+        set((state) => { state.segmentStylingPending = {} })
+      }
+    },
+
+    clearSegmentStylingPending: (clipId?: string) =>
+      set((state) => {
+        if (!clipId) {
+          state.segmentStylingPending = {}
+          return
+        }
+        for (const key of Object.keys(state.segmentStylingPending)) {
+          if (key.startsWith(`${clipId}:`)) delete state.segmentStylingPending[key]
+        }
+      }),
 
     setSelectedSegmentIndex: (index: number) => set({ selectedSegmentIndex: index }),
 

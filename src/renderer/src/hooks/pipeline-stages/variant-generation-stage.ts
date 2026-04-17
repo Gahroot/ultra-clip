@@ -19,8 +19,8 @@ export async function variantGenerationStage(
   check()
 
   // Intentionally reading latest state at execution time — overlay toggles
-  // (hookTitle, rehook, progressBar) should reflect whatever the user has
-  // enabled right now, not what was captured at callback-creation time.
+  // (hookTitle, rehook) should reflect whatever the user has enabled right
+  // now, not what was captured at callback-creation time.
   const settings = ctx.getState().settings
 
   for (let i = 0; i < clips.length; i++) {
@@ -42,8 +42,7 @@ export async function variantGenerationStage(
         transcription.transcriptionResult,
         {
           hookTitle: settings.hookTitleOverlay.enabled,
-          rehook: settings.rehookOverlay.enabled,
-          progressBar: settings.progressBarOverlay.enabled
+          rehook: settings.rehookOverlay.enabled
         }
       )
       check()

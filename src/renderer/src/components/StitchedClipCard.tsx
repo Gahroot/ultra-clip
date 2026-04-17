@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronDown, ChevronUp, Clock, Check, X, Combine } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clock, Check, X, Combine, Edit3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useStore } from '../store'
-import type { StitchedClipCandidate, StitchSegmentRole } from '../store'
+import type { StitchedClipCandidate, StitchSegmentRole, ClipCandidate } from '../store'
+import { ClipPreview } from './ClipPreview'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,13 +62,41 @@ function getRoleColor(role: StitchSegmentRole): { bg: string; text: string; labe
 interface StitchedClipCardProps {
   clip: StitchedClipCandidate
   sourceId: string
+  sourcePath: string
   sourceDuration: number
 }
 
-export function StitchedClipCard({ clip, sourceId, sourceDuration }: StitchedClipCardProps) {
+export function StitchedClipCard({ clip, sourceId, sourcePath, sourceDuration }: StitchedClipCardProps) {
   const updateStitchedClipStatus = useStore((s) => s.updateStitchedClipStatus)
   const [showSegments, setShowSegments] = useState(false)
   const [showReasoning, setShowReasoning] = useState(false)
+  const [showEditor, setShowEditor] = useState(false)
+
+  // Project the stitched clip into a ClipCandidate shape so ClipPreview can
+  // open it. Start/end span the entire stitched range; wordTimestamps +
+  // aiEditPlan are forwarded so ClipPreview's AI Edit auto-split kicks in
+  // and the segment editor (archetype picker, caption editor, etc.) renders.
+  const adapterClip = useMemo<ClipCandidate>(() => {
+    const starts = clip.segments.map((s) => s.startTime)
+    const ends = clip.segments.map((s) => s.endTime)
+    const startTime = starts.length > 0 ? Math.min(...starts) : 0
+    const endTime = ends.length > 0 ? Math.max(...ends) : clip.totalDuration
+    return {
+      id: clip.id,
+      sourceId: clip.sourceId,
+      startTime,
+      endTime,
+      duration: clip.totalDuration,
+      text: clip.segments.map((s) => s.text ?? '').filter(Boolean).join(' '),
+      score: clip.score,
+      hookText: clip.hookText,
+      reasoning: clip.reasoning,
+      status: clip.status,
+      cropRegion: clip.cropRegion,
+      wordTimestamps: clip.wordTimestamps,
+      aiEditPlan: clip.aiEditPlan
+    }
+  }, [clip])
 
   const isApproved = clip.status === 'approved'
   const isRejected = clip.status === 'rejected'
@@ -232,36 +261,59 @@ export function StitchedClipCard({ clip, sourceId, sourceDuration }: StitchedCli
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2 px-3 pb-3 pt-1 border-t border-border/50 mt-auto">
+      <div className="flex flex-col gap-2 px-3 pb-3 pt-1 border-t border-border/50 mt-auto">
         <Button
           size="sm"
-          variant={isApproved ? 'default' : 'outline'}
-          onClick={() => updateStitchedClipStatus(sourceId, clip.id, isApproved ? 'pending' : 'approved')}
-          className={cn(
-            'flex-1 gap-1.5 text-xs',
-            isApproved
-              ? 'bg-green-600 hover:bg-green-700 text-white border-green-600'
-              : 'border-green-600/40 text-green-500 hover:bg-green-600/10'
-          )}
+          variant="outline"
+          onClick={() => setShowEditor(true)}
+          className="w-full gap-1.5 text-xs border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10"
         >
-          <Check className="w-3.5 h-3.5" />
-          {isApproved ? 'Approved' : 'Approve'}
+          <Edit3 className="w-3.5 h-3.5" />
+          Edit segments
         </Button>
-        <Button
-          size="sm"
-          variant={isRejected ? 'default' : 'outline'}
-          onClick={() => updateStitchedClipStatus(sourceId, clip.id, isRejected ? 'pending' : 'rejected')}
-          className={cn(
-            'flex-1 gap-1.5 text-xs',
-            isRejected
-              ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
-              : 'border-red-600/40 text-red-500 hover:bg-red-600/10'
-          )}
-        >
-          <X className="w-3.5 h-3.5" />
-          {isRejected ? 'Rejected' : 'Reject'}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant={isApproved ? 'default' : 'outline'}
+            onClick={() => updateStitchedClipStatus(sourceId, clip.id, isApproved ? 'pending' : 'approved')}
+            className={cn(
+              'flex-1 gap-1.5 text-xs',
+              isApproved
+                ? 'bg-green-600 hover:bg-green-700 text-white border-green-600'
+                : 'border-green-600/40 text-green-500 hover:bg-green-600/10'
+            )}
+          >
+            <Check className="w-3.5 h-3.5" />
+            {isApproved ? 'Approved' : 'Approve'}
+          </Button>
+          <Button
+            size="sm"
+            variant={isRejected ? 'default' : 'outline'}
+            onClick={() => updateStitchedClipStatus(sourceId, clip.id, isRejected ? 'pending' : 'rejected')}
+            className={cn(
+              'flex-1 gap-1.5 text-xs',
+              isRejected
+                ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
+                : 'border-red-600/40 text-red-500 hover:bg-red-600/10'
+            )}
+          >
+            <X className="w-3.5 h-3.5" />
+            {isRejected ? 'Rejected' : 'Reject'}
+          </Button>
+        </div>
       </div>
+
+      {/* Segment editor — reuses ClipPreview via adapter shim */}
+      {showEditor && (
+        <ClipPreview
+          clip={adapterClip}
+          sourceId={sourceId}
+          sourcePath={sourcePath}
+          sourceDuration={sourceDuration}
+          open={showEditor}
+          onClose={() => setShowEditor(false)}
+        />
+      )}
     </motion.div>
   )
 }

@@ -46,6 +46,31 @@ export interface CaptionStyleInput {
   boxPadding?: number     // pixels. Default: 10
   boxTextColor?: string   // text color on box words. Falls back to primaryColor.
   boxFontWeight?: number  // font weight for box words. Omit to inherit.
+
+  // ---------------------------------------------------------------------------
+  // Directional drop shadow (Photoshop-style).
+  //
+  // When shadowDistance > 0, a drop shadow is rendered behind every caption
+  // line. The shadow is offset by `shadowDistance` pixels at `shadowAngle`
+  // degrees (0° = right, 90° = down — same convention as CSS), blurred by
+  // `shadowBlur` pixels, and composited with `shadowOpacity` alpha. These
+  // take precedence over the legacy scalar `shadow` field when set.
+  // ---------------------------------------------------------------------------
+
+  /** Shadow offset distance in pixels. 0 or undefined disables directional shadow. */
+  shadowDistance?: number
+  /** Shadow angle in degrees. 0 = right, 90 = down. */
+  shadowAngle?: number
+  /**
+   * Shadow softness on a 0–100 slider (matches design tools like Canva/Figma).
+   * Internally mapped to ASS `\blur` pixels at a 1:0.25 ratio, so 100 ≈ 25px
+   * of Gaussian radius.
+   */
+  shadowSoftness?: number
+  /** 0–1 opacity of the shadow. Default: 1.0 (fully opaque). */
+  shadowOpacity?: number
+  /** Shadow color hex. Default: '#000000'. */
+  shadowColor?: string
 }
 
 export interface WordInput {
@@ -150,6 +175,27 @@ function resolveSupersizeScale(style: CaptionStyleInput): number {
 }
 
 /**
+ * Clamp a scaled font size so a single word fits within the frame.
+ * ASS WrapStyle=0 breaks on spaces, so a standalone scaled word with no
+ * spaces can overflow horizontally. Estimate its rendered width using an
+ * average bold-sans glyph ratio, and scale the size down if it would exceed
+ * the available width (frame minus MarginL/MarginR defaults of 40px each).
+ */
+const BOLD_CHAR_WIDTH_RATIO = 0.62
+const CAPTION_HORIZONTAL_MARGIN = 40
+const CAPTION_SAFETY_PAD = 20
+
+function capFontSizeToFrame(text: string, size: number, frameWidth: number): number {
+  const chars = text.length
+  if (chars === 0) return size
+  const available =
+    frameWidth - CAPTION_HORIZONTAL_MARGIN * 2 - CAPTION_SAFETY_PAD
+  const estimated = chars * size * BOLD_CHAR_WIDTH_RATIO
+  if (estimated <= available) return size
+  return Math.max(1, Math.floor(available / (chars * BOLD_CHAR_WIDTH_RATIO)))
+}
+
+/**
  * Build ASS inline override tags for a word in one of four visual states:
  *   1. Normal — no overrides (empty prefix/suffix)
  *   2. Emphasis — style-defined scale, highlight color, optional bold
@@ -162,20 +208,23 @@ function resolveSupersizeScale(style: CaptionStyleInput): number {
 function buildEmphasisTags(
   word: WordInput,
   style: CaptionStyleInput,
-  baseFontSize: number
+  baseFontSize: number,
+  frameWidth: number = DEFAULT_FRAME_WIDTH
 ): { prefix: string; suffix: string } {
   const level = word.emphasis ?? 'normal'
   if (level === 'normal') return { prefix: '', suffix: '' }
 
   if (level === 'supersize') {
     const scale = resolveSupersizeScale(style)
-    const size = Math.round(baseFontSize * scale)
+    const size = capFontSizeToFrame(word.text, Math.round(baseFontSize * scale), frameWidth)
     const color = hexToASS(style.supersizeColor ?? '#FFD700')
     const weight = style.supersizeFontWeight ?? 800
     // \b1 for bold; if weight > 400 we always set bold
     const boldTag = weight > 400 ? '\\b1' : ''
+    // Outline matches the fill so the border reads as extra weight, not as
+    // a contrasting stroke around a coloured glyph.
     return {
-      prefix: `\\fs${size}\\1c${color}${boldTag}`,
+      prefix: `\\fs${size}\\1c${color}\\3c${color}${boldTag}`,
       suffix: `\\r`
     }
   }
@@ -200,12 +249,14 @@ function buildEmphasisTags(
 
   // emphasis
   const scale = resolveEmphasisScale(style)
-  const size = Math.round(baseFontSize * scale)
+  const size = capFontSizeToFrame(word.text, Math.round(baseFontSize * scale), frameWidth)
   const color = hexToASS(style.emphasisColor ?? style.highlightColor)
   const weight = style.emphasisFontWeight
   const boldTag = weight && weight > 400 ? '\\b1' : ''
+  // Outline matches the fill so the border reads as extra weight, not as
+  // a contrasting stroke around a coloured glyph.
   return {
-    prefix: `\\fs${size}\\1c${color}${boldTag}`,
+    prefix: `\\fs${size}\\1c${color}\\3c${color}${boldTag}`,
     suffix: `\\r`
   }
 }
@@ -953,7 +1004,8 @@ function buildCascadeLines(
 function buildCaptionsAILines(
   group: WordGroup,
   style: CaptionStyleInput,
-  baseFontSize: number
+  baseFontSize: number,
+  frameWidth: number = DEFAULT_FRAME_WIDTH
 ): string[] {
   const primaryASS = hexToASS(style.primaryColor)
   const emphasisASS = hexToASS(style.emphasisColor ?? style.highlightColor)
@@ -970,23 +1022,31 @@ function buildCaptionsAILines(
     const level = w.emphasis ?? 'normal'
 
     if (level === 'supersize') {
-      // SUPERSIZE: massive, held at 200%+, standout color.
-      // Snap to 220% then ease down to 200% and HOLD there.
+      // SUPERSIZE: larger + standout color, pop-in then settle to rest size.
+      // The scaled font size already provides the upscale — we don't also
+      // hold \fscx at 200% (that stacked to 3.2× base and pushed long words
+      // off-screen). The snap overshoots briefly, then settles to 100%.
       const supScale = resolveSupersizeScale(style)
-      const bigSize = Math.round(baseFontSize * Math.max(supScale, 1.6))
-      const snapScale = 220
-      const holdScale = 200
+      const bigSize = capFontSizeToFrame(
+        w.text,
+        Math.round(baseFontSize * supScale),
+        frameWidth
+      )
+      const snapScale = 130
+      const holdScale = 100
       const snapDur = Math.min(6, wordDurCs) // 60ms snap-in
       const settleDur = Math.min(10, wordDurCs) // 100ms settle
       const supWeight = style.supersizeFontWeight ?? 800
       const supBold = supWeight > 400 ? '\\b1' : ''
 
       return (
-        `{\\fs${bigSize}${supBold}\\1c${supersizeASS}\\bord${Math.round(style.outline * 1.5)}` +
+        // \3c matches the fill so the outline reads as extra weight on the
+        // coloured glyph rather than a contrasting white stroke.
+        `{\\fs${bigSize}${supBold}\\1c${supersizeASS}\\3c${supersizeASS}\\bord${Math.round(style.outline * 1.5)}` +
         `\\alpha&HFF&\\fscx${snapScale}\\fscy${snapScale}` +
         // Snap to visible at overshoot scale
         `\\t(${wordStartCs},${wordStartCs + snapDur},\\alpha&H00&)` +
-        // Settle from 220% → 200% with deceleration
+        // Settle from 130% → 100% with deceleration
         `\\t(${wordStartCs + snapDur},${wordStartCs + snapDur + settleDur},0.4,\\fscx${holdScale}\\fscy${holdScale})}` +
         `${w.text}{\\r}${suffix}`
       )
@@ -994,14 +1054,19 @@ function buildCaptionsAILines(
 
     if (level === 'emphasis') {
       // EMPHASIS: pop — snap to visible at 130%, fast settle to 100%.
-      const empSize = Math.round(baseFontSize * resolveEmphasisScale(style))
+      const empSize = capFontSizeToFrame(
+        w.text,
+        Math.round(baseFontSize * resolveEmphasisScale(style)),
+        frameWidth
+      )
       const popScale = 130
       const snapDur = Math.min(4, wordDurCs) // 40ms instant snap
       const settleDur = Math.min(10, wordDurCs) // 100ms spring settle
       const empBold = style.emphasisFontWeight && style.emphasisFontWeight > 400 ? '\\b1' : '\\b1'
 
       return (
-        `{\\fs${empSize}\\1c${emphasisASS}${empBold}` +
+        // \3c matches the fill (see supersize comment above).
+        `{\\fs${empSize}\\1c${emphasisASS}\\3c${emphasisASS}${empBold}` +
         `\\alpha&HFF&\\fscx${popScale}\\fscy${popScale}` +
         // Instant snap to visible
         `\\t(${wordStartCs},${wordStartCs + snapDur},\\alpha&H00&)` +
@@ -1014,7 +1079,7 @@ function buildCaptionsAILines(
 
     if (level === 'box') {
       // BOX: word on opaque colored rectangle — pop in like emphasis.
-      const emp = buildEmphasisTags(w, style, baseFontSize)
+      const emp = buildEmphasisTags(w, style, baseFontSize, frameWidth)
       const snapDur = Math.min(4, wordDurCs)
       const settleDur = Math.min(10, wordDurCs)
       const popScale = 115
@@ -1063,7 +1128,15 @@ function buildASSDocument(
   // 0x00 = fully opaque, 0xFF = fully transparent.
   const useBgBox = backgroundOpacity !== undefined && backgroundOpacity > 0.01
   const effectiveBorderStyle = useBgBox ? 3 : style.borderStyle
-  const effectiveShadow = useBgBox ? 0 : style.shadow
+  // When a directional shadow is configured, the Style's scalar Shadow field
+  // is disabled so it doesn't compound with the per-line \xshad/\yshad offset.
+  const useDirectionalShadow =
+    !useBgBox && style.shadowDistance !== undefined && style.shadowDistance > 0
+  const effectiveShadow = useBgBox
+    ? 0
+    : useDirectionalShadow
+      ? 0
+      : style.shadow
 
   let backASS: string
   if (useBgBox) {
@@ -1199,6 +1272,57 @@ function buildASSDocument(
     dialogueLines.push(...lines)
   }
 
+  // ── Two-layer directional shadow rendering ──────────────────────────────
+  //
+  // `\blur` in libass blurs the whole glyph (fill + outline + shadow) in one
+  // pass, so applying it to the main text produces a glow instead of a drop
+  // shadow. To get a genuinely *behind-the-text* blurred shadow we render
+  // each Dialogue twice:
+  //   • Layer 0 (below): same glyph with fill and outline fully transparent
+  //     so only the shadow renders. `\shad` is forced on to activate shadow
+  //     compositing, offset via `\xshad`/`\yshad`, blurred via `\blur`.
+  //   • Layer 1 (above): the original event, bumped one layer up so it sits
+  //     on top of the shadow layer. Untouched — stays crisp.
+  if (useDirectionalShadow) {
+    const distance = Math.max(0, style.shadowDistance ?? 0)
+    const angleRad = ((style.shadowAngle ?? 90) * Math.PI) / 180
+    const xShad = +(distance * Math.cos(angleRad)).toFixed(3)
+    const yShad = +(distance * Math.sin(angleRad)).toFixed(3)
+    // Softness slider 0–100 → ASS `\blur` pixels (roughly 0–25). This mirrors
+    // the behaviour of design-tool shadow-softness sliders at ~1080p.
+    const softness = Math.max(0, Math.min(100, style.shadowSoftness ?? 0))
+    const blur = +(softness * 0.25).toFixed(2)
+    const opacity = Math.max(0, Math.min(1, style.shadowOpacity ?? 1))
+    const shadowAlphaHex = Math.round((1 - opacity) * 255)
+      .toString(16).toUpperCase().padStart(2, '0')
+    const shadowColorASS = hexToASS(style.shadowColor ?? '#000000')
+
+    // Override applied at the head of the shadow-layer copy. Hides fill
+    // (`\1a&HFF&`) and outline (`\3a&HFF&\bord0`) so only the offset shadow
+    // remains. `\shad1` activates shadow compositing; \xshad/\yshad place it.
+    const shadowOverride =
+      `{\\1a&HFF&\\3a&HFF&\\bord0\\shad1` +
+      `\\xshad${xShad}\\yshad${yShad}\\blur${blur}` +
+      `\\4c${shadowColorASS}\\4a&H${shadowAlphaHex}&}`
+
+    // Split "Dialogue: <layer>,<start>,<end>,<style>,<name>,<ml>,<mr>,<mv>,<effect>,<text>"
+    // into its layer + the rest so we can adjust layer numbers. Text begins
+    // after the 9th comma.
+    const dialogueRE = /^Dialogue:\s*\d+,((?:[^,]*,){8})(.*)$/
+    const shadowLines: string[] = []
+    for (let i = 0; i < dialogueLines.length; i++) {
+      const m = dialogueRE.exec(dialogueLines[i])
+      if (!m) continue
+      const [, meta, text] = m
+      shadowLines.push(`Dialogue: 0,${meta}${shadowOverride}${text}`)
+      dialogueLines[i] = `Dialogue: 1,${meta}${text}`
+    }
+    // Shadow events must come before their main-layer twins so that within a
+    // single render pass libass draws the blurred shadow underneath the
+    // crisp glyph above.
+    dialogueLines.unshift(...shadowLines)
+  }
+
   return [...header, ...dialogueLines, ''].join('\n')
 }
 
@@ -1221,7 +1345,7 @@ function buildDialogueLinesForGroup(
 
   switch (effectiveStyle.animation) {
     case 'captions-ai':
-      rawLines.push(...buildCaptionsAILines(group, effectiveStyle, effectiveFontSize))
+      rawLines.push(...buildCaptionsAILines(group, effectiveStyle, effectiveFontSize, frameWidth))
       break
     case 'karaoke-fill':
       rawLines.push(buildKaraokeLine(group, effectiveStyle, effectiveFontSize))

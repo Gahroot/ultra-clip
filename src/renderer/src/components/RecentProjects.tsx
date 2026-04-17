@@ -65,13 +65,11 @@ export function RecentProjectsList({ onLoad }: RecentProjectsListProps) {
 
   const refresh = useCallback(async () => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const api = (window as any).api
-      if (typeof api?.getRecentProjects !== 'function') {
+      if (typeof window.api?.getRecentProjects !== 'function') {
         setLoading(false)
         return
       }
-      const list = await api.getRecentProjects() as RecentProjectEntry[]
+      const list = await window.api.getRecentProjects()
       setEntries(list)
     } catch {
       // Ignore
@@ -87,18 +85,14 @@ export function RecentProjectsList({ onLoad }: RecentProjectsListProps) {
   async function handleRemove(e: React.MouseEvent, path: string) {
     e.stopPropagation()
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const api = (window as any).api
-      await api?.removeRecentProject(path)
+      await window.api.removeRecentProject(path)
       setEntries((prev) => prev.filter((en) => en.path !== path))
     } catch { /* ignore */ }
   }
 
   async function handleClear() {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const api = (window as any).api
-      await api?.clearRecentProjects()
+      await window.api.clearRecentProjects()
       setEntries([])
       setNotFound(new Set())
     } catch { /* ignore */ }
@@ -211,10 +205,8 @@ export function RecentProjectsDropdown({ onLoad }: RecentProjectsDropdownProps) 
 
   const refresh = useCallback(async () => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const api = (window as any).api
-      if (typeof api?.getRecentProjects !== 'function') return
-      const list = await api.getRecentProjects() as RecentProjectEntry[]
+      if (typeof window.api?.getRecentProjects !== 'function') return
+      const list = await window.api.getRecentProjects()
       setEntries(list)
     } catch { /* ignore */ }
   }, [])
@@ -226,18 +218,14 @@ export function RecentProjectsDropdown({ onLoad }: RecentProjectsDropdownProps) 
   async function handleRemove(e: React.MouseEvent, path: string) {
     e.stopPropagation()
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const api = (window as any).api
-      await api?.removeRecentProject(path)
+      await window.api.removeRecentProject(path)
       setEntries((prev) => prev.filter((en) => en.path !== path))
     } catch { /* ignore */ }
   }
 
   async function handleClear() {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const api = (window as any).api
-      await api?.clearRecentProjects()
+      await window.api.clearRecentProjects()
       setEntries([])
     } catch { /* ignore */ }
   }

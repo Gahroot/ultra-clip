@@ -434,16 +434,6 @@ export type HookTitleStyle = 'centered-bold' | 'top-bar' | 'slide-in'
 export type RehookStyle = 'bar' | 'text-only' | 'slide-up'
 
 // ---------------------------------------------------------------------------
-// Progress Bar Overlay
-// ---------------------------------------------------------------------------
-
-/** Visual rendering style for the progress bar. */
-export type ProgressBarStyle = 'solid' | 'gradient' | 'glow'
-
-/** Which edge of the frame the progress bar is anchored to. */
-export type ProgressBarPosition = 'top' | 'bottom'
-
-// ---------------------------------------------------------------------------
 // Brand Kit
 // ---------------------------------------------------------------------------
 
@@ -780,6 +770,17 @@ export interface ZoomKeyframe {
 /** How a segment transitions in or out. */
 export type TransitionType = 'none' | 'hard-cut' | 'crossfade' | 'flash-cut' | 'color-wash'
 
+/** The 8 archetype keys every edit style must implement (see src/main/edit-styles/shared/archetypes.ts). */
+export type Archetype =
+  | 'talking-head'
+  | 'tight-punch'
+  | 'wide-breather'
+  | 'quote-lower'
+  | 'split-image'
+  | 'fullscreen-image'
+  | 'fullscreen-quote'
+  | 'fullscreen-headline'
+
 /** A single segment within a clip, with its own style, captions, and zoom. */
 export interface VideoSegment {
   id: string
@@ -792,8 +793,11 @@ export interface VideoSegment {
   captionText: string
   /** Word-level timestamps scoped to this segment. */
   words: WordTimestamp[]
-  /** ID of the SegmentStyleVariant to apply. */
-  segmentStyleId: string
+  /** Archetype assigned by the AI segment styler (or user). Resolved at render time
+   *  into a concrete SegmentStyleVariant via the active edit style's template set. */
+  archetype: Archetype
+  /** Denormalized mirror of ARCHETYPE_TO_CATEGORY[archetype]. Kept for the image
+   *  generation gate in segment-splitting-stage.ts and render pipeline consumers. */
   segmentStyleCategory: SegmentStyleCategory
   /** Per-segment zoom keyframes. */
   zoomKeyframes: ZoomKeyframe[]
@@ -808,6 +812,23 @@ export interface VideoSegment {
    * or 'fullscreen-image'. Absent until generation completes (or if key not set).
    */
   imagePath?: string
+  /**
+   * Large-text content for hero archetypes (fullscreen-headline,
+   * fullscreen-quote, quote-lower). Populated by the segment styler from
+   * captionText when the archetype is first assigned, editable by the user
+   * via the SegmentTemplatePicker hero text input. Without this field the
+   * hero ASS builder returns empty and those archetypes render as a blank
+   * solid background.
+   */
+  overlayText?: string
+  /**
+   * Set by the render pipeline when a segment's requested archetype could
+   * not be honored and it was silently degraded to a different layout.
+   * Typical cause: fullscreen-image / split-image chosen but no fal.ai
+   * imagePath exists. Surfaced in the UI so the user knows why the render
+   * doesn't match the picked archetype.
+   */
+  fallbackReason?: string
 }
 
 /** A complete edit style preset controlling the overall clip look & feel. */

@@ -64,7 +64,6 @@ export interface RenderManifest {
     soundDesignEnabled: boolean
     hookTitleEnabled: boolean
     rehookEnabled: boolean
-    progressBarEnabled: boolean
     brandKitEnabled: boolean
   }
   /** Batch statistics */
@@ -271,7 +270,6 @@ export function generateRenderManifest(input: GenerateManifestInput): RenderMani
       soundDesignEnabled: options.soundDesign?.enabled ?? false,
       hookTitleEnabled: options.hookTitleOverlay?.enabled ?? false,
       rehookEnabled: options.rehookOverlay?.enabled ?? false,
-      progressBarEnabled: options.progressBarOverlay?.enabled ?? false,
       brandKitEnabled: options.brandKit?.enabled ?? false
     },
     stats: {
