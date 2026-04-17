@@ -1,3 +1,12 @@
+
+# Large sample/research media — do not commit (history purged 2026-04-17)
+sample_video/
+captionsai_research/
+*.mp4
+*.mov
+*.mkv
+!out/**/*.mp4
+!resources/**/*.mp4
 # Dependencies
 node_modules/
 
