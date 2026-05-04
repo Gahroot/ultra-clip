@@ -22,6 +22,9 @@ import type {
   PulseAIOptions,
 } from './types'
 import { DEFAULT_MIN_SCORE, DEFAULT_FILENAME_TEMPLATE } from '@shared/constants'
+import { CAPTION_PRESETS } from '../constants/caption-presets'
+
+export { CAPTION_PRESETS }
 
 // ---------------------------------------------------------------------------
 // Generic helpers
